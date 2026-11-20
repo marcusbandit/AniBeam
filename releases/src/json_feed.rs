@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use anibeam_contract::*;
-use anibeam_net::{Http, HttpRequest};
+use anibeam_net::Http;
 
 /// One entry of the JSON feed, as far as a release needs.
 #[derive(serde::Deserialize)]
@@ -78,27 +78,9 @@ pub async fn fetch(
     source: &str,
     timeout: Duration,
 ) -> Result<Vec<Release>, CoreError> {
-    let response = http
-        .send(
-            HttpRequest::get(url)
-                .header("User-Agent", super::fetch::USER_AGENT)
-                .header("Accept", "application/json")
-                .timeout(timeout),
-        )
-        .await
-        .map_err(|e| CoreError::service(source, "unreachable", e.message))?;
-    if !response.is_success() {
-        return Err(CoreError::service(
-            source,
-            format!("http_{}", response.status),
-            anibeam_contract::i18n::tr(
-                "core-releases-feed-answered",
-                &[("status", response.status.to_string().into())],
-            ),
-        ));
-    }
-    parse(&response.body, source)
-        .map_err(|message| CoreError::service(source, "unreadable", message))
+    let body =
+        super::fetch::get_json(http, url, source, timeout, "core-releases-feed-answered").await?;
+    parse(&body, source).map_err(|message| CoreError::service(source, "unreadable", message))
 }
 
 #[cfg(test)]

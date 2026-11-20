@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
@@ -48,10 +48,6 @@ fn yes() -> bool {
 /// subscribe, a poll marking an episode taken, the launch rewrite) cannot lose either.
 static EDITING: Mutex<()> = Mutex::new(());
 
-fn editing() -> MutexGuard<'static, ()> {
-    recover(&EDITING)
-}
-
 /// The rules on disk, in one JSON file.
 pub struct RuleStore {
     path: PathBuf,
@@ -90,7 +86,7 @@ impl RuleStore {
         fill: impl Fn(&Rule) -> Option<String>,
         save_base: &Path,
     ) -> Result<(Rule, Subscribed), CoreError> {
-        let _one = editing();
+        let _one = recover(&EDITING);
         let mut rules = self.load();
         let mut name = name.trim().to_string();
         let same = |r: &Rule| {
@@ -142,57 +138,52 @@ impl RuleStore {
 
     /// Takes the named rules out; returns what went.
     pub fn remove(&self, names: &[String]) -> Result<Vec<Rule>, CoreError> {
-        let _one = editing();
-        let mut rules = self.load();
-        let gone: Vec<Rule> = rules
-            .iter()
-            .filter(|r| names.contains(&r.name))
-            .cloned()
-            .collect();
-        rules.retain(|r| !names.contains(&r.name));
-        self.save(&rules)?;
-        Ok(gone)
+        self.edit(|rules| {
+            let (gone, kept): (Vec<Rule>, Vec<Rule>) = std::mem::take(rules)
+                .into_iter()
+                .partition(|r| names.contains(&r.name));
+            *rules = kept;
+            let changed = !gone.is_empty();
+            (gone, changed)
+        })
     }
 
     /// Notes links as taken by `rule`.
     pub fn mark_taken(&self, rule: &str, links: &[String]) -> Result<(), CoreError> {
-        let _one = editing();
-        let mut rules = self.load();
-        if let Some(r) = rules.iter_mut().find(|r| r.name == rule) {
-            r.taken.extend(links.iter().cloned());
-        }
-        self.save(&rules)
+        self.edit(|rules| match rules.iter_mut().find(|r| r.name == rule) {
+            Some(r) => {
+                r.taken.extend(links.iter().cloned());
+                ((), true)
+            }
+            None => ((), false),
+        })
     }
 
     /// Notes a torrent `rule` added: its link as taken, and its info hash, when the rule
     /// is the one that brought the torrent in, as the rule's own.
     pub fn mark_added(&self, rule: &str, link: &str, hash: Option<&str>) -> Result<(), CoreError> {
-        let _one = editing();
-        let mut rules = self.load();
-        if let Some(r) = rules.iter_mut().find(|r| r.name == rule) {
-            r.taken.insert(link.to_string());
-            if let Some(hash) = hash {
-                r.added.insert(hash.to_lowercase());
+        self.edit(|rules| match rules.iter_mut().find(|r| r.name == rule) {
+            Some(r) => {
+                r.taken.insert(link.to_string());
+                r.added.extend(hash.map(str::to_lowercase));
+                ((), true)
             }
-        }
-        self.save(&rules)
+            None => ((), false),
+        })
     }
 
     /// Takes `hashes` off every rule's own: a torrent got by hand is the person's, even one
     /// a subscription brought in once before (#654).
     pub fn disown(&self, hashes: &[String]) -> Result<(), CoreError> {
-        let _one = editing();
-        let mut rules = self.load();
-        let mut changed = false;
-        for r in &mut rules {
-            for hash in hashes {
-                changed |= r.added.remove(&hash.to_lowercase());
+        self.edit(|rules| {
+            let mut changed = false;
+            for r in rules.iter_mut() {
+                for hash in hashes {
+                    changed |= r.added.remove(&hash.to_lowercase());
+                }
             }
-        }
-        if changed {
-            self.save(&rules)?;
-        }
-        Ok(())
+            ((), changed)
+        })
     }
 
     /// Reads the rules, lets `change` change them, and writes them back when it says it
@@ -201,7 +192,7 @@ impl RuleStore {
         &self,
         change: impl FnOnce(&mut Vec<Rule>) -> (T, bool),
     ) -> Result<T, CoreError> {
-        let _one = editing();
+        let _one = recover(&EDITING);
         let mut rules = self.load();
         let (out, changed) = change(&mut rules);
         if changed {

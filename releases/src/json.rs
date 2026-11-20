@@ -10,7 +10,7 @@ use serde_json::Value;
 use crate::repos::index::JsonMap;
 use anibeam_contract::*;
 use anibeam_foundation::magnet::is_hash;
-use anibeam_net::{Http, HttpRequest};
+use anibeam_net::Http;
 
 /// The value at a dot path of object keys; the value itself for an empty path.
 fn at<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
@@ -216,27 +216,9 @@ pub async fn fetch(
     source: &str,
     timeout: Duration,
 ) -> Result<Vec<Release>, CoreError> {
-    let response = http
-        .send(
-            HttpRequest::get(url)
-                .header("User-Agent", super::fetch::USER_AGENT)
-                .header("Accept", "application/json")
-                .timeout(timeout),
-        )
-        .await
-        .map_err(|e| CoreError::service(source, "unreachable", e.message))?;
-    if !response.is_success() {
-        return Err(CoreError::service(
-            source,
-            format!("http_{}", response.status),
-            anibeam_contract::i18n::tr(
-                "core-releases-search-answered",
-                &[("status", response.status.to_string().into())],
-            ),
-        ));
-    }
-    parse(&response.body, map, source)
-        .map_err(|message| CoreError::service(source, "unreadable", message))
+    let body =
+        super::fetch::get_json(http, url, source, timeout, "core-releases-search-answered").await?;
+    parse(&body, map, source).map_err(|message| CoreError::service(source, "unreadable", message))
 }
 
 #[cfg(test)]

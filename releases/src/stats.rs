@@ -19,11 +19,12 @@
 //! a `stats.json` between runs; the core has no state directory for it, so this port
 //! keeps it for the life of the process only.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
+use std::future::Future;
 use std::sync::{LazyLock, Mutex};
-use std::task::Poll;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use futures_util::StreamExt;
 use tokio::net::UdpSocket;
 
 use super::endpoints::{quote, split_url, unquote_plus};
@@ -35,19 +36,19 @@ use anibeam_net::{BoxFuture, Http, HttpRequest};
 // native engine's lookups give up when anirss's do (#547). Change one only with anirss.
 
 /// Tracker counts go stale quickly. anirss `CACHE_TTL_SECONDS`.
-pub const CACHE_TTL: Duration = Duration::from_secs(2 * 60 * 60);
+const CACHE_TTL: Duration = Duration::from_secs(2 * 60 * 60);
 /// Per HTTP scrape request. anirss `HTTP_SCRAPE_TIMEOUT`.
-pub const HTTP_SCRAPE_TIMEOUT: Duration = Duration::from_secs(8);
+const HTTP_SCRAPE_TIMEOUT: Duration = Duration::from_secs(8);
 /// For each step of the UDP connect and scrape. anirss `UDP_SCRAPE_TIMEOUT`.
-pub const UDP_SCRAPE_TIMEOUT: Duration = Duration::from_secs(5);
+const UDP_SCRAPE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Info-hashes per HTTP scrape. anirss `MAX_HTTP_BATCH`.
-pub const MAX_HTTP_BATCH: usize = 50;
+const MAX_HTTP_BATCH: usize = 50;
 /// Keeps the datagram well under the MTU. anirss `MAX_UDP_BATCH`.
-pub const MAX_UDP_BATCH: usize = 60;
+const MAX_UDP_BATCH: usize = 60;
 /// Trackers an enrich scrapes. anirss `MAX_TRACKERS_TRIED`.
-pub const MAX_TRACKERS_TRIED: usize = 4;
+const MAX_TRACKERS_TRIED: usize = 4;
 /// .torrent downloads at a time. anirss `DOWNLOAD_WORKERS`.
-pub const DOWNLOAD_WORKERS: usize = 8;
+const DOWNLOAD_WORKERS: usize = 8;
 /// anirss `enrich(deadline_s=20.0)`, checked before each tracker as anirss checks it.
 pub const DEFAULT_DEADLINE: Duration = Duration::from_secs(20);
 
@@ -60,59 +61,10 @@ pub type Hash = [u8; 20];
 /// Stats as stored: (seeders, leechers, downloads).
 pub type Stats = (i64, i64, i64);
 
-// SHA-1 (RFC 3174), for the info-hash --------------------------------------------------
-
-pub(crate) fn sha1(data: &[u8]) -> Hash {
-    let mut h: [u32; 5] = [
-        0x6745_2301,
-        0xEFCD_AB89,
-        0x98BA_DCFE,
-        0x1032_5476,
-        0xC3D2_E1F0,
-    ];
-    let mut msg = data.to_vec();
-    msg.push(0x80);
-    while msg.len() % 64 != 56 {
-        msg.push(0);
-    }
-    msg.extend_from_slice(&((data.len() as u64) * 8).to_be_bytes());
-    for block in msg.chunks(64) {
-        let mut w = [0u32; 80];
-        for (i, word) in block.chunks(4).enumerate() {
-            w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
-        }
-        for i in 16..80 {
-            w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
-        }
-        let [mut a, mut b, mut c, mut d, mut e] = h;
-        for (i, wi) in w.iter().enumerate() {
-            let (f, k) = match i {
-                0..=19 => ((b & c) | (!b & d), 0x5A82_7999),
-                20..=39 => (b ^ c ^ d, 0x6ED9_EBA1),
-                40..=59 => ((b & c) | (b & d) | (c & d), 0x8F1B_BCDC),
-                _ => (b ^ c ^ d, 0xCA62_C1D6),
-            };
-            let t = a
-                .rotate_left(5)
-                .wrapping_add(f)
-                .wrapping_add(e)
-                .wrapping_add(k)
-                .wrapping_add(*wi);
-            e = d;
-            d = c;
-            c = b.rotate_left(30);
-            b = a;
-            a = t;
-        }
-        for (x, y) in h.iter_mut().zip([a, b, c, d, e]) {
-            *x = x.wrapping_add(y);
-        }
-    }
-    let mut out = [0u8; 20];
-    for (i, v) in h.iter().enumerate() {
-        out[i * 4..i * 4 + 4].copy_from_slice(&v.to_be_bytes());
-    }
-    out
+/// SHA-1, for the info-hash.
+fn sha1(data: &[u8]) -> Hash {
+    use sha1::Digest;
+    sha1::Sha1::digest(data).into()
 }
 
 // Minimal bencode (read-only) ----------------------------------------------------------
@@ -199,18 +151,23 @@ fn decode(data: &[u8], pos: usize, depth: usize) -> Result<(Value, usize), BadBe
     }
 }
 
-/// SHA-1 info-hash of .torrent bytes (trackerless torrents too).
-pub fn info_hash(data: &[u8]) -> Result<Hash, BadBencode> {
+/// Where the info dictionary of .torrent bytes starts and ends (trackerless torrents too).
+fn info_span(data: &[u8]) -> Result<(usize, usize), BadBencode> {
     let start = find(data, b"4:info")? + b"4:info".len();
     let (_info, end) = decode(data, start, 0)?;
+    Ok((start, end))
+}
+
+/// SHA-1 info-hash of .torrent bytes (trackerless torrents too).
+pub fn info_hash(data: &[u8]) -> Result<Hash, BadBencode> {
+    let (start, end) = info_span(data)?;
     Ok(sha1(&data[start..end]))
 }
 
 /// (info-hash bytes, announce URLs in priority order) from .torrent bytes. An error means
 /// "can't scrape this one".
-pub fn torrent_facts(data: &[u8]) -> Result<(Hash, Vec<String>), BadBencode> {
-    let start = find(data, b"4:info")? + b"4:info".len();
-    let (_info, end) = decode(data, start, 0)?;
+fn torrent_facts(data: &[u8]) -> Result<(Hash, Vec<String>), BadBencode> {
+    let (start, end) = info_span(data)?;
     let infohash = sha1(&data[start..end]);
 
     let mut single: Option<String> = None;
@@ -274,7 +231,7 @@ pub fn torrent_facts(data: &[u8]) -> Result<(Hash, Vec<String>), BadBencode> {
 /// (info-hash, trackers in the order given) from a magnet link's `xt=urn:btih:` and `tr=`
 /// parameters, keeping the http, https and udp trackers. `None` when the link is not a
 /// magnet, its hash is malformed or it names no tracker to scrape.
-pub fn magnet_facts(link: &str) -> Option<(Hash, Vec<String>)> {
+fn magnet_facts(link: &str) -> Option<(Hash, Vec<String>)> {
     let query = link.trim().strip_prefix("magnet:?")?;
     // The hex or base32 hash, read the way a download reads it, as 20 bytes.
     let hash = anibeam_foundation::magnet::hash_bytes(link)?;
@@ -585,7 +542,7 @@ const QUERY_SAFE: &str = "/%:@!$&'()*+,;=?";
 /// Feed links carry raw spaces and brackets (t.keyed.example does). The host is left alone
 /// so an IPv6 literal keeps its brackets. Errors on a malformed host, for example an
 /// unclosed `[`. The link is read by the HTTP client's own parser (#493).
-pub fn encode_http_link(link: &str) -> Result<String, BadBencode> {
+fn encode_http_link(link: &str) -> Result<String, BadBencode> {
     // Parsed by the HTTP client's own parser, so the host, path and query are the ones it
     // fetches: a backslash, a tab or a control character reads as it does (#493). One
     // it would not fetch, or that names no host, is malformed here too.
@@ -657,47 +614,20 @@ impl Backend for Net<'_> {
 
 /// Drive `pending` with at most `limit` in flight, until all finish or `wait` runs out.
 /// What did not finish by then is dropped.
-async fn run_bounded<'a, T>(
-    mut pending: VecDeque<BoxFuture<'a, T>>,
+async fn run_bounded<T>(
+    pending: Vec<impl Future<Output = T>>,
     limit: usize,
     wait: Duration,
 ) -> Vec<T> {
-    let mut running: Vec<BoxFuture<'a, T>> = Vec::new();
-    let mut done: Vec<T> = Vec::new();
-    let all = std::future::poll_fn(|cx| {
-        loop {
-            while running.len() < limit {
-                match pending.pop_front() {
-                    Some(f) => running.push(f),
-                    None => break,
-                }
-            }
-            if running.is_empty() {
-                return Poll::Ready(());
-            }
-            let mut progressed = false;
-            let mut i = 0;
-            while i < running.len() {
-                match running[i].as_mut().poll(cx) {
-                    Poll::Ready(v) => {
-                        done.push(v);
-                        drop(running.swap_remove(i));
-                        progressed = true;
-                    }
-                    Poll::Pending => i += 1,
-                }
-            }
-            if !progressed {
-                return Poll::Pending;
-            }
-        }
-    });
-    let _ = tokio::time::timeout(wait, all).await;
+    let deadline = tokio::time::Instant::now() + wait;
+    let mut running =
+        std::pin::pin!(futures_util::stream::iter(pending).buffer_unordered(limit.max(1)));
+    let mut done = Vec::new();
+    while let Ok(Some(v)) = tokio::time::timeout_at(deadline, running.next()).await {
+        done.push(v);
+    }
     done
 }
-
-/// A URL with the torrent bytes it gave, if any.
-type Fetched<'a> = (&'a str, Option<Vec<u8>>);
 
 /// The .torrent bytes behind each URL, `DOWNLOAD_WORKERS` at a time.
 ///
@@ -718,13 +648,9 @@ async fn fetch_torrents_with(
         }
     }
     let attempt = left().max(Duration::from_millis(500));
-    let pending: VecDeque<BoxFuture<'_, Fetched<'_>>> = seen
+    let pending: Vec<_> = seen
         .into_iter()
-        .map(|url| {
-            let f: BoxFuture<'_, Fetched<'_>> =
-                Box::pin(async move { (url, backend.fetch_torrent(url, attempt).await) });
-            f
-        })
+        .map(|url| async move { (url, backend.fetch_torrent(url, attempt).await) })
         .collect();
     let finished = run_bounded(
         pending,
@@ -735,7 +661,7 @@ async fn fetch_torrents_with(
     let mut out = HashMap::new();
     for (url, data) in finished {
         if let Some(data) = data.filter(|d| !d.is_empty())
-            && info_hash(&data).is_ok()
+            && info_span(&data).is_ok()
         {
             out.insert(url.to_string(), data);
         }
@@ -766,23 +692,12 @@ struct StatsCache {
     map: Mutex<HashMap<String, (f64, Option<Stats>)>>,
 }
 
-enum Cached {
-    Ok(Stats),
-    Fail,
-}
-
 impl StatsCache {
-    /// `Ok` or `Fail` for a fresh entry, `None` for a miss.
-    fn get(&self, url: &str) -> Option<Cached> {
+    /// A fresh entry: its stats, `None` for a link known to give none. `None` for a miss.
+    fn get(&self, url: &str) -> Option<Option<Stats>> {
         let map = recover(&self.map);
         let (ts, stats) = map.get(url)?;
-        if now_secs() - ts >= CACHE_TTL.as_secs_f64() {
-            return None;
-        }
-        Some(match stats {
-            Some(s) => Cached::Ok(*s),
-            None => Cached::Fail,
-        })
+        (now_secs() - ts < CACHE_TTL.as_secs_f64()).then_some(*stats)
     }
 
     fn put(&self, url: &str, ts: f64, stats: Option<Stats>) {
@@ -845,11 +760,11 @@ async fn enrich_with(
                     Some((_, idxs)) => idxs.push(i),
                     None => by_url.push((item.link.clone(), vec![i])),
                 },
-                Some(Cached::Ok(stats)) => {
+                Some(Some(stats)) => {
                     resolved.insert(i, stats);
                 }
                 // A known-bad URL: leave it unknown without fetching it again.
-                Some(Cached::Fail) => {}
+                Some(None) => {}
             }
         }
     }
@@ -1064,31 +979,13 @@ mod tests {
     // sha1 and bencode ---------------------------------------------------------------
 
     #[test]
-    fn sha1_matches_known_vectors() {
-        assert_eq!(
-            hex(&sha1(b"abc")),
-            "a9993e364706816aba3e25717850c26c9cd0d89d"
-        );
-        assert_eq!(hex(&sha1(b"")), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
-        assert_eq!(
-            hex(&sha1(
-                b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
-            )),
-            "84983e441c3bd26ebaae4aa1f95129e5e54670f1"
-        );
-        assert_eq!(
-            hex(&sha1(&[b'a'; 1000])),
-            "291e9a6c66994949b57ba5e650361e98fc36b1ba"
-        );
-    }
-
-    #[test]
     fn torrent_facts_infohash_matches_sha1_of_info_dict() {
         let data = default_torrent();
         let (infohash, _) = torrent_facts(&data).unwrap();
         // sha1 of the encoded info dict, computed with Python's hashlib.
         assert_eq!(hex(&infohash), "74cec52d333abf05038b8afd98668e51d6050c5c");
         assert_eq!(info_hash(&data).unwrap(), infohash);
+        assert!(info_hash(b"").is_err());
     }
 
     #[test]
@@ -1134,7 +1031,7 @@ mod tests {
         assert!(torrent_facts(&benc(&B::D(vec![("comment", B::S(b"nothing here"))]))).is_err());
         assert!(torrent_facts(b"<html>checking your browser</html>").is_err());
         assert!(torrent_facts(b"d4:infod1:xi1e").is_err());
-        assert!(info_hash(b"").is_err());
+        assert!(torrent_facts(b"").is_err());
     }
 
     // Magnet links ------------------------------------------------------------------------

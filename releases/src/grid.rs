@@ -70,11 +70,10 @@ fn show_words(show: &Show) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// Whether a release names the show: at least half of one of its names' words, outside the
-/// leading `[group]` (a search matches the group too: "Naruto" finds Naruto-Kun.Hu's One
-/// Piece).
-pub fn names_show(show: &Show, title: &str) -> bool {
-    let words = show_words(show);
+/// Whether a release names the show, `words` being its names' words (`show_words`): at
+/// least half of one name's words, outside the leading `[group]` (a search matches the group
+/// too: "Naruto" finds Naruto-Kun.Hu's One Piece).
+fn names_show(words: &[Vec<String>], title: &str) -> bool {
     if words.is_empty() {
         return true;
     }
@@ -106,10 +105,11 @@ pub fn of_show(
     items: &[Release],
     facts: &[ReleaseFacts],
 ) -> (Vec<Release>, Vec<ReleaseFacts>, usize) {
+    let words = show_words(show);
     let mut out_items = Vec::new();
     let mut out_facts = Vec::new();
     for (i, item) in items.iter().enumerate() {
-        if names_show(show, &item.title) {
+        if names_show(&words, &item.title) {
             out_items.push(item.clone());
             if let Some(f) = facts.get(i) {
                 out_facts.push(f.clone());
@@ -206,23 +206,23 @@ fn seeds(item: &Release) -> i64 {
     item.seeders.unwrap_or(-1)
 }
 
+/// Episode numbers as runs of consecutive ones, each a lone number or written by `range`.
+fn spans(list: &[u32], range: impl Fn(u32, u32) -> String) -> Vec<String> {
+    let mut runs: Vec<(u32, u32)> = Vec::new();
+    for &n in list {
+        match runs.last_mut() {
+            Some((_, last)) if n == *last + 1 => *last = n,
+            _ => runs.push((n, n)),
+        }
+    }
+    runs.into_iter()
+        .map(|(a, b)| if a == b { a.to_string() } else { range(a, b) })
+        .collect()
+}
+
 /// Episode numbers as short runs: `1-12, 14, 20-24`.
 pub fn runs(list: &[u32]) -> String {
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < list.len() {
-        let mut j = i;
-        while j + 1 < list.len() && list[j + 1] == list[j] + 1 {
-            j += 1;
-        }
-        out.push(if j > i {
-            format!("{}-{}", list[i], list[j])
-        } else {
-            list[i].to_string()
-        });
-        i = j + 1;
-    }
-    out.join(", ")
+    spans(list, |a, b| format!("{a}-{b}")).join(", ")
 }
 
 /// A provider's releases as rows: group and quality with the best-seeded release per
@@ -498,18 +498,7 @@ pub fn episodes_phrase(ns: &[u32]) -> String {
     if ns.is_empty() {
         return String::new();
     }
-    let mut parts = Vec::new();
-    let (mut a, mut b) = (ns[0], ns[0]);
-    for &n in &ns[1..] {
-        if n == b + 1 {
-            b = n;
-            continue;
-        }
-        parts.push(if a == b { a.to_string() } else { range(a, b) });
-        a = n;
-        b = n;
-    }
-    parts.push(if a == b { a.to_string() } else { range(a, b) });
+    let parts = spans(ns, range);
     anibeam_contract::i18n::tr(
         "core-releases-episodes-phrase",
         &[
@@ -581,8 +570,11 @@ mod tests {
             title: "Naruto".into(),
             ..Default::default()
         };
-        assert!(names_show(&s, "[Lumen] Naruto - 01 (1080p)"));
-        assert!(!names_show(&s, "[Naruto-Kun.Hu] One Piece - 1100"));
+        assert!(names_show(&show_words(&s), "[Lumen] Naruto - 01 (1080p)"));
+        assert!(!names_show(
+            &show_words(&s),
+            "[Naruto-Kun.Hu] One Piece - 1100"
+        ));
     }
 
     #[test]
@@ -641,5 +633,17 @@ mod tests {
         toggle_cube(&mut picks, &rs[0], 3, &lib, t);
         assert!(picks.map.is_empty());
         assert_eq!(runs(&[1, 2, 3, 5, 7, 8]), "1-3, 5, 7-8");
+    }
+
+    #[test]
+    fn a_plan_names_its_episodes_as_runs() {
+        assert_eq!(episodes_phrase(&[]), "");
+        assert_eq!(episodes_phrase(&[7]), "Episode 7");
+        assert_eq!(
+            episodes_phrase(&[1, 2, 3, 5, 9, 10]),
+            "Episodes 1 to 3, 5, 9 to 10"
+        );
+        assert_eq!(runs(&[]), "");
+        assert_eq!(runs(&[4]), "4");
     }
 }
