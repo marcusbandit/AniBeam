@@ -256,6 +256,11 @@ scripts/ctl.sh help                   # every command
 | `state`, `perf [ns]` | `perf 5s`: UI loop waits, frame times, the busiest threads |
 | `shot <file.png>` | from the powered display, as `shot.sh` takes it |
 
+A label held by several controls, or words that only sit inside a label, get the matches
+back instead of a press. A line has 45 s, 8 s on Android 13 and older, where every app's
+broadcasts wait behind it; ctl.sh runs a long `wait` as short ones. ctl.sh exits 1 when a
+command failed, 2 when the app did not answer and 64 when ctl.sh was called wrong.
+
 `press`, `open`, `search` and `dump` still work as the older names. Points are the window's
 logical pixels, the ones `tree` prints. The app answers in the broadcast's result data
 (`am broadcast -a com.marcusrosado.anibeam.CONTROL -p com.marcusrosado.anibeam --es cmd

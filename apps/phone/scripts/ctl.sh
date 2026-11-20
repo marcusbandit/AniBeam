@@ -13,13 +13,13 @@
 # The words are the desktop's `anibeam ctl` ones where the apps do the same thing.
 #
 # Talks to $ANDROID_SERIAL, or this project's emulator (env.sh). Exits 1 when a command
-# failed, 2 when the app did not answer.
+# failed, 2 when the app did not answer, 64 when ctl.sh itself was called wrong.
 set -euo pipefail
 # The script's own folder, through a symlink too (one in ~/.local/bin, say).
 here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
 if [[ "${1:-}" == "-s" ]]; then
-  [[ -n "${2:-}" ]] || { echo "ctl.sh: -s needs a serial" >&2; exit 2; }
+  [[ -n "${2:-}" ]] || { echo "ctl.sh: -s needs a serial" >&2; exit 64; }
   export ANDROID_SERIAL="$2"
   shift 2
 fi
@@ -29,7 +29,7 @@ source "$here/env.sh"
 # shot <file.png>: the device's own pixels, from the display that is powered (env.sh). It
 # runs here, not in the app, so it stands on its own; inside a ; line the app says so.
 if [[ "$1" == "shot" ]]; then
-  [[ $# == 2 ]] || { echo "ctl.sh: shot takes a file name" >&2; exit 2; }
+  [[ $# == 2 ]] || { echo "ctl.sh: shot takes a file name" >&2; exit 64; }
   shot_to "$2" || exit 1
   echo "$2"
   exit 0
@@ -48,6 +48,7 @@ word() {
   fi
 }
 
+given=("$@")
 if (( $# == 1 )); then
   line="$1"
 else
@@ -56,27 +57,59 @@ else
   for a in "$@"; do line+=" $(word "$a")"; done
 fi
 
-# adb shell runs the command through the device's sh: the line goes in single quotes.
-quoted="'${line//\'/\'\\\'\'}'"
-if ! out="$("$ADB" shell "am broadcast -a com.marcusrosado.anibeam.CONTROL -p $PKG --es cmd $quoted" 2>&1)"; then
-  echo "ctl.sh: adb failed: $out" >&2
-  exit 2
-fi
-out="${out//$'\r'/}"
+# ask <line>: sends a line and sets $code (the result code) and $data (the answer). Exits 2
+# when the app did not answer.
+ask() {
+  # adb shell runs the command through the device's sh: the line goes in single quotes.
+  local quoted="'${1//\'/\'\\\'\'}'" out rest
+  if ! out="$("$ADB" shell "am broadcast -a com.marcusrosado.anibeam.CONTROL -p $PKG --es cmd $quoted" 2>&1)"; then
+    echo "ctl.sh: adb failed: $out" >&2
+    exit 2
+  fi
+  out="${out//$'\r'/}"
+  rest="${out#*Broadcast completed: result=}"
+  if [[ "$rest" == "$out" ]]; then
+    echo "ctl.sh: $out" >&2
+    exit 2
+  fi
+  code="${rest%%[!0-9]*}"
+  if [[ "$rest" != *', data="'* ]]; then
+    echo "ctl.sh: no answer. Is Anibeam open, and a sideload build? The Play build has no control." >&2
+    exit 2
+  fi
+  data="${rest#*, data=\"}"
+  data="${data%"${data##*[![:space:]]}"}"
+  data="${data%\"}"
+}
 
-rest="${out#*Broadcast completed: result=}"
-if [[ "$rest" == "$out" ]]; then
-  echo "ctl.sh: $out" >&2
-  exit 2
+# A wait on its own runs as short waits one after another, so no broadcast holds the phone's
+# background queue long: on Android 13 and older every app's broadcasts wait behind it.
+if [[ "${given[0]}" == wait ]] && (( ${#given[@]} >= 2 )); then
+  total=10
+  args=("${given[@]:1}")
+  if (( ${#args[@]} >= 2 )) && [[ "${args[-1]}" =~ ^[0-9]+(\.[0-9]+)?s$ ]]; then
+    total="${args[-1]%s}"
+    unset 'args[-1]'
+  fi
+  label=""
+  for a in "${args[@]}"; do label+=" $(word "$a")"; done
+  start=$SECONDS
+  while :; do
+    left=$(( ${total%.*} - (SECONDS - start) ))
+    (( left < 1 )) && left=1
+    step=$(( left < 6 ? left : 6 ))
+    ask "wait${label} ${step}s"
+    if [[ "$code" == 0 ]] || [[ "$data" != *"did not show within"* ]] \
+      || (( SECONDS - start >= ${total%.*} )); then
+      [[ "$code" == 0 ]] || data="${data/within ${step} s/within ${total} s}"
+      printf '%s\n' "$data"
+      [[ "$code" == 0 ]] && exit 0
+      exit 1
+    fi
+  done
 fi
-code="${rest%%[!0-9]*}"
-if [[ "$rest" != *', data="'* ]]; then
-  echo "ctl.sh: no answer. Is Anibeam open, and a sideload build? The Play build has no control." >&2
-  exit 2
-fi
-data="${rest#*, data=\"}"
-data="${data%"${data##*[![:space:]]}"}"
-data="${data%\"}"
+
+ask "$line"
 printf '%s\n' "$data"
 
 # The labels a whole tree shows, for the shells' completion of click, tap and the rest. Only

@@ -12,6 +12,13 @@ _ctl.sh_labels() {
   compadd -a labels
 }
 
+# The adb ctl.sh talks through (env.sh): the SDK's, else the one on PATH. Another build's
+# `adb devices` could restart the server under ctl.sh.
+_ctl.sh_adb() {
+  local sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}/platform-tools/adb
+  if [[ -x $sdk ]]; then $sdk "$@"; else adb "$@"; fi
+}
+
 _ctl.sh() {
   # Only Anibeam's ctl.sh: a script of the same name elsewhere gets its files completed.
   local cmd=$words[1]
@@ -46,7 +53,7 @@ _ctl.sh() {
   if [[ $words[2] == -s ]]; then
     if (( CURRENT == 3 )); then
       local -a serials
-      serials=(${${(f)"$(adb devices 2>/dev/null)"}[2,-1]%%[[:space:]]*})
+      serials=(${${(f)"$(_ctl.sh_adb devices 2>/dev/null)"}[2,-1]%%[[:space:]]*})
       compadd -a serials
       return
     fi
@@ -54,12 +61,18 @@ _ctl.sh() {
     (( CURRENT -= 2 ))
   fi
   if (( CURRENT == 2 )); then
-    _describe -t commands 'command' commands
-    [[ $words[2] == -* ]] && compadd -- -s
+    if [[ $words[2] == -* ]]; then
+      compadd -- -s
+    else
+      _describe -t commands 'command' commands
+    fi
     return
   fi
   case $words[2] in
-    go) (( CURRENT == 3 )) && compadd home calendar library downloads more series ;;
+    go)
+      if (( CURRENT == 3 )); then compadd home calendar library downloads more series
+      elif [[ $words[3] == series ]]; then _ctl.sh_labels
+      fi ;;
     key) compadd back enter tab escape backspace up down left right ;;
     # After a label, --nth for the controls and a time for wait, beside more labels.
     click|press|tap|hold)
@@ -79,7 +92,9 @@ _ctl.sh() {
       else compadd at 300 600 1200
       fi ;;
     onboarding)
-      (( CURRENT == 3 )) && compadd next back step finish start ;;
+      if (( CURRENT == 3 )); then compadd next back step finish start
+      elif (( CURRENT == 4 )) && [[ $words[3] == step ]]; then compadd 0 1 2 3 4 5 6 7
+      fi ;;
     perf) (( CURRENT == 3 )) && compadd 2s 5s 10s ;;
   esac
 }
