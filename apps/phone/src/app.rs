@@ -110,7 +110,6 @@ struct App {
     detail: Option<SeriesDetail>,
     art: Art,
     asked: HashSet<u64>,
-    posters: Sender<(u64, String)>,
     trackers: Option<(TrackerAccount, TrackerAccount)>,
     /// The tracker a sign-in was last started for (0 AniList, 1 MAL), and why it failed,
     /// which More shows in place of "Not signed in" until it is tried again.
@@ -428,13 +427,7 @@ impl App {
                 .collect();
             self.data().set_ready(true);
         }
-        for card in &self.cards {
-            if let Some(path) = &card.poster
-                && self.asked.insert(card.id)
-            {
-                let _ = self.posters.send((card.id, path.clone()));
-            }
-        }
+        self.ask_card_posters();
         if let Some(Open::Phone(id)) = self.open {
             // A failed read keeps the page as it was; only a series that is gone closes it.
             match core.call(Call::GetSeries { series: id }) {
@@ -653,8 +646,8 @@ impl App {
             self.trackers.as_ref(),
             &self.art,
         ) {
-            if self.asked.insert(key) {
-                let _ = self.posters.send((key, path));
+            if crate::posters::may_ask(&path) && self.asked.insert(key) {
+                load_poster(key, path);
             }
         }
 
@@ -984,15 +977,28 @@ impl App {
         self.art.poster(Some(AIRING_ART | anilist_id))
     }
 
+    /// Asks once for each library card's poster, and again for one whose retry came due.
+    fn ask_card_posters(&mut self) {
+        for card in &self.cards {
+            if let Some(path) = &card.poster
+                && crate::posters::may_ask(path)
+                && self.asked.insert(card.id)
+            {
+                load_poster(card.id, path.clone());
+            }
+        }
+    }
+
     /// Asks once for each Airing now poster the core has on disk.
     fn ask_airing_posters(&mut self) {
         let Some(airing) = &self.airing else { return };
         for show in &airing.shows {
             let key = AIRING_ART | show.anilist_id;
             if let Some(path) = &show.poster
+                && crate::posters::may_ask(path)
                 && self.asked.insert(key)
             {
-                let _ = self.posters.send((key, path.clone()));
+                load_poster(key, path.clone());
             }
         }
     }
@@ -2195,30 +2201,21 @@ fn finished(t: &Torrent) -> bool {
     t.progress >= 1.0 && t.roll.is_none()
 }
 
-/// Reads poster files off the UI thread and hands each decoded one back.
-fn start_poster_loader() -> Sender<(u64, String)> {
-    let (tx, rx) = std::sync::mpsc::channel::<(u64, String)>();
-    let _ = std::thread::Builder::new()
-        .name("posters".into())
-        .spawn(move || {
-            for (id, path) in rx {
-                let Some(decoded) = std::fs::read(&path)
-                    .ok()
-                    .and_then(|b| crate::posters::decode(&b))
-                else {
-                    continue;
-                };
-                let _ = slint::invoke_from_event_loop(move || {
-                    with_app(|app| {
-                        app.art
-                            .posters
-                            .insert(id, Image::from_rgba8(decoded.buffer));
-                        app.art.tones.insert(id, decoded.tone);
-                    });
-                });
+/// Decodes the poster file for `id` on the posters threads, which Downloads shares, so a file
+/// both show is decoded once; the pages show it from their next draw. One that did not decode
+/// is asked for again when `posters::on_retry` says so, or by a later draw.
+fn load_poster(id: u64, path: String) {
+    crate::posters::load(path, move |poster| {
+        with_app(|app| match poster {
+            Some(poster) => {
+                app.art.posters.insert(id, poster.image);
+                app.art.tones.insert(id, poster.tone);
+            }
+            None => {
+                app.asked.remove(&id);
             }
         });
-    tx
+    });
 }
 
 /// Each streamable file of the other device's, with its episode number.
@@ -2265,6 +2262,8 @@ pub fn run(
     commands: Commands,
     inbox: Receiver<Command>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // A new event loop: posters asked of the last one are asked again, not waited on.
+    crate::posters::reset();
     // Before anything talks to a computer, so every request can carry the phone's proof.
     match Store::open(&data_dir).and_then(|s| s.device_key()) {
         Ok(key) => anibeam_companion::client::use_device_key(key),
@@ -2508,6 +2507,14 @@ pub fn run(
         }
     });
 
+    // A failed poster's retry came due: the cards and Airing now ask again. The show page
+    // asks on every draw already.
+    crate::posters::on_retry(|| {
+        with_app(|app| {
+            app.ask_card_posters();
+            app.ask_airing_posters();
+        })
+    });
     crate::find::install(&window, data_dir.clone());
     crate::repos::install(&window);
     crate::stats::install(&window);
@@ -2527,7 +2534,6 @@ pub fn run(
         detail: None,
         art: Art::default(),
         asked: HashSet::new(),
-        posters: start_poster_loader(),
         trackers: None,
         signing_in: HashMap::new(),
         sign_in_error: None,

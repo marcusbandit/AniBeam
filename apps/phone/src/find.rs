@@ -4,8 +4,9 @@
 //! Every core call runs on a thread of its own and answers through the event loop.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anibeam_companion::format;
 use anibeam_core::releases::grid;
@@ -27,6 +28,11 @@ const LENSES: [&str; 5] = [
     "find-lens-following",
     "find-lens-downloaded",
 ];
+
+/// How long the page waits for more posters before it draws the ones that came in.
+const POSTER_REDRAW: Duration = Duration::from_millis(150);
+/// Nav.page of Downloads.
+const DOWNLOADS_PAGE: i32 = 2;
 
 /// A show a lens offers, enough to open the show view.
 #[derive(Clone, Debug, Default)]
@@ -168,6 +174,17 @@ struct Find {
     /// Whether the list was opened from the show view, so Back returns there.
     list_from_show: bool,
     posters: BTreeMap<String, Image>,
+    /// The poster files asked of the loader and not back yet.
+    posters_asked: HashSet<String>,
+    /// One draw for the posters that come in together.
+    poster_redraw: Coalesce,
+    /// The posters of the lens on screen and of the lens before it, kept apart from the
+    /// suggestions and the open show, so going back to the last lens draws at once.
+    lens_posters: HashSet<String>,
+    lens_before: HashSet<String>,
+    /// A failed poster's retry came due while Downloads was not on screen: it draws when
+    /// it shows again.
+    retry_waiting: bool,
     /// The shows under the field as you type, the desktop's suggestions: the library's
     /// first, then AniList's.
     suggestions: Vec<Offer>,
@@ -271,7 +288,13 @@ fn ask(call: Call, then: impl FnOnce(&mut Find, Result<Reply, CoreError>) + Send
 
 /// The app's tick, with whether the core reported a change since the last one.
 pub fn tick(changed: bool) {
-    with(|f| f.list_tick(changed));
+    with(|f| {
+        if f.retry_waiting && f.on_screen() {
+            f.retry_waiting = false;
+            f.redraw_soon();
+        }
+        f.list_tick(changed);
+    });
 }
 
 /// The language changed: every line this page pushed as a string is pushed again.
@@ -306,6 +329,11 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             history: Vec::new(),
             list_from_show: false,
             posters: BTreeMap::new(),
+            posters_asked: HashSet::new(),
+            poster_redraw: Coalesce::default(),
+            lens_posters: HashSet::new(),
+            lens_before: HashSet::new(),
+            retry_waiting: false,
             suggestions: Vec::new(),
             suggest_for: String::new(),
             suggest_why: None,
@@ -327,6 +355,16 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     d.set_lenses(model(
         LENSES.iter().map(|l| SharedString::from(tr!(*l))).collect(),
     ));
+    // A failed poster's retry came due: the page asks again if it shows, or when it does.
+    crate::posters::on_retry(|| {
+        with(|f| {
+            if f.on_screen() {
+                f.redraw_soon();
+            } else {
+                f.retry_waiting = true;
+            }
+        })
+    });
     d.on_open(|text| with(|f| f.open(text.to_string())));
     d.on_close(|| with(Find::close));
     d.on_back(|| with(Find::back));
@@ -461,6 +499,8 @@ impl Find {
 
     fn open(&mut self, text: String) {
         self.with_data(|d| d.set_shown(true));
+        // Opened again, the posters that did not decode before are asked for at once.
+        crate::posters::forget_failures();
         self.refresh();
         // AniList is asked only here, and the core skips it when the list is fresh.
         self.load_list(true);
@@ -712,6 +752,8 @@ impl Find {
                 .len()
                 .max(if self.lens == 4 { offers.len() } else { 0 }),
         ];
+        // First, so the posters kept lately draw with the tiles rather than a moment after.
+        self.load_posters(&offers);
         let tiles: Vec<Tile> = offers
             .iter()
             .enumerate()
@@ -734,7 +776,6 @@ impl Find {
                 }
             })
             .collect();
-        self.load_posters(&offers);
         let lens = self.lens;
         let names: Vec<SharedString> = LENSES
             .iter()
@@ -759,6 +800,43 @@ impl Find {
             d.set_lens_tiles(model(tiles));
         });
         self.offers = offers;
+        self.keep_posters();
+    }
+
+    /// Lets go of the posters the page does not keep (`keeps`). Going back to the last lens
+    /// draws at once, and searching never piles covers up in memory.
+    fn keep_posters(&mut self) {
+        let lens: HashSet<String> = self
+            .offers
+            .iter()
+            .filter_map(|o| o.poster.clone())
+            .collect();
+        if lens != self.lens_posters {
+            self.lens_before = std::mem::replace(&mut self.lens_posters, lens);
+        }
+        let posters = std::mem::take(&mut self.posters);
+        self.posters = posters.into_iter().filter(|(p, _)| self.keeps(p)).collect();
+    }
+
+    /// Whether the page keeps the poster at `path`: the lens on screen or the one before it,
+    /// the suggestions and their last answer, or the open show.
+    fn keeps(&self, path: &str) -> bool {
+        self.lens_posters.contains(path)
+            || self.lens_before.contains(path)
+            || self
+                .suggestions
+                .iter()
+                .chain(&self.answered)
+                .chain(self.show.as_ref().map(|s| &s.offer))
+                .any(|o| o.poster.as_deref() == Some(path))
+    }
+
+    /// Downloads is the page on screen.
+    fn on_screen(&self) -> bool {
+        self.data().is_some_and(|w| {
+            w.global::<crate::Nav>().get_page() == DOWNLOADS_PAGE
+                && w.global::<FindData>().get_shown()
+        })
     }
 
     /// The list as tiles: a show the library has opens as the library's, with its
@@ -920,35 +998,59 @@ impl Find {
         });
     }
 
-    fn load_posters(&self, offers: &[Offer]) {
-        let wanted: Vec<String> = offers
-            .iter()
-            .filter_map(|o| o.poster.clone())
-            .filter(|p| !self.posters.contains_key(p))
-            .collect();
-        if wanted.is_empty() {
-            return;
+    /// Asks the posters threads for the posters the offers show that are not in, not asked
+    /// for and not waiting to be tried again. Each file is asked for once until it comes
+    /// back, however often the page draws (#1206). This used to start a thread on every draw
+    /// for every poster not in yet, and each poster that came in drew the page again: a long
+    /// list made threads, and decoded copies waiting for the UI thread, faster than they
+    /// finished, until Android killed the app.
+    fn load_posters(&mut self, offers: &[Offer]) {
+        // Those decoded lately come at once.
+        for path in offers.iter().filter_map(|o| o.poster.as_deref()) {
+            if !self.posters.contains_key(path)
+                && let Some(poster) = crate::posters::cached(path)
+            {
+                self.posters.insert(path.to_string(), poster.image);
+            }
         }
-        let _ = std::thread::Builder::new()
-            .name("find-posters".into())
-            .spawn(move || {
-                for path in wanted {
-                    let Some(decoded) = std::fs::read(&path)
-                        .ok()
-                        .and_then(|b| crate::posters::decode(&b))
-                    else {
-                        continue;
-                    };
-                    let _ = slint::invoke_from_event_loop(move || {
-                        with(|f| {
-                            f.posters.insert(path, Image::from_rgba8(decoded.buffer));
-                            f.show_lens();
-                            f.draw_show();
-                            f.draw_suggestions();
-                        })
-                    });
-                }
+        let wanted = new_posters(
+            offers.iter().filter_map(|o| o.poster.as_deref()),
+            |p| self.posters.contains_key(p) || !crate::posters::may_ask(p),
+            &mut self.posters_asked,
+        );
+        for path in wanted {
+            let key = path.clone();
+            crate::posters::load(path, move |poster| {
+                with(|f| f.poster_landed(key, poster));
             });
+        }
+    }
+
+    /// A poster came back.
+    fn poster_landed(&mut self, path: String, poster: Option<crate::posters::Poster>) {
+        self.posters_asked.remove(&path);
+        // One that did not decode is asked again when `posters::on_retry` says so. One for a
+        // view already left is not kept; the posters module holds it a while.
+        let Some(poster) = poster.filter(|_| self.keeps(&path)) else {
+            return;
+        };
+        self.posters.insert(path, poster.image);
+        self.redraw_soon();
+    }
+
+    /// Draws what shows posters, once for everything that asks within `POSTER_REDRAW`:
+    /// posters come in a run.
+    fn redraw_soon(&mut self) {
+        if self.poster_redraw.ask() {
+            slint::Timer::single_shot(POSTER_REDRAW, || {
+                with(|f| {
+                    f.poster_redraw.drawn();
+                    f.show_lens();
+                    f.draw_show();
+                    f.draw_suggestions();
+                })
+            });
+        }
     }
 
     // ---- The suggestions: shows first, the way the desktop's field works
@@ -2395,6 +2497,37 @@ impl Find {
     }
 }
 
+/// One draw for a run of things landing: the first asks for it, the rest wait for that one.
+#[derive(Debug, Default)]
+struct Coalesce {
+    pending: bool,
+}
+
+impl Coalesce {
+    /// True when no draw is on its way yet, so one is to be started.
+    fn ask(&mut self) -> bool {
+        !std::mem::replace(&mut self.pending, true)
+    }
+
+    fn drawn(&mut self) {
+        self.pending = false;
+    }
+}
+
+/// The poster files among `paths` that are neither `shown` nor asked for yet, each once, and
+/// noted as asked for.
+fn new_posters<'a>(
+    paths: impl IntoIterator<Item = &'a str>,
+    shown: impl Fn(&str) -> bool,
+    asked: &mut HashSet<String>,
+) -> Vec<String> {
+    paths
+        .into_iter()
+        .filter(|p| !shown(p) && asked.insert((*p).to_owned()))
+        .map(str::to_string)
+        .collect()
+}
+
 /// A folder's own name, the last part of `path`.
 fn last_folder(path: &str) -> String {
     std::path::Path::new(path)
@@ -2665,6 +2798,59 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The page draws again as posters come in, and every draw asks for the posters it
+    /// shows (#1206). A poster is asked for once, however many draws ask, until it comes
+    /// back.
+    #[test]
+    fn a_poster_is_asked_for_once_however_often_the_page_draws() {
+        let list: Vec<String> = (0..40).map(|i| format!("/images/{i}.jpg")).collect();
+        let mut shown: HashSet<String> = HashSet::new();
+        let mut asked = HashSet::new();
+        let draw = |shown: &HashSet<String>, asked: &mut HashSet<String>| {
+            new_posters(
+                list.iter().map(String::as_str),
+                |p| shown.contains(p),
+                asked,
+            )
+        };
+        assert_eq!(draw(&shown, &mut asked), list);
+        // Each poster that lands draws the page again, and nothing is asked a second time.
+        let mut asks = 0;
+        for path in &list {
+            asked.remove(path);
+            shown.insert(path.clone());
+            asks += draw(&shown, &mut asked).len();
+        }
+        assert_eq!(asks, 0);
+        assert!(asked.is_empty());
+    }
+
+    /// Posters that land together draw the page once, not once each: a draw per poster is
+    /// the storm again, only slower (#1206).
+    #[test]
+    fn posters_that_land_together_draw_the_page_once() {
+        let mut redraw = Coalesce::default();
+        let draws = (0..40).filter(|_| redraw.ask()).count();
+        assert_eq!(draws, 1);
+        redraw.drawn();
+        assert!(redraw.ask());
+    }
+
+    #[test]
+    fn a_poster_let_go_is_asked_for_again_and_one_out_is_not() {
+        let shown = |_: &str| false;
+        let mut asked = HashSet::new();
+        let paths = ["/images/a.jpg", "/images/a.jpg", "/images/b.jpg"];
+        assert_eq!(
+            new_posters(paths, shown, &mut asked),
+            ["/images/a.jpg", "/images/b.jpg"]
+        );
+        assert!(new_posters(paths, shown, &mut asked).is_empty());
+        // `a` came back and was let go; `b` is still out.
+        asked.remove("/images/a.jpg");
+        assert_eq!(new_posters(paths, shown, &mut asked), ["/images/a.jpg"]);
+    }
 
     #[test]
     fn a_show_with_nothing_here_has_no_gap() {
