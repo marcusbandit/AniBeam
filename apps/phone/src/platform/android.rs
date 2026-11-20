@@ -623,36 +623,46 @@ extern "system" fn focus_changed(
     let _ = slint::invoke_from_event_loop(move || crate::audio_focus(change));
 }
 
-/// Hands `Focus.changed` its native body. NativeActivity loads this library itself, so the
-/// JVM would not find the method by its symbol name.
+/// Hands `Focus.changed` its native body.
 fn register_focus() -> bool {
-    let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
-    if raw == 0 {
-        return false;
-    }
-    let r = with_env(|env, _app| {
-        use jni::objects::JObject;
-        env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
-            let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
-            let class = app_class(env, activity, "Focus")?;
-            env.register_native_methods(
-                &class,
-                &[jni::NativeMethod {
-                    name: "changed".into(),
-                    sig: "(I)V".into(),
-                    fn_ptr: focus_changed as *mut std::ffi::c_void,
-                }],
-            )?;
-            Ok(())
-        })
-    });
-    match r {
+    let natives = [("changed", "(I)V", focus_changed as *mut std::ffi::c_void)];
+    match register_natives("Focus", &natives) {
         Ok(()) => true,
         Err(e) => {
             crate::local::log(&format!("audio focus: {e}"));
             false
         }
     }
+}
+
+/// Hands one of the app's own Java classes the native bodies of its methods, each a name,
+/// a JNI signature and the function. NativeActivity loads this library itself, so the JVM
+/// would not find them by their symbol names. Focus and control over adb use it.
+pub(crate) fn register_natives(
+    class: &str,
+    methods: &[(&str, &str, *mut std::ffi::c_void)],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
+    if raw == 0 {
+        return Err("the activity is not up".into());
+    }
+    with_env(|env, _app| {
+        use jni::objects::JObject;
+        env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+            let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
+            let class = app_class(env, activity, class)?;
+            let natives: Vec<jni::NativeMethod> = methods
+                .iter()
+                .map(|(name, sig, f)| jni::NativeMethod {
+                    name: (*name).into(),
+                    sig: (*sig).into(),
+                    fn_ptr: *f,
+                })
+                .collect();
+            env.register_native_methods(&class, &natives)?;
+            Ok(())
+        })
+    })
 }
 
 /// Puts `text` on the clipboard, so a connection check can be pasted into a message.
@@ -735,7 +745,7 @@ fn app_class<'l>(
 
 /// Calls a static method of one of the app's own Java classes with the activity and one more
 /// argument, and hands back what it returns.
-fn java_call(
+pub(crate) fn java_call(
     class: &str,
     method: &str,
     sig: &str,

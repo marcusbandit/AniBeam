@@ -146,6 +146,7 @@ dependencies = [
  "block2 0.6.2",
  "chrono",
  "i-slint-backend-testing",
+ "i-slint-core",
  "image",
  "jni 0.21.1",
  "ndk-context",

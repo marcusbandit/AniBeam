@@ -226,6 +226,55 @@ python3 scripts/mock-host.py --demo    # the fixture plus six shows airing now o
 python3 scripts/mock-host.py --aired   # an episode that aired just before the snapshot
 ```
 
+## Driving the app over adb
+
+Slint hands Android no accessibility tree, so `uiautomator` sees one blank surface.
+`scripts/ctl.sh` drives the running app by name instead, on the emulator or a phone
+(`ANDROID_SERIAL`, or `-s <serial>`), and prints what the app answers. The words are the
+desktop's `anibeam ctl` ones where the two apps do the same thing:
+
+```sh
+scripts/ctl.sh tree                   # the page, what is open over it, every control shown
+scripts/ctl.sh go downloads           # home, calendar, library, downloads, more
+scripts/ctl.sh click "Get episodes"   # words on screen or x,y; --nth 2 picks the second match
+scripts/ctl.sh shot captures/a.png    # the device's own pixels
+scripts/ctl.sh 'go series Frieren; wait Play 5s; state'   # one line, ; between commands
+scripts/ctl.sh help                   # every command
+```
+
+| Command | Example |
+| --- | --- |
+| `go <tab>`, `where`, `back`, `key <name> ...` | `go library`, `key down enter` |
+| `go series <title\|id>` | `go series 12`: opens the show on the phone |
+| `go downloads <words>` | `go downloads frieren`: as if typed and Return pressed |
+| `click <words\|x,y> [--nth n]` | `click Continue`: the control's own action, or a tap on it |
+| `tap`, `hold <words\|x,y>` | `tap 206,640`, `hold Frieren` |
+| `type <text>`, `fill <n\|placeholder> <text>` | `fill 1 one piece` |
+| `scroll <dir> [px] [at <words>]`, `swipe x1 y1 x2 y2 [ms]` | `scroll down 900` |
+| `onboarding [next\|back\|step n\|finish\|start]` | `onboarding step 3` |
+| `tree [filter]`, `find <text>`, `wait <words> [ns]` | `wait "Get episodes" 10s` |
+| `state`, `perf [ns]` | `perf 5s`: UI loop waits, frame times, the busiest threads |
+| `shot <file.png>` | from the powered display, as `shot.sh` takes it |
+
+A label held by several controls, or words that only sit inside a label, get the matches
+back instead of a press. A line has 45 s, 8 s on Android 13 and older, where every app's
+broadcasts wait behind it. A `wait` or `perf` that does not fit is cut to what the line has
+left; a cut-short wait names the wait to send next, and ctl.sh sends it until the label shows
+or the time is used. ctl.sh exits 1 when a command failed, 2 when the app did not answer and
+64 when ctl.sh was called wrong.
+
+`press`, `open`, `search` and `dump` still work as the older names. Points are the window's
+logical pixels, the ones `tree` prints. The app answers in the broadcast's result data
+(`am broadcast -a com.marcusrosado.anibeam.CONTROL -p com.marcusrosado.anibeam --es cmd
+'<line>'`), and only the shell user and the system may send it: the receiver asks for
+`android.permission.DUMP`. The Play build has none of it (`src/control/`). Completion for zsh
+and bash:
+
+```sh
+ln -s "$PWD/scripts/completions/_ctl.sh" ~/.local/share/zsh/site-functions/
+ln -s "$PWD/scripts/completions/ctl.sh.bash" ~/.local/share/bash-completion/completions/ctl.sh
+```
+
 ## Layout
 
 ```text

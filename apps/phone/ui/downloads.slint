@@ -222,12 +222,14 @@ component DownloadCard inherits Rectangle {
                 // download whose window is in has nothing to pause.
                 if root.data.tone != 2 && root.data.tone != 4: IconButton {
                     icon: root.failed ? @image-url("icons/refresh-cw.svg") : root.data.paused ? @image-url("icons/play.svg") : @image-url("icons/pause.svg");
+                    label: root.failed ? Tr.t("common-retry") : root.data.paused ? Tr.t("dl-resume") : Tr.t("dl-pause");
                     primary: root.data.paused || root.failed;
                     clicked => { AppData.torrent-action(root.data.hash, root.data.paused || root.failed ? 1 : 0); }
                 }
                 // Cancel deletes what the download had written so far.
                 IconButton {
                     icon: @image-url("icons/x.svg");
+                    label: Tr.t("common-cancel");
                     danger: true;
                     clicked => { AppData.torrent-action(root.data.hash, 2); }
                 }

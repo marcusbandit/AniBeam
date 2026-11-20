@@ -19,6 +19,8 @@ mod activity;
 mod airing;
 mod app;
 mod backup;
+#[cfg(control)]
+mod control;
 mod crease;
 mod desk;
 mod disk;

@@ -52,6 +52,8 @@ install -m755 target/tester/anibeam ~/.local/opt/anibeam-dev/anibeam
 
 **Drive the app with `anibeam ctl`, not the mouse** (#1205). Any Anibeam window on this machine takes commands from the terminal: `anibeam ctl help` is the guide. `ctl open --root <dir> --offscreen` starts a sandbox window that never shows on the desktop, then `go <page> [words]`, `tree`, `click <words|objectName|x,y>`, `type`, `key`, `shot <file.png>`, `where`, `eval <js>` and `quit`. Use it to reach and check a page instead of clicking there.
 
+**Drive the phone app with `apps/phone/scripts/ctl.sh`, not by tapping coordinates** (#1207). The same words as `anibeam ctl` where they fit: `ctl.sh tree` lists the page and every control shown, then `go <tab>`, `go series <title>`, `click <words|x,y>`, `type`, `key`, `shot <file.png>`, `where`, plus `wait <words>` and `perf` to measure lag. It reaches `$ANDROID_SERIAL`; `ctl.sh help` and `apps/phone/README.md` ("Driving the app over adb") have the rest.
+
 `--root <dir>` keeps a run's database, config, cache and secrets in one directory. Develop and capture against a sandbox root, never the owner's real XDG data. `apps/linux/README.md` covers offscreen captures (`apps/linux/scripts/shoot.sh`) and scripted drives (`apps/linux/scripts/drive.sh`); look at a capture before calling a visible change done.
 
 ## Architecture

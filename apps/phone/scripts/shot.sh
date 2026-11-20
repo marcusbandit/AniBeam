@@ -16,21 +16,8 @@ for arg in "$@"; do
 done
 out="captures/${name}.png"
 
-# Ask which display is powered: a bare screencap on a multi-display device prints a warning
-# into the PNG and falls back to display 0.
-disp="$("$ADB" shell dumpsys display \
-  | grep -oE 'DisplayViewport\{[^}]*isActive=true[^}]*\}' \
-  | sed -n "s/.*uniqueId='local:\([0-9]*\)'.*/\1/p" | head -1)"
-if [ -n "$disp" ]; then
-  "$ADB" exec-out screencap -d "$disp" -p > "$out"
-else
-  "$ADB" exec-out screencap -p > "$out"
-fi
-# screencap exits 0 with an empty file while the surface is not up.
-if ! file "$out" | grep -q "PNG image"; then
-  echo "shot.sh: $out is not a PNG; the screen is probably not up yet." >&2
-  exit 1
-fi
+# From the powered display, checked to be a PNG (env.sh, shared with ctl.sh shot).
+shot_to "$out" || { echo "shot.sh: failed" >&2; exit 1; }
 echo "$out"
 if [ "$size" = 1 ]; then
   "$ADB" shell wm size | tr -d '\r'

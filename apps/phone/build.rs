@@ -28,6 +28,14 @@ fn main() {
         Ok("ios") => ios_mpv(&manifest),
         _ => {}
     }
+    // Control over adb (#1207, src/control/): in every build but the Play flavor, which
+    // build.sh --bundle makes, and the iPhone, which has no adb.
+    println!("cargo::rustc-check-cfg=cfg(control)");
+    println!("cargo:rerun-if-env-changed=ANIBEAM_FLAVOR");
+    let play = std::env::var("ANIBEAM_FLAVOR").as_deref() == Ok("play");
+    if !play && std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("ios") {
+        println!("cargo::rustc-cfg=control");
+    }
     // A debug build, the tests' among them, keeps each element's name, which lets a test find
     // the elements of a page laid out headless and measure them (#874).
     let mut config = slint_build::CompilerConfiguration::new();

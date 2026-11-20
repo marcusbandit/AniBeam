@@ -666,6 +666,7 @@ export component ShowView inherits VerticalLayout {
                 VerticalLayout {
                     alignment: center;
                     Switch {
+                        label: Tr.t("find-follow-new");
                         on: FindData.follow;
                         toggled => { FindData.set-follow(!FindData.follow); }
                     }
@@ -691,6 +692,7 @@ export component ShowView inherits VerticalLayout {
                 VerticalLayout {
                     alignment: center;
                     Switch {
+                        label: Tr.t("find-roll-title");
                         on: FindData.rolling;
                         toggled => { FindData.set-rolling(!FindData.rolling); }
                     }
@@ -716,6 +718,7 @@ export component ShowView inherits VerticalLayout {
                 VerticalLayout {
                     alignment: center;
                     Switch {
+                        label: Tr.t("find-replace");
                         on: FindData.replace;
                         toggled => { FindData.set-replace(!FindData.replace); }
                     }

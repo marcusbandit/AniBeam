@@ -151,8 +151,11 @@ manifest=android/AndroidManifest.xml
 # The Java side, the download service's notification and the player's screen calls:
 # javac, then d8, into classes.dex at the APK root.
 rm -rf "$stage/java" && mkdir -p "$stage/java/classes" "$stage/java/dex"
+# The Play flavor leaves out control over adb (Control.java), as its app crate does.
+java_skip=()
+(( bundle )) && java_skip=(! -name Control.java)
 "$JAVA_HOME/bin/javac" --release 8 -Xlint:-options -classpath "$PLATFORM_JAR" -d "$stage/java/classes" \
-  $(find android/java -name '*.java')
+  $(find android/java -name '*.java' "${java_skip[@]}")
 "$BT/d8" --lib "$PLATFORM_JAR" --min-api "$MIN_API" --output "$stage/java/dex" \
   $(find "$stage/java/classes" -name '*.class')
 

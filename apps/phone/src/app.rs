@@ -212,6 +212,15 @@ fn with_app(f: impl FnOnce(&mut App)) {
     });
 }
 
+/// The phone's own series, id and title, for control over adb's `go series`: Library's
+/// list can hold a computer's shows or be narrowed by its search.
+#[cfg(control)]
+pub(crate) fn phone_series() -> Vec<(u64, String)> {
+    let mut out = Vec::new();
+    with_app(|app| out = app.cards.iter().map(|c| (c.id, c.title.clone())).collect());
+    out
+}
+
 /// More's sections' names, by the index Settings.section uses.
 const SECTIONS: [&str; 14] = [
     "more-accounts",
@@ -229,6 +238,14 @@ const SECTIONS: [&str; 14] = [
     "more-subtitles",
     "more-language",
 ];
+
+/// More's section by its index, in English, for control over adb's `where`.
+#[cfg(control)]
+pub(crate) fn section_name(index: i32) -> Option<String> {
+    use anibeam_core::i18n::{Lang, tr_in};
+    let id = SECTIONS.get(usize::try_from(index).ok()?)?;
+    Some(tr_in(Lang::En, id, &[]))
+}
 
 /// Every setting More's search can land on: its section, its label's message ID (the label is
 /// the key its page lights), and the ID of the words a person might type for it. The search
@@ -2277,6 +2294,8 @@ pub fn run(
 
     let window = AppWindow::new()?;
     crate::platform::window_up(&window);
+    #[cfg(control)]
+    crate::control::install(&window);
     // First, so everything below that words a line already speaks the picked language.
     crate::lang::install(&window, &data_dir);
     crate::player::install(&window);
