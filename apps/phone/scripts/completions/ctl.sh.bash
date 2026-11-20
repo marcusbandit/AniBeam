@@ -17,6 +17,13 @@ _anibeam_ctl() {
     w=("${COMP_WORDS[@]}")
     cword=$COMP_CWORD
   fi
+  # Only Anibeam's ctl.sh: a script of the same name elsewhere gets bash's own completion.
+  local cmd="${w[0]}"
+  [[ "$cmd" == */* ]] || cmd="$(type -P -- "$cmd" 2> /dev/null)"
+  case "$(realpath -m -- "${cmd:-.}" 2> /dev/null)" in
+    */apps/phone/scripts/ctl.sh) ;;
+    *) compopt -o default 2> /dev/null; COMPREPLY=(); return ;;
+  esac
   local first=1
   if [[ "${w[1]:-}" == "-s" ]]; then
     if (( cword == 2 )); then

@@ -13,6 +13,13 @@ _ctl.sh_labels() {
 }
 
 _ctl.sh() {
+  # Only Anibeam's ctl.sh: a script of the same name elsewhere gets its files completed.
+  local cmd=$words[1]
+  [[ $cmd == */* ]] || cmd=${commands[$cmd]:-$cmd}
+  if [[ ${cmd:A} != */apps/phone/scripts/ctl.sh ]]; then
+    _files
+    return
+  fi
   local -a commands
   commands=(
     'go:switch tab, open a series, search Downloads'
