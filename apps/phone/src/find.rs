@@ -795,7 +795,8 @@ impl Find {
             return;
         }
         let before = std::mem::replace(&mut self.posters_shown, shown);
-        self.posters.retain(|p, _| self.posters_shown.contains(p) || before.contains(p));
+        self.posters
+            .retain(|p, _| self.posters_shown.contains(p) || before.contains(p));
     }
 
     /// The list as tiles: a show the library has opens as the library's, with its

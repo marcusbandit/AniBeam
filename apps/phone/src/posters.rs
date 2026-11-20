@@ -403,7 +403,8 @@ impl Tries {
     fn failed(&mut self, path: &str, now: Instant) {
         let tries = self.failed.get(path).map_or(0, |(n, _)| *n);
         let wait = RETRIES.get(tries).unwrap_or(&RETRIES[RETRIES.len() - 1]);
-        self.failed.insert(path.to_string(), (tries + 1, now + *wait));
+        self.failed
+            .insert(path.to_string(), (tries + 1, now + *wait));
     }
 
     fn landed(&mut self, path: &str) {
