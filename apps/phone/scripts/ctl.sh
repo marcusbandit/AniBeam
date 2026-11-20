@@ -48,7 +48,6 @@ word() {
   fi
 }
 
-given=("$@")
 if (( $# == 1 )); then
   line="$1"
 else
@@ -93,40 +92,15 @@ ask() {
   data="${data%\"}"
 }
 
-# A wait on its own runs as short waits one after another, so no broadcast holds the phone's
-# background queue long: on Android 13 and older every app's broadcasts wait behind it.
-if [[ "${given[0]}" == wait ]] && (( ${#given[@]} >= 2 )); then
-  total=10
-  args=("${given[@]:1}")
-  if (( ${#args[@]} >= 2 )) && [[ "${args[-1]}" =~ ^[0-9]+(\.[0-9]+)?s$ ]]; then
-    total="${args[-1]%s}"
-    unset 'args[-1]'
-  elif (( ${#args[@]} >= 2 )) && [[ "${args[-1]}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-    # A bare number: the app answers that it wants an s, rather than ctl.sh guessing.
-    ask "$line"
-    printf '%s\n' "$data"
-    [[ "$code" == 0 ]] || exit 1
-    exit 0
-  fi
-  label=""
-  for a in "${args[@]}"; do label+=" $(word "$a")"; done
-  start=$SECONDS
-  while :; do
-    left=$(( ${total%.*} - (SECONDS - start) ))
-    (( left < 1 )) && left=1
-    step=$(( left < 6 ? left : 6 ))
-    ask "wait${label} ${step}s"
-    if [[ "$code" == 0 ]] || [[ "$data" != *"did not show within"* ]] \
-      || (( SECONDS - start >= ${total%.*} )); then
-      [[ "$code" == 0 ]] || data="${data/within ${step} s/within ${total} s}"
-      printf '%s\n' "$data"
-      [[ "$code" == 0 ]] && exit 0
-      exit 1
-    fi
-  done
-fi
-
 ask "$line"
+# A wait the line's time cut short (8 s on Android 13 and older, where every app's
+# broadcasts wait behind a long one) ends with `again: <the wait to send next>`, worked out
+# by the app; it is sent as it is until the label shows or the time is used up.
+for _ in {1..20}; do
+  next="${data##*$'\n'}"
+  [[ "$code" != 0 && "$next" == "again: "* ]] || break
+  ask "${next#again: }"
+done
 printf '%s\n' "$data"
 
 # The labels a whole tree shows, for the shells' completion of click, tap and the rest. Only
