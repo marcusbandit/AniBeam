@@ -171,8 +171,7 @@ pub fn state(services: &Services) -> Result<TrackerState, CoreError> {
 /// `state` from inside a job. The keyring is synchronous underneath, so it
 /// runs on the blocking pool rather than on a tokio worker.
 pub async fn state_async(services: &Arc<Services>) -> Result<TrackerState, CoreError> {
-    let owner = services.clone();
-    joined(services.handle.spawn_blocking(move || state(&owner)).await)?
+    through_services(services, state).await
 }
 
 fn account(services: &Services, t: Tracker, row: Option<Row>) -> TrackerAccount {
@@ -258,13 +257,7 @@ pub(crate) async fn credentials_async(
     services: &Arc<Services>,
     t: Tracker,
 ) -> Result<(String, Option<String>), CoreError> {
-    let owner = services.clone();
-    joined(
-        services
-            .handle
-            .spawn_blocking(move || effective_credentials(&owner, t))
-            .await,
-    )?
+    through_services(services, move |s| effective_credentials(s, t)).await
 }
 
 // The calls ------------------------------------------------------------------
@@ -589,6 +582,20 @@ where
 {
     let secrets = services.secrets.clone();
     joined(services.handle.spawn_blocking(move || f(&secrets)).await)?
+}
+
+/// A call that goes through the `Services` accessor, from inside a job: on
+/// the blocking pool, as a calling thread would make it. Unlike
+/// [`with_secrets`] it may run the accessor's D-Bus probe, which is what the
+/// state and the credentials want; a bare keyring read uses
+/// `with_secrets`.
+async fn through_services<T, F>(services: &Arc<Services>, f: F) -> Result<T, CoreError>
+where
+    T: Send + 'static,
+    F: FnOnce(&Services) -> Result<T, CoreError> + Send + 'static,
+{
+    let owner = services.clone();
+    joined(services.handle.spawn_blocking(move || f(&owner)).await)?
 }
 
 /// A blocking task that was cancelled or panicked, reported rather than
