@@ -1589,39 +1589,15 @@ mod tests {
         let seen = opened.clone();
         data.on_open_series(move |id| seen.set(id));
         say("go library");
+        // A fresh window's tiles glide into their columns: let them land, as they have long
+        // before an agent taps on a phone, or the finger lifts off a tile that moved away.
+        elapse(1000);
         let tree = say("tree Example Show");
         assert!(tree.contains("text \"Example Show\""), "{tree}");
         assert!(!tree.contains("covered"), "{tree}");
         let clicked = say("click Example Show");
-        let a = opened.get();
-        // DIAG: the same point with Slint's own sequence, then Slint's own click.
-        opened.set(-1);
-        let at = clicked.split(" at ").nth(1).unwrap_or("0,0 ").split(' ').next().unwrap();
-        let (x, y) = at.split_once(',').unwrap();
-        let p = LogicalPosition::new(x.parse().unwrap(), y.parse().unwrap());
-        w.window().dispatch_event(WindowEvent::PointerMoved { position: p });
-        w.window().dispatch_event(WindowEvent::PointerPressed { position: p, button: PointerEventButton::Left });
-        elapse(50);
-        w.window().dispatch_event(WindowEvent::PointerMoved { position: p });
-        w.window().dispatch_event(WindowEvent::PointerReleased { position: p, button: PointerEventButton::Left });
-        let b = opened.get();
-        opened.set(-1);
-        let e = i_slint_backend_testing::ElementHandle::find_by_accessible_label(&w, "Example Show").next().unwrap();
-        e.mock_single_click(PointerEventButton::Left);
-        let c = opened.get();
-        let touches: Vec<String> = scene(&w, Keep::Nothing)
-            .touches
-            .iter()
-            .filter(|t| t.raw.holds((p.x, p.y)))
-            .map(|t| format!("{}:{:?}", t.order, (t.raw.0, t.raw.1, t.raw.2, t.raw.3)))
-            .collect();
-        panic!(
-            "DIAG mine={clicked:?} a={a} sequence-at-my-point b={b} slint-click c={c} element-pos={:?} size={:?} touches-at-point={touches:?} device={}\n{}",
-            e.absolute_position(),
-            e.size(),
-            data.get_device(),
-            say("tree")
-        );
+        assert!(clicked.starts_with("tapped text"), "{clicked}");
+        assert_eq!(opened.get(), 3, "{clicked}");
     }
 
     /// A field's text may run far wider than the field and slide inside its clip; the field
