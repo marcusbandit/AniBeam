@@ -35,12 +35,19 @@ public final class Control extends BroadcastReceiver {
         HandlerThread thread = new HandlerThread("anibeam-control");
         thread.start();
         Handler handler = new Handler(thread.getLooper());
-        receiver = new Control();
+        Control r = new Control();
         IntentFilter filter = new IntentFilter(ACTION);
         // From Android 13 a receiver registered at run time says whether other processes may
         // reach it; the shell is another process.
         int flags = Build.VERSION.SDK_INT >= 33 ? Context.RECEIVER_EXPORTED : 0;
-        context.getApplicationContext().registerReceiver(receiver, filter, PERMISSION, handler, flags);
+        try {
+            context.getApplicationContext().registerReceiver(r, filter, PERMISSION, handler, flags);
+        } catch (RuntimeException e) {
+            // Not registered, so a later start (the activity made again) tries once more.
+            thread.quitSafely();
+            throw e;
+        }
+        receiver = r;
     }
 
     @Override

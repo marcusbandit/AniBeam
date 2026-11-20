@@ -6,7 +6,7 @@
 //! app's buttons a label and a default action. It needs no debug info compiled in, so the
 //! release build's item tree is the one the person runs.
 
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::ops::ControlFlow;
 use std::rc::Rc;
@@ -52,7 +52,7 @@ const OVER: [&str; 19] = [
     "list move sheet",
 ];
 /// How long a finger stays down for a long press: past Slint's and the app's hold.
-const HOLD: Duration = Duration::from_millis(800);
+pub(super) const HOLD: Duration = Duration::from_millis(800);
 /// How many frames the stats keep: `perf`'s longest sample at 144 Hz, so it counts them all.
 const FRAMES_KEPT: usize = 4800;
 
@@ -279,14 +279,6 @@ struct Element {
     covered: bool,
 }
 
-/// A touch area that takes a tap, for working out what covers what.
-struct Touch {
-    order: usize,
-    item: ItemRc,
-    ancestors: Vec<ItemRc>,
-    area: Area,
-}
-
 impl Element {
     fn role_name(&self) -> String {
         match self.role {
@@ -372,13 +364,83 @@ fn window_size(w: &AppWindow) -> (f32, f32) {
     (size.width, size.height)
 }
 
-/// Every accessible element in the window, in the tree's order.
-fn elements(w: &AppWindow) -> Vec<Element> {
+/// A touch area that takes a tap, for working out what covers what. Where its clipping
+/// parents let it show is worked out only for the ones under a point being asked about.
+struct Touch {
+    order: usize,
+    item: ItemRc,
+    /// Its rect before clipping, a quick first test.
+    raw: Area,
+    up: OnceCell<(Vec<ItemRc>, Area)>,
+}
+
+/// A scroll area on screen.
+struct Scroller {
+    order: usize,
+    item: ItemRc,
+    ancestors: Vec<ItemRc>,
+    area: Area,
+}
+
+/// What one walk of the window found: the elements asked for, every touch area, and the
+/// scroll areas, largest first.
+struct Scene {
+    window: Area,
+    elements: Vec<Element>,
+    touches: Vec<Touch>,
+    scrollers: Vec<Scroller>,
+}
+
+/// How far up a touch area's parent may sit and still count as the element's own: a
+/// button's touch area beside its label, a row's beside its texts. A blocker laid over a
+/// whole page sits higher, above the page's own containers.
+const OWN_DEPTH: usize = 3;
+
+impl Scene {
+    /// Whether a touch area drawn after the item, and not its own, takes the touch at the
+    /// point. Slint hands a touch to the last-drawn touch area under it.
+    fn covers(&self, point: (f32, f32), order: usize, item: &ItemRc, ancestors: &[ItemRc]) -> bool {
+        let near = &ancestors[..ancestors.len().min(OWN_DEPTH)];
+        self.touches.iter().any(|t| {
+            if t.order <= order || &t.item == item || !t.raw.holds(point) {
+                return false;
+            }
+            let (up, area) = t.up.get_or_init(|| {
+                let up = walk_up(&t.item, self.window);
+                (up.ancestors, t.raw.and(up.clip))
+            });
+            area.holds(point) && !up.contains(item) && !up.first().is_some_and(|p| near.contains(p))
+        })
+    }
+
+    /// The scroll areas holding a point, outermost first.
+    fn scrolling_at(&self, point: (f32, f32)) -> Vec<&Scroller> {
+        let mut out: Vec<&Scroller> = self
+            .scrollers
+            .iter()
+            .filter(|s| s.area.holds(point))
+            .collect();
+        out.sort_by_key(|s| s.order);
+        out
+    }
+}
+
+/// Which elements a walk keeps: every one, none (for the touch and scroll areas alone), or
+/// the ones whose folded label is or holds a folded label asked for.
+enum Keep<'a> {
+    All,
+    Nothing,
+    Holding(&'a str),
+}
+
+/// Walks the window once.
+fn scene(w: &AppWindow, keep: Keep) -> Scene {
     let (width, height) = window_size(w);
     let window = Area(0.0, 0.0, width, height);
     let root = ItemRc::new_root(WindowInner::from_pub(w.window()).component());
     let mut out = Vec::new();
     let mut touches = Vec::new();
+    let mut scrollers = Vec::new();
     let mut order = 0;
     root.visit_descendants(|item| {
         order += 1;
@@ -386,15 +448,26 @@ fn elements(w: &AppWindow) -> Vec<Element> {
             && t.as_pin_ref().enabled()
             && item.is_visible()
         {
-            let up = walk_up(item, window);
             touches.push(Touch {
                 order,
                 item: item.clone(),
-                area: Area::of(item).and(up.clip),
-                ancestors: up.ancestors,
+                raw: Area::of(item),
+                up: OnceCell::new(),
             });
         }
-        if !item.is_accessible() {
+        if item.downcast::<Flickable>().is_some() && item.is_visible() {
+            let up = walk_up(item, window);
+            let area = Area::of(item).and(up.clip);
+            if area.2 > area.0 && area.3 > area.1 {
+                scrollers.push(Scroller {
+                    order,
+                    item: item.clone(),
+                    ancestors: up.ancestors,
+                    area,
+                });
+            }
+        }
+        if matches!(keep, Keep::Nothing) || !item.is_accessible() {
             return ControlFlow::<()>::Continue(());
         }
         let role = item.accessible_role();
@@ -406,6 +479,14 @@ fn elements(w: &AppWindow) -> Vec<Element> {
         let label = prop(AccessibleStringProperty::Label).unwrap_or_default();
         // Empty texts and unnamed pictures are layout, not something to read or press.
         if label.trim().is_empty() && matches!(role, AccessibleRole::Text | AccessibleRole::Image) {
+            return ControlFlow::Continue(());
+        }
+        let key = norm(&label);
+        // Asked for one label, the rest are passed over before anything costly.
+        if let Keep::Holding(want) = keep
+            && !names(&key, want)
+            && !key.contains(want)
+        {
             return ControlFlow::Continue(());
         }
         let g = item.geometry();
@@ -434,7 +515,7 @@ fn elements(w: &AppWindow) -> Vec<Element> {
             order,
             ancestors: up.ancestors,
             role,
-            key: norm(&label),
+            key,
             label,
             value,
             enabled: prop(AccessibleStringProperty::Enabled).as_deref() != Some("false"),
@@ -451,19 +532,24 @@ fn elements(w: &AppWindow) -> Vec<Element> {
         });
         ControlFlow::Continue(())
     });
-    // Slint hands a touch to the last-drawn touch area under it. One drawn after the
-    // element covers it, unless it belongs to the element: inside it, or a child of one of
-    // its parents, the way a button's own touch area sits over its label.
+    let size = |a: &Area| (a.2 - a.0) * (a.3 - a.1);
+    scrollers.sort_by(|a, b| size(&b.area).total_cmp(&size(&a.area)));
+    let mut scene = Scene {
+        window,
+        elements: Vec::new(),
+        touches,
+        scrollers,
+    };
     for e in out.iter_mut().filter(|e| e.shown) {
-        e.covered = touches.iter().any(|t| {
-            t.order > e.order
-                && t.area.holds(e.centre)
-                && !t.ancestors.contains(&e.item)
-                && !t.ancestors.first().is_some_and(|p| e.ancestors.contains(p))
-                && t.item != e.item
-        });
+        e.covered = scene.covers(e.centre, e.order, &e.item, &e.ancestors);
     }
-    out
+    scene.elements = out;
+    scene
+}
+
+/// Every accessible element in the window, in the tree's order.
+fn elements(w: &AppWindow) -> Vec<Element> {
+    scene(w, Keep::All).elements
 }
 
 /// The elements worth listing: in reach, and without the text inside a control that names
@@ -492,10 +578,11 @@ fn listed(all: Vec<Element>) -> Vec<Element> {
 }
 
 /// The elements in reach a label names, in the order `tree` lists them: whole-label matches
-/// if any, else, unless `whole` says not to, the ones holding it.
+/// if any, else, unless `whole` says not to, the ones holding it. One walk, which skips every
+/// element whose label does not hold the words.
 fn matching(w: &AppWindow, label: &str, whole: bool) -> Vec<Element> {
     let want = norm(label);
-    let list = listed(elements(w));
+    let list = listed(scene(w, Keep::Holding(&want)).elements);
     if list.iter().any(|e| names(&e.key, &want)) || whole {
         list.into_iter().filter(|e| names(&e.key, &want)).collect()
     } else {
@@ -508,19 +595,19 @@ type Landing = (Option<Element>, (f32, f32), String);
 
 /// What a target lands on.
 fn resolve(w: &AppWindow, target: &Target) -> Result<Landing, String> {
-    let (label, nth) = match target {
+    let (label, nth, mut hits) = match target {
         Target::Point(x, y) => return Ok((None, (*x, *y), format!("{x:.0},{y:.0}"))),
         // `4,5` names a shown label first, Stats' hours in a language that writes a decimal
         // comma, and a point only when nothing shows by that name.
         Target::Spot { word, x, y } => {
-            if matching(w, word, true).is_empty() {
+            let hits = matching(w, word, true);
+            if hits.is_empty() {
                 return Ok((None, (*x, *y), format!("{x:.0},{y:.0}")));
             }
-            (word, 1)
+            (word, 1, hits)
         }
-        Target::Label { label, nth } => (label, *nth),
+        Target::Label { label, nth } => (label, *nth, matching(w, label, false)),
     };
-    let mut hits = matching(w, label, false);
     if hits.is_empty() {
         return Err(format!(
             "nothing in reach is labelled {label:?}; tree lists what is, find what is not"
@@ -667,10 +754,17 @@ fn onboarding_line(w: &AppWindow) -> String {
 /// What shows; with a filter, only the controls whose line holds it.
 fn dump(w: &AppWindow, filter: &str) -> String {
     let (width, height) = window_size(w);
-    let posture = match w.global::<Fold>().get_posture() {
+    let fold = w.global::<Fold>();
+    let posture = match fold.get_posture() {
         0 => "folded",
-        1 => "open",
-        _ => "half folded",
+        2 => "half folded like a book",
+        _ if fold.get_stood() => "half folded, stood up like a laptop",
+        _ => "open",
+    };
+    let posture = if width > height {
+        format!("{posture}, landscape")
+    } else {
+        posture.to_string()
     };
     let want = norm(filter);
     let all = elements(w);
@@ -710,22 +804,48 @@ pub fn probe(label: &str) -> Option<String> {
 /// list, which can hold a computer's shows or be narrowed by a search. A number is an id
 /// when the phone has one, else a title.
 fn series_id(series: &Series) -> Result<u64, String> {
-    let all = crate::app::phone_series();
-    let title = match series {
+    pick_series(&crate::app::phone_series(), series)
+}
+
+/// Picks one series out of the phone's: an id the phone has, a whole title, or the one title
+/// holding the words. A number the phone has no id for counts only as a whole title, and
+/// words several titles hold are a question back, never a guess.
+fn pick_series(all: &[(u64, String)], series: &Series) -> Result<u64, String> {
+    let (title, whole_only) = match series {
         Series::Id(id) => {
             if let Some((id, _)) = all.iter().find(|(i, _)| *i == u64::from(id.unsigned_abs())) {
                 return Ok(*id);
             }
-            id.to_string()
+            (id.to_string(), true)
         }
-        Series::Title(title) => title.clone(),
+        Series::Title(title) => (title.clone(), false),
     };
     let want = norm(&title);
-    all.iter()
-        .find(|(_, t)| norm(t) == want)
-        .or_else(|| all.iter().find(|(_, t)| norm(t).contains(&want)))
-        .map(|(id, _)| *id)
-        .ok_or_else(|| format!("the phone has no series {title:?}"))
+    if let Some((id, _)) = all.iter().find(|(_, t)| norm(t) == want) {
+        return Ok(*id);
+    }
+    if whole_only {
+        return Err(format!(
+            "the phone has no series with id or title {title:?}"
+        ));
+    }
+    let holding: Vec<&(u64, String)> = all
+        .iter()
+        .filter(|(_, t)| norm(t).contains(&want))
+        .collect();
+    match holding.as_slice() {
+        [] => Err(format!("the phone has no series {title:?}")),
+        [(id, _)] => Ok(*id),
+        many => Err(format!(
+            "{} series hold {title:?}: {}; give more of the title or the id",
+            many.len(),
+            many.iter()
+                .take(5)
+                .map(|(id, t)| format!("{t:?} ({id})"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
 }
 
 fn fields(w: &AppWindow) -> Vec<Element> {
@@ -735,24 +855,26 @@ fn fields(w: &AppWindow) -> Vec<Element> {
         .collect()
 }
 
-/// The visible scroll areas, largest first.
-fn scrollers(w: &AppWindow) -> Vec<(ItemRc, Area)> {
-    let (width, height) = window_size(w);
-    let window = Area(0.0, 0.0, width, height);
-    let root = ItemRc::new_root(WindowInner::from_pub(w.window()).component());
-    let mut out = Vec::new();
-    root.visit_descendants(|item| {
-        if item.downcast::<Flickable>().is_some() && item.is_visible() {
-            let area = Area::of(item).and(walk_up(item, window).clip);
-            if area.2 > area.0 && area.3 > area.1 {
-                out.push((item.clone(), area));
-            }
-        }
-        ControlFlow::<()>::Continue(())
-    });
-    let size = |a: &Area| (a.2 - a.0) * (a.3 - a.1);
-    out.sort_by(|a, b| size(&b.1).total_cmp(&size(&a.1)));
-    out
+/// Where a scroll without a place goes: the middle of the largest scroll area a finger can
+/// reach. The window's centre is the crease when the phone is half folded, where nothing
+/// scrolls, and the largest area may be the page under an open sheet.
+fn main_scroll_point(w: &AppWindow) -> Result<(f32, f32), String> {
+    let scene = scene(w, Keep::Nothing);
+    if scene.scrollers.is_empty() {
+        return Err("nothing on screen scrolls".into());
+    }
+    scene
+        .scrollers
+        .iter()
+        .map(|s| {
+            (
+                s,
+                ((s.area.0 + s.area.2) / 2.0, (s.area.1 + s.area.3) / 2.0),
+            )
+        })
+        .find(|(s, p)| !scene.covers(*p, s.order, &s.item, &s.ancestors))
+        .map(|(_, p)| p)
+        .ok_or_else(|| "everything that scrolls is under what is open".into())
 }
 
 fn offset(item: &ItemRc) -> (f32, f32) {
@@ -1015,32 +1137,29 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
             amount,
             at: place,
         } => {
-            let areas = scrollers(w);
-            // Without a place, the largest scroll area on screen: the window's centre is
-            // the crease when the phone is half folded, where nothing scrolls.
             let (point, said) = match place {
                 Some(t) => {
                     let (_, p, said) = resolve(w, &t)?;
                     (p, format!(" at {said}"))
                 }
-                None => {
-                    let a = areas
-                        .first()
-                        .map(|(_, a)| *a)
-                        .ok_or("nothing on screen scrolls")?;
-                    (((a.0 + a.2) / 2.0, (a.1 + a.3) / 2.0), String::new())
-                }
+                None => (main_scroll_point(w)?, String::new()),
             };
-            // The innermost scroll area under the point, to see whether it moved.
-            let under = areas
-                .iter()
-                .filter(|(_, a)| a.holds(point))
-                .min_by(|a, b| {
-                    let size = |a: &Area| (a.2 - a.0) * (a.3 - a.1);
-                    size(&a.1).total_cmp(&size(&b.1))
-                })
-                .map(|(i, _)| i.clone());
-            let before = under.as_ref().map(offset);
+            // A wheel passes through a touch area, where a finger's drag is taken by it, so
+            // a scroll area under a sheet or a question is out of reach.
+            let scene = scene(w, Keep::Nothing);
+            let under = scene.scrolling_at(point);
+            if let Some(inner) = under.last()
+                && scene.covers(point, inner.order, &inner.item, &inner.ancestors)
+            {
+                return Err(format!(
+                    "the scroll area at {:.0},{:.0} is under what is open; a finger would not reach it",
+                    point.0, point.1
+                ));
+            }
+            // Every scroll area there, outer pages and inner rows alike: the row may let a
+            // vertical wheel through to the page.
+            let items: Vec<ItemRc> = under.iter().map(|s| s.item.clone()).collect();
+            let before: Vec<(f32, f32)> = items.iter().map(offset).collect();
             let (dx, dy) = match dir {
                 Dir::Down => (0.0, -amount),
                 Dir::Up => (0.0, amount),
@@ -1052,12 +1171,18 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
                 delta_x: dx,
                 delta_y: dy,
             });
-            let moved = match (before, under.as_ref().map(offset)) {
-                (Some(b), Some(a)) if (a.0 - b.0).abs() + (a.1 - b.1).abs() > 0.5 => {
-                    format!("; it moved {:.0} px", (a.0 - b.0).abs() + (a.1 - b.1).abs())
-                }
-                (Some(_), Some(_)) => "; it did not move (at its end?)".into(),
-                _ => "; nothing under the point scrolls".into(),
+            let moved: f32 = items
+                .iter()
+                .map(offset)
+                .zip(&before)
+                .map(|(a, b)| (a.0 - b.0).abs() + (a.1 - b.1).abs())
+                .sum();
+            let moved = if items.is_empty() {
+                "; nothing under the point scrolls".to_string()
+            } else if moved > 0.5 {
+                format!("; it moved {moved:.0} px")
+            } else {
+                "; it did not move (at its end?)".to_string()
             };
             let dir = format!("{dir:?}").to_lowercase();
             format!(
@@ -1129,8 +1254,8 @@ mod tests {
     use slint::Model;
 
     use super::*;
-    use crate::Tr;
     use crate::tr::{Arg, Lang, tr_in};
+    use crate::{AiringPick, DiskData, MoveData, ShowData, Tr};
 
     fn window() -> AppWindow {
         i_slint_backend_testing::init_no_event_loop();
@@ -1244,5 +1369,82 @@ mod tests {
         assert!(say("go series 99999").starts_with("error"));
         assert!(say("type hello").starts_with("error: no field has the focus"));
         assert!(say("find zzzz-nothing").starts_with("error"));
+    }
+
+    /// app.slint's `over()` numbers and OVER's names stay paired: each sheet and question
+    /// Rust can open gets its own name in `where`, and closing it takes the name away.
+    #[test]
+    fn where_names_each_sheet_that_is_open() {
+        let w = window();
+        let named = |w: &AppWindow| {
+            let line = where_line(w);
+            line.split("over it the ")
+                .nth(1)
+                .map(|n| n.split(',').next().unwrap_or("").to_string())
+        };
+        assert_eq!(named(&w), None);
+        let show = w.global::<ShowData>();
+        let mut seen = Vec::new();
+        for sheet in 1..=7 {
+            show.set_sheet(sheet);
+            let name = named(&w).unwrap_or_else(|| panic!("sheet {sheet} has no name"));
+            assert!(
+                !seen.contains(&name),
+                "sheet {sheet} is named {name:?} twice"
+            );
+            seen.push(name);
+        }
+        show.set_sheet(0);
+        let checks: [(&str, Box<dyn Fn(&AppWindow, bool)>); 5] = [
+            (
+                "player",
+                Box::new(|w, on| w.global::<PlayerData>().set_open(on)),
+            ),
+            (
+                "what's new",
+                Box::new(|w, on| w.global::<AppData>().set_notes_open(on)),
+            ),
+            (
+                "notification question",
+                Box::new(|w, on| w.global::<AppData>().set_notify_ask(on)),
+            ),
+            (
+                "season picker",
+                Box::new(|w, on| w.global::<AiringPick>().set_open(on)),
+            ),
+            (
+                "list move sheet",
+                Box::new(|w, on| w.global::<MoveData>().set_open(on)),
+            ),
+        ];
+        for (name, set) in checks {
+            set(&w, true);
+            assert_eq!(named(&w).as_deref(), Some(name));
+            set(&w, false);
+        }
+        w.global::<DiskData>().set_sheet(1);
+        assert_eq!(named(&w).as_deref(), Some("disk sheet"));
+        w.global::<DiskData>().set_sheet(0);
+        assert_eq!(named(&w), None);
+    }
+
+    #[test]
+    fn go_series_never_guesses_between_shows() {
+        let all = vec![
+            (3, "Example Show".to_string()),
+            (5, "Example Show Season 2".to_string()),
+            (8, "86".to_string()),
+            (12, "Another Story".to_string()),
+        ];
+        let id = |s: Series| pick_series(&all, &s);
+        assert_eq!(id(Series::Id(12)), Ok(12));
+        // A number the phone has no id for is a whole title only.
+        assert_eq!(id(Series::Id(86)), Ok(8));
+        assert!(id(Series::Id(2)).is_err());
+        assert_eq!(id(Series::Title("example show".into())), Ok(3));
+        assert_eq!(id(Series::Title("another".into())), Ok(12));
+        let both = id(Series::Title("example".into())).unwrap_err();
+        assert!(both.starts_with("2 series hold"), "{both}");
+        assert!(id(Series::Title("nothing like it".into())).is_err());
     }
 }

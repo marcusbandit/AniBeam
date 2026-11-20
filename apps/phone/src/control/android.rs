@@ -1,10 +1,9 @@
-//! The channel's Android end: `Control.java`'s receiver, given its native `run` and started.
+//! The channel's Android end: `Control.java`'s receiver, given its native `run` and started,
+//! through the platform's own JNI helpers.
 
-use std::error::Error;
-
-use jni::objects::{JClass, JObject, JString, JValue};
+use jni::JNIEnv;
+use jni::objects::{JClass, JString};
 use jni::sys::jstring;
-use jni::{JNIEnv, JavaVM, NativeMethod};
 
 /// `Control.run`, which Java calls on the receiver's own thread with the command line. The
 /// answer's first character is the broadcast's result code, 0 when every command ran and 1
@@ -20,54 +19,18 @@ extern "system" fn run(mut env: JNIEnv, _class: JClass, line: JString) -> jstrin
         .unwrap_or(std::ptr::null_mut())
 }
 
-/// Hands `Control.run` its body and registers the receiver. NativeActivity loads this
-/// library itself, so the JVM would not find the method by its symbol name, and the class
-/// comes through the app's own class loader, which a native thread would not see.
+/// Hands `Control.run` its body, then registers the receiver.
 pub fn start() {
-    let r = (|| -> Result<(), Box<dyn Error>> {
-        let ctx = ndk_context::android_context();
-        let vm = unsafe { JavaVM::from_raw(ctx.vm().cast())? };
-        let mut env = vm.attach_current_thread()?;
-        let context = unsafe { JObject::from_raw(ctx.context().cast()) };
-        let out = env.with_local_frame(8, |env| -> Result<(), Box<dyn Error>> {
-            let loader = env
-                .call_method(&context, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?
-                .l()?;
-            let name = env.new_string("com.marcusrosado.anibeam.Control")?;
-            let class = JClass::from(
-                env.call_method(
-                    &loader,
-                    "loadClass",
-                    "(Ljava/lang/String;)Ljava/lang/Class;",
-                    &[JValue::Object(&name)],
-                )?
-                .l()?,
-            );
-            env.register_native_methods(
-                &class,
-                &[NativeMethod {
-                    name: "run".into(),
-                    sig: "(Ljava/lang/String;)Ljava/lang/String;".into(),
-                    fn_ptr: run as *mut std::ffi::c_void,
-                }],
-            )?;
-            env.call_static_method(
-                &class,
-                "start",
-                "(Landroid/content/Context;)V",
-                &[JValue::Object(&context)],
-            )?;
-            Ok(())
-        });
-        if env.exception_check().unwrap_or(false) {
-            let _ = env.exception_describe();
-            let _ = env.exception_clear();
-            return Err("Java threw".into());
-        }
-        out
-    })();
-    match r {
-        Ok(()) => crate::local::log("control: listening for adb commands"),
-        Err(e) => crate::local::log(&format!("control: not started: {e}")),
+    let natives = [(
+        "run",
+        "(Ljava/lang/String;)Ljava/lang/String;",
+        run as *mut std::ffi::c_void,
+    )];
+    if let Err(e) = crate::platform::register_natives("Control", &natives) {
+        crate::local::log(&format!("control: not started: {e}"));
+        return;
     }
+    // A failure here is logged by the call itself, as `Control.start: ...`.
+    crate::platform::java_call("Control", "start", "(Landroid/content/Context;)V", None);
+    crate::local::log("control: listening for adb commands");
 }

@@ -24,7 +24,7 @@ mod ui;
 mod android;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -36,9 +36,11 @@ const ANSWER: Duration = Duration::from_secs(10);
 /// How long a whole line may take. `am broadcast` waits on an ordered background broadcast,
 /// and Android calls a receiver that keeps it past 60 s not responding.
 const LINE: Duration = Duration::from_secs(45);
-/// The most an answer carries. It goes back to the system in one binder call, and past the
-/// binder's buffer that call fails, the broadcast never finishes and it ends in an ANR.
-const MOST: usize = 200_000;
+/// The most an answer carries, in UTF-8 bytes. Java holds it as UTF-16, about twice this
+/// for the mostly ASCII answers, and it crosses binder in one-way calls (to the system, then
+/// to `am`) whose shared buffer is about 512 KB: past it a call fails, the broadcast never
+/// finishes and it ends in an ANR.
+const MOST: usize = 100_000;
 
 /// The time a line has left.
 #[derive(Clone, Copy)]
@@ -88,7 +90,8 @@ pub fn serve(line: &str) -> (bool, String) {
             ),
             _ => run(c, budget),
         };
-        let failed = said.starts_with("error:");
+        // A command that failed part way may say so on a later line, `perf`'s frames for one.
+        let failed = said.lines().any(|l| l.starts_with("error:"));
         out.push(said);
         if failed {
             ok = false;
@@ -105,6 +108,7 @@ fn worst(c: &Command) -> Option<Duration> {
             Some(Duration::from_secs_f32(*secs) + Duration::from_secs(1))
         }
         Command::Swipe { ms, .. } => Some(Duration::from_millis(*ms)),
+        Command::Hold(_) => Some(ui::HOLD + Duration::from_millis(200)),
         _ => None,
     }
 }
@@ -133,18 +137,27 @@ fn cut(answer: String) -> String {
     )
 }
 
-/// Runs `f` on the UI loop and waits up to `timeout` for what it sends back. When the wait
-/// gives up, `f` still sits in the loop's queue; it is skipped when its turn comes, so a
-/// caller that retries after "did not answer" never gets the action twice.
+/// Where a command sent to the UI loop is: waiting its turn, started, or given up on.
+const QUEUED: u8 = 0;
+const STARTED: u8 = 1;
+const GAVE_UP: u8 = 2;
+
+/// Runs `f` on the UI loop and waits up to `timeout` for what it sends back. A command
+/// still waiting its turn when the wait gives up is skipped when the turn comes, and the
+/// answer says it was dropped; one that had started already says it ran, so a caller only
+/// retries what never happened.
 fn on_ui<T: Send + 'static>(
     timeout: Duration,
     f: impl FnOnce(mpsc::Sender<T>) + Send + 'static,
 ) -> Result<T, String> {
     let (tx, rx) = mpsc::channel();
-    let gave_up = Arc::new(AtomicBool::new(false));
-    let late = gave_up.clone();
+    let state = Arc::new(AtomicU8::new(QUEUED));
+    let turn = state.clone();
     slint::invoke_from_event_loop(move || {
-        if late.load(Ordering::Acquire) {
+        if turn
+            .compare_exchange(QUEUED, STARTED, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
             crate::local::log("control: skipped a command its caller had given up on");
             return;
         }
@@ -152,11 +165,15 @@ fn on_ui<T: Send + 'static>(
     })
     .map_err(|e| format!("error: the UI loop is gone: {e}"))?;
     rx.recv_timeout(timeout).map_err(|_| {
-        gave_up.store(true, Ordering::Release);
-        format!(
-            "error: the UI thread did not answer within {:.0} s; the command was dropped",
-            timeout.as_secs_f32()
-        )
+        let secs = timeout.as_secs_f32();
+        match state.compare_exchange(QUEUED, GAVE_UP, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => format!(
+                "error: the UI thread did not answer within {secs:.0} s; the command was dropped and never ran"
+            ),
+            Err(_) => format!(
+                "error: the command ran but took over {secs:.0} s to answer; check where before sending it again"
+            ),
+        }
     })
 }
 
@@ -253,12 +270,18 @@ fn state(budget: Budget) -> String {
         Err(e) => return e,
     };
     let mut out = vec![ui];
-    out.push(match ping(budget) {
-        Ok(d) => format!("ui loop: answered in {:.1} ms", d.as_secs_f64() * 1000.0),
-        Err(e) => e,
-    });
+    // A ping that failed goes last, as the line's error.
+    let (ping_line, failed) = match ping(budget) {
+        Ok(d) => (
+            format!("ui loop: answered in {:.1} ms", d.as_secs_f64() * 1000.0),
+            None,
+        ),
+        Err(e) => ("ui loop: no answer".to_string(), Some(e)),
+    };
+    out.push(ping_line);
     out.push(status(&["Threads", "VmRSS", "VmHWM"]).join(", "));
     out.push(jobs());
+    out.extend(failed);
     out.join("\n")
 }
 
@@ -313,10 +336,14 @@ fn perf(secs: f32, budget: Budget) -> String {
     }
     let after = thread_times();
     let elapsed = start.elapsed().as_secs_f32();
-    let frames = on_ui(budget.cap(ANSWER), |tx| {
+    // A frames read that failed goes last, as the line's error, so the sample counts as
+    // failed rather than passing with a hole in it.
+    let (frames, failed) = match on_ui(budget.cap(ANSWER), |tx| {
         let _ = tx.send(ui::frames_since_mark());
-    })
-    .unwrap_or_else(|e| e);
+    }) {
+        Ok(f) => (f, None),
+        Err(e) => ("frames: not read".to_string(), Some(e)),
+    };
 
     waits.sort();
     let ms = |d: Duration| d.as_secs_f64() * 1000.0;
@@ -361,6 +388,7 @@ fn perf(secs: f32, budget: Budget) -> String {
             *cpu as f32 / (elapsed * 10.0)
         ));
     }
+    out.extend(failed);
     out.join("\n")
 }
 
