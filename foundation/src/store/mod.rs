@@ -48,13 +48,25 @@ fn apply_pragmas(conn: &Connection) -> Result<(), CoreError> {
     Ok(())
 }
 
-/// Waits on the writer's reply from whatever thread called. Inside a runtime
-/// `blocking_recv` panics, and a shell listener runs inline on the tokio
-/// thread that emitted the event, so the wait goes through
-/// [`crate::blocking::blocking`], which makes it safe there.
-fn recv_blocking<T: Send>(rrx: oneshot::Receiver<T>) -> Result<T, CoreError> {
-    crate::blocking::blocking(|| rrx.blocking_recv())
-        .map_err(|_| CoreError::internal("store thread dropped the reply"))
+/// Waits on the writer's reply from whatever thread called. A plain thread
+/// blocks on the receiver. Inside a runtime `blocking_recv` panics, and a
+/// shell listener runs inline on the tokio thread that emitted the event,
+/// so a listener that turns around and calls a writing call would take a
+/// worker down: there the wait goes through `block_in_place`, which hands
+/// the worker's other tasks to a sibling before it blocks.
+fn recv_blocking<T>(rrx: oneshot::Receiver<T>) -> Result<T, CoreError> {
+    // `block_in_place` itself panics on a current-thread runtime, so it is
+    // only for the multi-thread one the core builds.
+    let on_a_worker = matches!(
+        tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()),
+        Ok(tokio::runtime::RuntimeFlavor::MultiThread)
+    );
+    let received = if on_a_worker {
+        tokio::task::block_in_place(|| rrx.blocking_recv())
+    } else {
+        rrx.blocking_recv()
+    };
+    received.map_err(|_| CoreError::internal("store thread dropped the reply"))
 }
 
 impl Store {

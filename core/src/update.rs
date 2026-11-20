@@ -243,8 +243,9 @@ pub async fn check_phone(
     newest_phone_on(&releases(http, PHONE_RELEASES).await?, current, track)
 }
 
-/// `CheckPhoneUpdate`: [`check_phone`] over the core's transport, waited for on its runtime.
-/// `Core::call` makes the wait safe from a runtime worker.
+/// `CheckPhoneUpdate`: [`check_phone`] over the core's transport, waited for on its runtime
+/// through `blocking`, so a listener on a runtime worker or a caller on a current-thread
+/// runtime gets an answer rather than a panic.
 pub fn phone_call(
     services: &Services,
     current: &str,
@@ -255,9 +256,11 @@ pub fn phone_call(
         Some(false) => Track::Stable,
         None => Track::of(current),
     };
-    let update = services
-        .handle
-        .block_on(check_phone(services.http.as_ref(), current, track))?;
+    let update = crate::foundation::blocking::blocking(|| {
+        services
+            .handle
+            .block_on(check_phone(services.http.as_ref(), current, track))
+    })?;
     Ok(Reply::PhoneUpdate { update })
 }
 

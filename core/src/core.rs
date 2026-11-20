@@ -607,24 +607,12 @@ impl Core {
     ///
     /// A router and nothing more: every arm is one call into the module that
     /// owns it, grouped by the team the call belongs to (#773, #854).
-    ///
-    /// A call may block on the core's runtime or the store's writer, so it
-    /// runs through `blocking`: a listener calling from a runtime worker,
-    /// or a caller on a current-thread runtime, gets an answer rather than
-    /// a panic (#809).
     pub fn call(&self, call: Call) -> Result<Reply, CoreError> {
         if self.closed.load(Ordering::SeqCst) {
             return Err(CoreError::Internal {
                 message: "core is shut down".to_string(),
             });
         }
-        crate::foundation::blocking::blocking(move || self.route(call))
-    }
-}
-
-impl Core {
-    /// `call`'s router: every arm is one call into the module that owns it.
-    fn route(&self, call: Call) -> Result<Reply, CoreError> {
         match call {
             // The front door: the core itself, its log, jobs and settings
             Call::About => app::about(&self.services),
@@ -1058,10 +1046,7 @@ impl Core {
             | Call::RoomStart { .. }) => room::call(&self.rooms, c),
         }
     }
-}
 
-#[uniffi::export]
-impl Core {
     /// Keeps the whole-library load for the rest of its state generation
     /// (at most 30 seconds), so reads in one beat share one snapshot. For a
     /// shell whose every write goes through calls; off by default.
