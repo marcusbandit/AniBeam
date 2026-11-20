@@ -65,9 +65,11 @@ impl Tab {
 /// point in the window's logical pixels, as `dump` prints them.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Target {
+    /// `nth` counts from 1 and is None when not given: then several matches are a question
+    /// back rather than a guess.
     Label {
         label: String,
-        nth: usize,
+        nth: Option<usize>,
     },
     Point(f32, f32),
     /// One word shaped like a point, `4,5`: a label that shows by that name, else the point.
@@ -217,6 +219,7 @@ key <name> ...                              back enter tab escape backspace up d
 back                                        Android's Back
 scroll <up|down|left|right> [px] [at <words|x,y>]
 swipe <x1> <y1> <x2> <y2> [ms]
+shot <file.png>                             the screen, from the device; ctl.sh runs it, on its own
 onboarding [next|back|step <n>|finish|start]
 find <text>                                 every element whose label holds it, offscreen too
 wait <label> [<n>s]                         until a control with the label shows
@@ -342,9 +345,11 @@ fn target(words: &[String]) -> Result<Target, String> {
         return Ok(point);
     }
     let (words, nth) = match words {
-        [head @ .., flag, n] if !head.is_empty() && flag == "--nth" => (head, nth(n)?),
-        [head @ .., last] if !head.is_empty() && last.starts_with('#') => (head, nth(&last[1..])?),
-        _ => (words, 1),
+        [head @ .., flag, n] if !head.is_empty() && flag == "--nth" => (head, Some(nth(n)?)),
+        [head @ .., last] if !head.is_empty() && last.starts_with('#') => {
+            (head, Some(nth(&last[1..])?))
+        }
+        _ => (words, None),
     };
     let label = rest(words);
     if label.trim().is_empty() {
@@ -361,6 +366,15 @@ fn series(words: &[String]) -> Command {
         }
         _ => Command::Open(Series::Title(rest(words))),
     }
+}
+
+/// The words after the command as one, refused when they hold nothing but blanks.
+fn named(head: &str, words: &[String], what: &str) -> Result<String, String> {
+    let all = rest(words);
+    if all.trim().is_empty() {
+        return Err(format!("{head} needs {what}"));
+    }
+    Ok(all)
 }
 
 fn parse(words: &[String]) -> Result<Command, String> {
@@ -388,7 +402,10 @@ fn parse(words: &[String]) -> Result<Command, String> {
                 ("series" | "show", _) if words.is_empty() => {
                     return Err("go series needs a title or an id".into());
                 }
-                ("series" | "show", _) => series(words),
+                ("series" | "show", _) => {
+                    named("go series", words, "a title or an id")?;
+                    series(words)
+                }
                 (_, Some(Tab::Downloads)) if !words.is_empty() => Command::Search(rest(words)),
                 (_, Some(tab)) if words.is_empty() => Command::Go(tab),
                 (_, Some(tab)) => return Err(format!("go {} takes no words", tab.name())),
@@ -400,9 +417,19 @@ fn parse(words: &[String]) -> Result<Command, String> {
             }
         }
         // The tabs on their own, `home` for `go home`.
-        word if Tab::parse(word).is_some() && args.is_empty() => {
-            Command::Go(Tab::parse(word).unwrap())
+        word if Tab::parse(word).is_some() => {
+            let tab = Tab::parse(word).unwrap();
+            if !args.is_empty() {
+                return Err(format!(
+                    "{} takes no words; go {} does the same",
+                    tab.name(),
+                    tab.name()
+                ));
+            }
+            Command::Go(tab)
         }
+        // ctl.sh takes a screenshot itself, from the device, so the app never sees it alone.
+        "shot" => return Err("shot runs in ctl.sh on its own line: ctl.sh shot <file.png>".into()),
         "back" => {
             none()?;
             Command::Back
@@ -419,7 +446,7 @@ fn parse(words: &[String]) -> Result<Command, String> {
             Command::Key(keys)
         }
         "open" => {
-            need("a series id or title")?;
+            named(head, args, "a series id or title")?;
             series(args)
         }
         "click" | "press" => Command::Press(target(args)?),
@@ -435,14 +462,14 @@ fn parse(words: &[String]) -> Result<Command, String> {
             }
             let field = match args[0].parse::<usize>() {
                 Ok(n) if n > 0 => Field::Index(n),
+                _ if args[0].trim().is_empty() => {
+                    return Err("fill needs a field: its number or placeholder".into());
+                }
                 _ => Field::Named(args[0].clone()),
             };
             Command::Fill(field, rest(&args[1..]))
         }
-        "search" => {
-            need("the words to search for")?;
-            Command::Search(rest(args))
-        }
+        "search" => Command::Search(named(head, args, "the words to search for")?),
         "scroll" => {
             need("a direction: up, down, left or right")?;
             let dir = match args[0].to_lowercase().as_str() {
@@ -504,17 +531,14 @@ fn parse(words: &[String]) -> Result<Command, String> {
             none()?;
             Command::Where
         }
-        "find" => {
-            need("the words to look for")?;
-            Command::Find(rest(args))
-        }
+        "find" => Command::Find(named(head, args, "the words to look for")?),
         "wait" => {
             need("a label")?;
             let (label, secs) = match args.split_last() {
-                Some((last, head)) if !head.is_empty() && seconds(last).is_some() => {
-                    (rest(head), seconds(last).unwrap())
+                Some((last, words)) if !words.is_empty() && seconds(last).is_some() => {
+                    (named(head, words, "a label")?, seconds(last).unwrap())
                 }
-                _ => (rest(args), WAIT),
+                _ => (named(head, args, "a label")?, WAIT),
             };
             Command::Wait {
                 label,
@@ -549,11 +573,43 @@ mod tests {
         all.remove(0)
     }
 
+    /// A label target; `1` stands for no match number given.
     fn label(label: &str, nth: usize) -> Target {
         Target::Label {
             label: label.into(),
-            nth,
+            nth: (nth > 1).then_some(nth),
         }
+    }
+
+    #[test]
+    fn blank_names_tabs_with_words_and_shot_are_refused() {
+        for line in [
+            "wait ''",
+            "wait '  ' 5s",
+            "fill '' x",
+            "find ' '",
+            "search ''",
+            "open ''",
+            "go series ' '",
+        ] {
+            assert!(parse_line(line).is_err(), "{line}");
+        }
+        assert_eq!(
+            parse_line("library frieren").unwrap_err(),
+            "library takes no words; go library does the same"
+        );
+        assert!(
+            parse_line("shot a.png")
+                .unwrap_err()
+                .contains("ctl.sh shot")
+        );
+        assert_eq!(
+            one("click Cancel --nth 1"),
+            Command::Press(Target::Label {
+                label: "Cancel".into(),
+                nth: Some(1)
+            })
+        );
     }
 
     #[test]

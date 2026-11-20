@@ -30,7 +30,11 @@ pub fn start() {
         crate::local::log(&format!("control: not started: {e}"));
         return;
     }
-    // A failure here is logged by the call itself, as `Control.start: ...`.
-    crate::platform::java_call("Control", "start", "(Landroid/content/Context;)V", None);
-    crate::local::log("control: listening for adb commands");
+    match crate::platform::java_call("Control", "start", "(Landroid/content/Context;)Z", None) {
+        Some(jni::objects::JValueOwned::Bool(1)) => {
+            crate::local::log("control: listening for adb commands")
+        }
+        // A throw is logged by the call itself, as `Control.start: ...`.
+        _ => crate::local::log("control: not started: the receiver did not register"),
+    }
 }

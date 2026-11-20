@@ -30,8 +30,9 @@ public final class Control extends BroadcastReceiver {
     /** Runs one command line: the result code, 0 or 1, then what it printed. */
     static native String run(String line);
 
-    public static synchronized void start(Context context) {
-        if (receiver != null) return;
+    /** Registers the receiver once; true when it is registered. */
+    public static synchronized boolean start(Context context) {
+        if (receiver != null) return true;
         HandlerThread thread = new HandlerThread("anibeam-control");
         thread.start();
         Handler handler = new Handler(thread.getLooper());
@@ -45,9 +46,11 @@ public final class Control extends BroadcastReceiver {
         } catch (RuntimeException e) {
             // Not registered, so a later start (the activity made again) tries once more.
             thread.quitSafely();
-            throw e;
+            android.util.Log.w("AnibeamCore", "control: " + e);
+            return false;
         }
         receiver = r;
+        return true;
     }
 
     @Override

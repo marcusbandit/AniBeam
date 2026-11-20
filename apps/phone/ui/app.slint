@@ -368,6 +368,9 @@ export component AppWindow inherits Window {
     // src/control/ui.rs names each. It follows the handler below, so a question or sheet
     // added there gets the next number here and its name there. 0 is nothing.
     public pure function over() -> int {
+        // Back closes the player's picker before the player, and does nothing while locked.
+        if (PlayerData.open && PlayerData.picker != 0) { return 20; }
+        if (PlayerData.open && PlayerData.locked) { return 21; }
         if (PlayerData.open) { return 1; }
         if (AppData.notes-open) { return 2; }
         if (Ask.mobile) { return 3; }

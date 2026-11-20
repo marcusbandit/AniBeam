@@ -18,7 +18,8 @@ use i_slint_core::accessibility::{
 };
 use i_slint_core::item_tree::{ItemRc, ParentItemTraversalMode};
 use i_slint_core::items::{
-    AccessibleRole, Clip, Flickable, InputType, Opacity, TextInput, TouchArea,
+    AccessibleRole, Clip, Empty, Flickable, InputType, Layer, Opacity, TextInput, TouchArea,
+    Transform,
 };
 use i_slint_core::platform::WindowEventDispatchResult;
 use i_slint_core::window::WindowInner;
@@ -30,7 +31,7 @@ use crate::{AppData, AppWindow, FindData, Fold, Nav, PlayerData, Settings};
 
 /// What is open over the page, by the number app.slint's `over()` gives, from 1: the
 /// questions and sheets Back closes first, in its order. ShowData.sheet's sheets run 8 to 15.
-const OVER: [&str; 19] = [
+const OVER: [&str; 21] = [
     "player",
     "what's new",
     "mobile data question",
@@ -50,6 +51,8 @@ const OVER: [&str; 19] = [
     "season picker",
     "disk sheet",
     "list move sheet",
+    "player's picker",
+    "locked player",
 ];
 /// How long a finger stays down for a long press: past Slint's and the app's hold.
 pub(super) const HOLD: Duration = Duration::from_millis(800);
@@ -251,6 +254,26 @@ fn walk_up(item: &ItemRc, window: Area) -> Up {
     up
 }
 
+/// The items Slint adds on its own around what a component draws: the Clip a `clip:` or
+/// `visible:` puts in, the Opacity of an `opacity:`, a layer, a transform, and the empty item a
+/// layout with a size becomes. None of them is a level of the app's own layout.
+fn wrapper(item: &ItemRc) -> bool {
+    item.downcast::<Clip>().is_some()
+        || item.downcast::<Opacity>().is_some()
+        || item.downcast::<Layer>().is_some()
+        || item.downcast::<Transform>().is_some()
+        || item.downcast::<Empty>().is_some()
+}
+
+/// An item's nearest real ancestors, wrappers left out, at most `OWN_DEPTH` of them.
+fn near(ancestors: &[ItemRc]) -> Vec<&ItemRc> {
+    ancestors
+        .iter()
+        .filter(|a| !wrapper(a))
+        .take(OWN_DEPTH)
+        .collect()
+}
+
 /// One element a screen reader would see.
 struct Element {
     item: ItemRc,
@@ -262,6 +285,8 @@ struct Element {
     /// The label folded for matching: blanks collapsed, lower case.
     key: String,
     value: Option<String>,
+    /// A field's placeholder, which it shows only while empty.
+    placeholder: String,
     enabled: bool,
     read_only: bool,
     checked: Option<bool>,
@@ -295,6 +320,9 @@ impl Element {
         }
         if let Some(v) = &self.value {
             s.push_str(&format!(" value {:?}", clip(v)));
+        }
+        if !self.placeholder.is_empty() {
+            s.push_str(&format!(" placeholder {:?}", clip(&self.placeholder)));
         }
         for (on, word) in [
             (self.focused, " focused"),
@@ -386,21 +414,27 @@ struct Scroller {
 /// scroll areas, largest first.
 struct Scene {
     window: Area,
+    /// Where the on-screen keyboard covers the window, when it is up: Slint draws no item
+    /// for it, but a finger there types instead.
+    keyboard: Option<Area>,
     elements: Vec<Element>,
     touches: Vec<Touch>,
     scrollers: Vec<Scroller>,
 }
 
-/// How far up a touch area's parent may sit and still count as the element's own: a
-/// button's touch area beside its label, a row's beside its texts. A blocker laid over a
-/// whole page sits higher, above the page's own containers.
+/// How far up a touch area's parent may sit and still count as the element's own, in real
+/// levels (`near`): a button's touch area beside its label, a tile's beside its title. A
+/// blocker laid over a whole page sits higher, above the page's own containers.
 const OWN_DEPTH: usize = 3;
 
 impl Scene {
     /// Whether a touch area drawn after the item, and not its own, takes the touch at the
     /// point. Slint hands a touch to the last-drawn touch area under it.
     fn covers(&self, point: (f32, f32), order: usize, item: &ItemRc, ancestors: &[ItemRc]) -> bool {
-        let near = &ancestors[..ancestors.len().min(OWN_DEPTH)];
+        if self.keyboard.is_some_and(|k| k.holds(point)) {
+            return true;
+        }
+        let near = near(ancestors);
         self.touches.iter().any(|t| {
             if t.order <= order || &t.item == item || !t.raw.holds(point) {
                 return false;
@@ -409,7 +443,9 @@ impl Scene {
                 let up = walk_up(&t.item, self.window);
                 (up.ancestors, t.raw.and(up.clip))
             });
-            area.holds(point) && !up.contains(item) && !up.first().is_some_and(|p| near.contains(p))
+            // The touch area's parent, wrappers skipped, among the element's near ancestors.
+            let parent = up.iter().find(|a| !wrapper(a));
+            area.holds(point) && !up.contains(item) && !parent.is_some_and(|p| near.contains(&p))
         })
     }
 
@@ -492,9 +528,21 @@ fn scene(w: &AppWindow, keep: Keep) -> Scene {
         let g = item.geometry();
         let origin = item.map_to_window(g.origin);
         let centre = item.map_to_native_window(g.center());
-        let centre = (centre.x, centre.y);
         let up = walk_up(item, window);
-        let shown = up.clip.holds(centre) && item.is_visible() && up.opacity > 0.05;
+        let seen = Area(
+            origin.x,
+            origin.y,
+            origin.x + g.size.width,
+            origin.y + g.size.height,
+        )
+        .and(up.clip);
+        let some = seen.2 - seen.0 >= 2.0 && seen.3 - seen.1 >= 2.0;
+        let centre = if up.clip.holds((centre.x, centre.y)) || !some {
+            (centre.x, centre.y)
+        } else {
+            ((seen.0 + seen.2) / 2.0, (seen.1 + seen.3) / 2.0)
+        };
+        let shown = some && item.is_visible() && up.opacity > 0.05;
         let input = item.downcast::<TextInput>();
         let focused = input.as_ref().is_some_and(|t| t.as_pin_ref().has_focus());
         // A password field's text stays out of the answer: answers end up in logs.
@@ -518,6 +566,7 @@ fn scene(w: &AppWindow, keep: Keep) -> Scene {
             key,
             label,
             value,
+            placeholder: prop(AccessibleStringProperty::PlaceholderText).unwrap_or_default(),
             enabled: prop(AccessibleStringProperty::Enabled).as_deref() != Some("false"),
             read_only: prop(AccessibleStringProperty::ReadOnly).as_deref() == Some("true"),
             checked: prop(AccessibleStringProperty::Checkable)
@@ -534,8 +583,14 @@ fn scene(w: &AppWindow, keep: Keep) -> Scene {
     });
     let size = |a: &Area| (a.2 - a.0) * (a.3 - a.1);
     scrollers.sort_by(|a, b| size(&b.area).total_cmp(&size(&a.area)));
+    let keyboard = w
+        .window()
+        .virtual_keyboard(i_slint_core::InternalToken)
+        .map(|(o, s)| Area(o.x, o.y, o.x + s.width, o.y + s.height))
+        .filter(|k| k.2 > k.0 && k.3 > k.1);
     let mut scene = Scene {
         window,
+        keyboard,
         elements: Vec::new(),
         touches,
         scrollers,
@@ -561,15 +616,15 @@ fn listed(all: Vec<Element>) -> Vec<Element> {
     for e in shown.iter().filter(|e| e.role != AccessibleRole::Text) {
         controls.entry(e.key.as_str()).or_default().push(e);
     }
-    let near = |e: &Element| e.ancestors[..e.ancestors.len().min(OWN_DEPTH)].to_vec();
     let keep: Vec<bool> = shown
         .iter()
         .map(|e| {
             e.role != AccessibleRole::Text
                 || !controls.get(e.key.as_str()).is_some_and(|c| {
-                    let mine = near(e);
+                    let mine = near(&e.ancestors);
                     c.iter().any(|o| {
-                        o.holds(e.centre.0, e.centre.1) || near(o).iter().any(|a| mine.contains(a))
+                        o.holds(e.centre.0, e.centre.1)
+                            || near(&o.ancestors).iter().any(|a| mine.contains(a))
                     })
                 })
         })
@@ -608,7 +663,7 @@ fn resolve(w: &AppWindow, target: &Target) -> Result<Landing, String> {
             if hits.is_empty() {
                 return Ok((None, (*x, *y), format!("{x:.0},{y:.0}")));
             }
-            (word, 1, hits)
+            (word, None, hits)
         }
         Target::Label { label, nth } => (label, *nth, matching(w, label, false)),
     };
@@ -618,6 +673,19 @@ fn resolve(w: &AppWindow, target: &Target) -> Result<Landing, String> {
         ));
     }
     let count = hits.len();
+    // Acting on the first of several could cancel the wrong download: the caller picks.
+    let Some(nth) = nth.or((count == 1).then_some(1)) else {
+        let some: Vec<String> = hits
+            .iter()
+            .take(5)
+            .enumerate()
+            .map(|(i, e)| format!("  {}: {}", i + 1, e.line()))
+            .collect();
+        return Err(format!(
+            "{label:?} matches {count}; --nth n picks one:\n{}",
+            some.join("\n")
+        ));
+    };
     if nth > count {
         return Err(format!("{label:?} matches {count}, not {nth}"));
     }
@@ -759,11 +827,14 @@ fn onboarding_line(w: &AppWindow) -> String {
 fn dump(w: &AppWindow, filter: &str) -> String {
     let (width, height) = window_size(w);
     let fold = w.global::<Fold>();
-    let posture = match fold.get_posture() {
-        0 => "folded",
-        2 => "half folded like a book",
-        _ if fold.get_stood() => "half folded, stood up like a laptop",
-        _ => "open",
+    let posture = if fold.get_stood() {
+        "half folded, stood up like a laptop"
+    } else {
+        match fold.get_posture() {
+            0 => "phone width",
+            2 => "half folded like a book",
+            _ => "wide",
+        }
     };
     let posture = if width > height {
         format!("{posture}, landscape")
@@ -945,6 +1016,11 @@ pub fn exec(command: Command, reply: Sender<String>) {
 
 fn swipe(w: &AppWindow, from: (f32, f32), to: (f32, f32), ms: u64, reply: Sender<String>) {
     const STEP: u64 = 16;
+    // A second finger down before the first lifts is not a swipe a person makes.
+    if SWIPE.with(|s| s.borrow().as_ref().is_some_and(|t| t.running())) {
+        let _ = reply.send("error: a swipe is still running; send this one after it".into());
+        return;
+    }
     let steps = (ms / STEP).max(2);
     press_down(w, from);
     let timer = Rc::new(Timer::default());
@@ -999,6 +1075,9 @@ fn swipe(w: &AppWindow, from: (f32, f32), to: (f32, f32), ms: u64, reply: Sender
 /// no finger reaches while a sheet, a question, the player or onboarding covers it.
 fn open_over(w: &AppWindow) -> Option<String> {
     let over = w.invoke_over();
+    if over == 21 {
+        return Some("the player is locked over the page; unlock it first".into());
+    }
     if over > 0 {
         let name = usize::try_from(over)
             .ok()
@@ -1123,6 +1202,7 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
                     all.into_iter()
                         .find(|f| {
                             f.key.contains(&want)
+                                || norm(&f.placeholder).contains(&want)
                                 || f.value.as_deref().is_some_and(|v| norm(v) == want)
                                 || marks.iter().any(|(x, y)| {
                                     let (fx, fy, fw, fh) = f.rect;
@@ -1342,7 +1422,7 @@ mod tests {
         let dump = say("tree");
         assert!(dump.starts_with("page home"), "{dump}");
         assert_eq!(say("where").lines().count(), 1);
-        assert!(dump.contains("window 400x900, folded"), "{dump}");
+        assert!(dump.contains("window 400x900, phone width"), "{dump}");
         let home = tr_in(Lang::En, "phone-nav-home", &[]);
         let downloads = tr_in(Lang::En, "phone-nav-downloads", &[]);
         assert!(dump.contains(&format!("tab {home:?} selected")), "{dump}");
@@ -1462,6 +1542,58 @@ mod tests {
         assert_eq!(named(&w).as_deref(), Some("disk sheet"));
         w.global::<DiskData>().set_sheet(0);
         assert_eq!(named(&w), None);
+    }
+
+    /// A poster's title sits under wrappers Slint adds (a clip, a layout) below the tile
+    /// whose touch area takes its tap: it is the tile's own, not covered.
+    #[test]
+    fn a_poster_title_is_in_reach_and_opens_its_show() {
+        let w = window();
+        let data = w.global::<AppData>();
+        data.set_ready(true);
+        data.set_library(slint::ModelRc::new(slint::VecModel::from(vec![
+            crate::Tile {
+                id: 3,
+                title: "Example Show".into(),
+                ..Default::default()
+            },
+        ])));
+        let opened = Rc::new(std::cell::Cell::new(-1));
+        let seen = opened.clone();
+        data.on_open_series(move |id| seen.set(id));
+        say("go library");
+        let tree = say("tree Example Show");
+        assert!(tree.contains("text \"Example Show\""), "{tree}");
+        assert!(!tree.contains("covered"), "{tree}");
+        let clicked = say("click Example Show");
+        assert!(clicked.starts_with("tapped text"), "{clicked}");
+        assert_eq!(opened.get(), 3, "{clicked}");
+    }
+
+    /// A field's text may run far wider than the field and slide inside its clip; the field
+    /// still shows, and keeps its number and its placeholder.
+    #[test]
+    fn a_field_holding_long_text_stays_in_reach() {
+        let w = window();
+        say("go downloads");
+        let find = w.global::<FindData>();
+        find.set_text("x".repeat(400).into());
+        let placeholder = tr_in(Lang::En, "dl-search-placeholder", &[]);
+        let tree = say("tree field");
+        assert!(
+            tree.contains(&format!("placeholder {placeholder:?}")),
+            "{tree}"
+        );
+        assert!(
+            say("fill 1 short").starts_with("filled field"),
+            "{}",
+            say("tree")
+        );
+        assert_eq!(find.get_text(), "short");
+        // And by its placeholder, though it is no longer empty.
+        let filled = say(&format!("fill {placeholder:?} again"));
+        assert!(filled.starts_with("filled"), "{filled}");
+        assert_eq!(find.get_text(), "again");
     }
 
     #[test]

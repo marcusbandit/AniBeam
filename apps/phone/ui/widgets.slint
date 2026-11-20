@@ -797,6 +797,9 @@ component EditKey inherits Rectangle {
 // offers no Copy.
 component LineInput inherits Rectangle {
     in-out property <string> text;
+    // What the field asks for, drawn by the field while it is empty; kept on the input for a
+    // screen reader and control over adb whatever it holds.
+    in property <string> placeholder;
     in property <length> font-size: Theme.normal;
     in property <string> font-family: Theme.face;
     in property <bool> secret;
@@ -835,6 +838,7 @@ component LineInput inherits Rectangle {
             vertical-alignment: center;
             single-line: true;
             input-type: root.secret ? InputType.password : InputType.text;
+            accessible-placeholder-text: root.placeholder;
             cursor-position-changed(pos) => {
                 root.cursor-x = pos.x;
                 root.follow();
@@ -902,6 +906,7 @@ export component SearchField inherits Rectangle {
     property <length> clear-size: 12 * Theme.unit;
     input := LineInput {
         x: root.text-x;
+        placeholder: root.placeholder;
         width: parent.width - self.x - (root.text != "" ? root.clear-size : Theme.pad);
         height: parent.height;
         text <=> root.text;
@@ -957,6 +962,7 @@ export component Field inherits Rectangle {
     }
     input := LineInput {
         x: Theme.unit * 4;
+        placeholder: root.placeholder;
         width: parent.width - 8 * Theme.unit;
         height: parent.height;
         text <=> root.text;

@@ -165,7 +165,12 @@ fn on_ui<T: Send + 'static>(
         f(tx)
     })
     .map_err(|e| format!("error: the UI loop is gone: {e}"))?;
-    rx.recv_timeout(timeout).map_err(|_| {
+    rx.recv_timeout(timeout).map_err(|e| {
+        // The UI side let go of its answer without sending it: a hold or swipe whose timer
+        // went away, or the loop shutting down.
+        if e == mpsc::RecvTimeoutError::Disconnected {
+            return "error: the command ended without an answer".to_string();
+        }
         let secs = timeout.as_secs_f32();
         match state.compare_exchange(QUEUED, GAVE_UP, Ordering::AcqRel, Ordering::Acquire) {
             Ok(_) => format!(
