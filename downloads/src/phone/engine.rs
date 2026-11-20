@@ -35,6 +35,10 @@ struct Entry {
     /// download reads back what it set.
     #[serde(default)]
     priorities: Vec<i64>,
+    /// How many pauses and resumes the person gave it in this run, so an add can tell a
+    /// pause given while it ran from one an old entry carried.
+    #[serde(skip)]
+    asks: u64,
 }
 
 impl Entry {
@@ -88,8 +92,9 @@ pub struct Engine {
     keeper: Keeper,
 }
 
-/// How often, while a torrent runs, the pieces each torrent has are written down and each
-/// torrent is set to what the hold and the person want.
+/// How often, while a torrent runs, each torrent is set to what the hold and the person
+/// want. The pieces are written down every third tick (`Keeper::every`), at a hold and a
+/// pause, and when a check ends.
 const TICK: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// The same while a torrent checks its files, so one librqbit settles against what it was
@@ -152,7 +157,13 @@ impl Wants {
             .get(&h.info_hash().as_string())
             .is_some_and(|e| e.paused_by_user);
         let stats = h.stats();
+        // A phone does not seed on battery and mobile data: a finished torrent still
+        // running is paused, as `list` does, also while nothing lists.
         if stats.finished {
+            if matches!(stats.state, S::Live) {
+                let asked = self.session.pause(h).await;
+                return (stats, asked.map(|()| true));
+            }
             return (stats, Ok(false));
         }
         let stop = held || by_user;
@@ -178,13 +189,18 @@ impl Wants {
     /// A check asked to pause may still be running, and a fast-resume check that is ends
     /// running whatever it was asked, so it is watched while it moves. One that stopped,
     /// as a full check does on a pause, sits checking until it is started again: `checks`
-    /// holds how far each paused one had got, and one that has not moved since the last
-    /// tick sets no pace.
+    /// holds how far each check had got, and a paused one that got somewhere and has not
+    /// moved since the last tick sets no pace. One that has not begun may be waiting for
+    /// librqbit's turn to check (three at a time), so it keeps the slower pace.
+    ///
+    /// Also answers the torrents whose check ended since the last tick: a check can find
+    /// pieces bad and take them out of librqbit's record, and the engine's own record of
+    /// them is written again at once, so it never puts them back at the next open.
     async fn tick(
         &self,
         every: std::time::Duration,
         checks: &mut HashMap<String, u64>,
-    ) -> Option<std::time::Duration> {
+    ) -> (Option<std::time::Duration>, HashSet<String>) {
         use librqbit::TorrentStatsState as S;
         let handles: Vec<_> = self
             .session
@@ -203,13 +219,19 @@ impl Wants {
                     }
                 }
             };
+            let key = h.info_hash().as_string();
             let pace = match stats.state {
-                S::Initializing { paused: false } => Some(CHECKING_TICK.min(every)),
-                S::Initializing { paused: true } => {
-                    let key = h.info_hash().as_string();
-                    let moved = checks.get(&key) != Some(&stats.progress_bytes);
-                    checking.insert(key, stats.progress_bytes);
-                    moved.then_some(CHECKING_TICK.min(every))
+                S::Initializing { paused } => {
+                    let got = stats.progress_bytes;
+                    let moved = checks.get(&key) != Some(&got);
+                    checking.insert(key, got);
+                    if !paused || moved {
+                        Some(CHECKING_TICK.min(every))
+                    } else if got == 0 {
+                        Some(every)
+                    } else {
+                        None
+                    }
                 }
                 S::Live => Some(every),
                 _ => None,
@@ -219,8 +241,13 @@ impl Wants {
                 (a, b) => a.or(b),
             };
         }
+        let ended = checks
+            .keys()
+            .filter(|k| !checking.contains_key(*k))
+            .cloned()
+            .collect();
         *checks = checking;
-        next
+        (next, ended)
     }
 }
 
@@ -567,7 +594,11 @@ impl Engine {
                     _ = stopped.cancelled() => return,
                     _ = wake => {}
                 }
-                next = wants.tick(every, &mut checks).await;
+                let ended;
+                (next, ended) = wants.tick(every, &mut checks).await;
+                if !ended.is_empty() {
+                    keeper.keep_now(Some(ended)).await;
+                }
                 keeper.keep_when_due().await;
             }
         });
@@ -743,6 +774,12 @@ impl Engine {
         priorities: Vec<i64>,
     ) -> Result<(String, bool), CoreError> {
         let output = self.root.join(folder);
+        // The person's asks on each entry before the add, so an entry left from an earlier
+        // copy of the torrent can be told from a pause given while this add ran.
+        let asks_before: HashMap<String, u64> = recover(&self.wants.entries)
+            .iter()
+            .map(|(k, e)| (k.clone(), e.asks))
+            .collect();
         let added = within_a_minute(self.session.add_torrent(
             source,
             Some(AddTorrentOptions {
@@ -766,15 +803,27 @@ impl Engine {
         let hash = handle.info_hash().as_string();
         {
             // The entry goes in on the same turn as the hold's say over the torrent, and
-            // keeps a pause the person gave it meanwhile.
+            // keeps a pause the person gave it while this add ran. One left from an earlier
+            // copy of the torrent, which librqbit no longer had, starts over: its pause and
+            // its finish time are not this download's, and nor are the pieces the engine
+            // wrote down for it.
             let _turn = self.wants.steering.lock().await;
-            {
+            let left_over = {
                 let mut entries = recover(&self.wants.entries);
                 let entry = entries.entry(hash.clone()).or_default();
+                let left_over = asks_before.get(&hash) == Some(&entry.asks);
+                if left_over {
+                    entry.paused_by_user = false;
+                    entry.completion_on = 0;
+                }
                 entry.title = release.title.clone();
                 entry.folder = folder.to_string();
                 entry.added_on = now();
                 entry.priorities = priorities;
+                left_over
+            };
+            if left_over {
+                self.keeper.forget(hash.clone()).await;
             }
             // Refused, the torrent is still added: it is said in the log, as for a hold.
             if let Err(e) = self.wants.settle(&handle, Retry::Broken).await {
@@ -1002,14 +1051,19 @@ impl Engine {
         self.save_entries();
         self.nudge();
         // A pause often comes before the app goes away: the pieces of what was paused are
-        // written down before the tap is answered, the others' at the tick.
+        // written down, and the tap waits for that a moment at most. A slow flash finishes
+        // the pass after the answer, off the runtime's workers.
         if action == PhoneAction::Pause {
             let paused = hashes
                 .iter()
                 .filter_map(|hash| self.handle(hash))
                 .map(|h| h.info_hash().as_string())
                 .collect();
-            self.keeper.keep_now(Some(paused)).await;
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                self.keeper.keep_now(Some(paused)),
+            )
+            .await;
         }
         refused.map_or(Ok(()), Err)
     }
@@ -1030,10 +1084,12 @@ impl Engine {
             PhoneAction::Pause | PhoneAction::Resume => {
                 let _turn = self.wants.steering.lock().await;
                 let resume = action == PhoneAction::Resume;
-                recover(&self.wants.entries)
-                    .entry(key)
-                    .or_default()
-                    .paused_by_user = !resume;
+                {
+                    let mut entries = recover(&self.wants.entries);
+                    let entry = entries.entry(key).or_default();
+                    entry.paused_by_user = !resume;
+                    entry.asks += 1;
+                }
                 let retry = if resume { Retry::Any } else { Retry::Broken };
                 self.wants.settle(h, retry).await
             }
@@ -1473,6 +1529,35 @@ mod tests {
             "still {:?}",
             engine.handle(&hash).unwrap().stats().state
         );
+        engine.session.stop().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_entry_left_from_an_earlier_copy_does_not_pause_a_fresh_add() {
+        // Entries outlive a torrent librqbit failed to bring back, and a pause on one used
+        // to stop the next add of the same release with no pause the person could see.
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = batch(dir.path()).await;
+        let engine = Engine::open(&dir.path().join("Anime"), &dir.path().join("state"))
+            .await
+            .unwrap();
+        engine.set_held(false).await.unwrap();
+        let r = release("[G] Show (01-03) [Batch]");
+        let peeked = engine.peek(&r, Some(bytes)).await.unwrap();
+        let left = Entry {
+            paused_by_user: true,
+            completion_on: 5,
+            ..Default::default()
+        };
+        recover(&engine.wants.entries).insert(peeked.hash.clone(), left);
+        let hash = engine
+            .add_peeked(&r, "Show", peeked, Vec::new())
+            .await
+            .unwrap();
+        let entry = recover(&engine.wants.entries)[&hash].clone();
+        assert!(!entry.paused_by_user);
+        assert_eq!(entry.completion_on, 0);
+        assert!(runs(&engine, &hash).await);
         engine.session.stop().await;
     }
 
