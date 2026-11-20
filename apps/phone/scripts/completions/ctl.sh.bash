@@ -5,33 +5,44 @@
 # click, tap, hold, wait, find, tree and fill complete the labels the last `ctl.sh tree` showed.
 
 _anibeam_ctl() {
-  local cur="${COMP_WORDS[COMP_CWORD]}"
+  local cur cword
+  local -a w
+  # bash splits words at ':' too, so a label such as Re:Zero would complete from "Zero". The
+  # bash-completion package puts the words back together; without it, the split stands.
+  if declare -F _get_comp_words_by_ref > /dev/null; then
+    _get_comp_words_by_ref -n : cur words cword
+    w=("${words[@]}")
+  else
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    w=("${COMP_WORDS[@]}")
+    cword=$COMP_CWORD
+  fi
   local first=1
-  if [[ "${COMP_WORDS[1]:-}" == "-s" ]]; then
-    if (( COMP_CWORD == 2 )); then
+  if [[ "${w[1]:-}" == "-s" ]]; then
+    if (( cword == 2 )); then
       mapfile -t COMPREPLY < <(compgen -W "$(adb devices 2>/dev/null | awk 'NR > 1 && $1 { print $1 }')" -- "$cur")
       return
     fi
     first=3
   fi
-  local pos=$(( COMP_CWORD - first ))
-  local command="${COMP_WORDS[first]:-}"
+  local pos=$(( cword - first ))
+  local command="${w[first]:-}"
   if (( pos == 0 )); then
     local all="go where tree click tap hold type fill key back scroll swipe shot onboarding find wait state perf help"
     (( first == 1 )) && all+=" -s"
     mapfile -t COMPREPLY < <(compgen -W "$all" -- "$cur")
     return
   fi
-  local words=""
+  local choices=""
   case "$command" in
-    go) (( pos == 1 )) && words="home calendar library downloads more series" ;;
-    key) words="back enter tab escape backspace up down left right" ;;
-    onboarding) (( pos == 1 )) && words="next back step finish start" ;;
-    perf) (( pos == 1 )) && words="2s 5s 10s" ;;
+    go) (( pos == 1 )) && choices="home calendar library downloads more series" ;;
+    key) choices="back enter tab escape backspace up down left right" ;;
+    onboarding) (( pos == 1 )) && choices="next back step finish start" ;;
+    perf) (( pos == 1 )) && choices="2s 5s 10s" ;;
     shot) (( pos == 1 )) && { mapfile -t COMPREPLY < <(compgen -f -- "$cur"); return; } ;;
     scroll)
-      if (( pos == 1 )); then words="up down left right"
-      elif [[ "${COMP_WORDS[COMP_CWORD-1]}" != at ]]; then words="at 300 600 1200"
+      if (( pos == 1 )); then choices="up down left right"
+      elif [[ "${w[cword-1]}" != at ]]; then choices="at 300 600 1200"
       else command=click
       fi ;;
   esac
@@ -44,9 +55,11 @@ _anibeam_ctl() {
       while read -r label; do
         [[ "$label" == "$cur"* ]] && COMPREPLY+=("$(printf '%q' "$label")")
       done < "$cache"
+      # What bash will put after the last ':' is all the reply may hold.
+      declare -F __ltrim_colon_completions > /dev/null && __ltrim_colon_completions "$cur"
       return ;;
   esac
-  mapfile -t COMPREPLY < <(compgen -W "$words" -- "$cur")
+  mapfile -t COMPREPLY < <(compgen -W "$choices" -- "$cur")
 }
 
 complete -F _anibeam_ctl ctl.sh
