@@ -603,8 +603,8 @@ impl Core {
     }
 
     /// Returns fast, except the calls that wait on the network: the endpoint
-    /// repo fetches and `CheckPhoneUpdate`, which a shell sends off its UI
-    /// thread. Every call after `shutdown` fails the same way, without
+    /// repo fetches, `PhoneNetCheck` and `CheckPhoneUpdate`, which a shell
+    /// sends off its UI thread. Every call after `shutdown` fails the same way, without
     /// touching anything else.
     ///
     /// A router and nothing more: every arm is one call into the module that

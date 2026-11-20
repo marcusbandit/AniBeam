@@ -7,18 +7,21 @@
 //! nightly; the phone's `android-v*` tags never count here, and neither does a draft or a
 //! pull request's test build. Whether GitHub marks a release as a pre-release is not read:
 //! older stable phone releases were published as pre-releases, and no test build is ever
-//! released by hand (CLAUDE.md, Git Workflow). The Stable track is offered stable versions only, the Nightly
-//! track both, so a nightly user moves on to the stable release its nightlies led up to.
+//! released by hand (CLAUDE.md, Git Workflow). The Stable track is offered stable versions
+//! only, the Nightly track both, so a nightly user moves on to the stable release its
+//! nightlies led up to.
 //!
 //! The phone reads the same list for its own `android-v*` tags (`check_phone`, #809), on the
-//! track its build is on, and the desktop's tags never count there.
+//! track the phone keeps, or its build's when it sends none, and the desktop's tags never
+//! count there. The list is asked for gzip'd, about a seventh of its size, since the phone
+//! fetches it over mobile data too.
 
 use serde::Deserialize;
 
 use crate::changelog::digits;
 use crate::contract::{CoreError, PhoneUpdate, Reply};
 use crate::foundation::services::Services;
-use crate::net::{Http, HttpRequest};
+use crate::net::{Http, HttpRequest, gzip};
 
 pub mod install;
 
@@ -262,7 +265,11 @@ pub fn phone_call(
 /// GitHub's list of the repo's releases, newest first, as it sends it.
 async fn releases(http: &dyn Http) -> Result<Vec<u8>, CoreError> {
     let res = http
-        .send(HttpRequest::get(RELEASES).header("Accept", "application/vnd.github+json"))
+        .send(
+            HttpRequest::get(RELEASES)
+                .header("Accept", "application/vnd.github+json")
+                .header(gzip::ACCEPT.0, gzip::ACCEPT.1),
+        )
         .await
         .map_err(|e| CoreError::internal(format!("releases: {}", e.message)))?;
     if !res.is_success() {
@@ -271,7 +278,7 @@ async fn releases(http: &dyn Http) -> Result<Vec<u8>, CoreError> {
             res.status
         )));
     }
-    Ok(res.body)
+    gzip::body(res).map_err(|e| CoreError::internal(format!("releases: {e}")))
 }
 
 const AUR_INFO: &str = "https://aur.archlinux.org/rpc/v5/info?arg[]=";

@@ -146,3 +146,34 @@ fn the_kept_track_decides_what_is_offered() {
     );
     assert_eq!(check_on(&core, "2.4.3", Some(false)).unwrap(), None);
 }
+
+/// The list is asked for gzip'd, and a gzip'd answer is unpacked before it is read.
+#[test]
+fn the_list_comes_gzipped_and_is_unpacked() {
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use std::io::Write;
+
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    let mut gz = GzEncoder::new(Vec::new(), Compression::default());
+    gz.write_all(&list()).unwrap();
+    http.push_for_with_headers(
+        "/releases",
+        200,
+        gz.finish().unwrap(),
+        vec![("Content-Encoding".into(), "gzip".into())],
+    );
+    let update = check(&core, "2.4.3-nightly.20261116.96").unwrap();
+    assert_eq!(
+        update.map(|u| u.version).as_deref(),
+        Some("2.4.3-nightly.20261117.97")
+    );
+    let sent = http.requests();
+    let asked = sent[0]
+        .headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("Accept-Encoding"))
+        .map(|(_, v)| v.as_str());
+    assert_eq!(asked, Some("gzip"));
+}
