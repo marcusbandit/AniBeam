@@ -427,14 +427,7 @@ impl App {
                 .collect();
             self.data().set_ready(true);
         }
-        for card in &self.cards {
-            if let Some(path) = &card.poster
-                && crate::posters::may_ask(path)
-                && self.asked.insert(card.id)
-            {
-                load_poster(card.id, path.clone());
-            }
-        }
+        self.ask_card_posters();
         if let Some(Open::Phone(id)) = self.open {
             // A failed read keeps the page as it was; only a series that is gone closes it.
             match core.call(Call::GetSeries { series: id }) {
@@ -985,6 +978,18 @@ impl App {
     }
 
     /// Asks once for each Airing now poster the core has on disk.
+    /// Asks once for each library card's poster, and again for one whose retry came due.
+    fn ask_card_posters(&mut self) {
+        for card in &self.cards {
+            if let Some(path) = &card.poster
+                && crate::posters::may_ask(path)
+                && self.asked.insert(card.id)
+            {
+                load_poster(card.id, path.clone());
+            }
+        }
+    }
+
     fn ask_airing_posters(&mut self) {
         let Some(airing) = &self.airing else { return };
         for show in &airing.shows {
@@ -2200,6 +2205,7 @@ fn finished(t: &Torrent) -> bool {
 /// both show is decoded once; the pages show it from their next draw. One that did not decode
 /// is asked for again by a later draw, once `posters::may_ask` lets it.
 fn load_poster(id: u64, path: String) {
+    let retry = path.clone();
     crate::posters::load(path, move |poster| {
         with_app(|app| match poster {
             Some(poster) => {
@@ -2208,6 +2214,16 @@ fn load_poster(id: u64, path: String) {
             }
             None => {
                 app.asked.remove(&id);
+                // Asked again when its retry comes due, not at the next unrelated draw. The
+                // show page asks on every draw already.
+                if let Some(wait) = crate::posters::retry_in(&retry) {
+                    slint::Timer::single_shot(wait, || {
+                        with_app(|app| {
+                            app.ask_card_posters();
+                            app.ask_airing_posters();
+                        })
+                    });
+                }
             }
         });
     });

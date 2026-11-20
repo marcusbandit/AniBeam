@@ -176,6 +176,9 @@ struct Find {
     posters_asked: HashSet<String>,
     /// One draw for the posters that come in together.
     poster_redraw: Coalesce,
+    /// The posters the view drawn last shows, kept through the next view, so going back to
+    /// it draws them at once.
+    posters_shown: HashSet<String>,
     /// The shows under the field as you type, the desktop's suggestions: the library's
     /// first, then AniList's.
     suggestions: Vec<Offer>,
@@ -316,6 +319,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             posters: BTreeMap::new(),
             posters_asked: HashSet::new(),
             poster_redraw: Coalesce::default(),
+            posters_shown: HashSet::new(),
             suggestions: Vec::new(),
             suggest_for: String::new(),
             suggest_why: None,
@@ -471,6 +475,8 @@ impl Find {
 
     fn open(&mut self, text: String) {
         self.with_data(|d| d.set_shown(true));
+        // Opened again, the posters that did not decode before are asked for at once.
+        crate::posters::forget_failures();
         self.refresh();
         // AniList is asked only here, and the core skips it when the list is fresh.
         self.load_list(true);
@@ -722,6 +728,8 @@ impl Find {
                 .len()
                 .max(if self.lens == 4 { offers.len() } else { 0 }),
         ];
+        // First, so the posters kept lately draw with the tiles rather than a moment after.
+        self.load_posters(&offers);
         let tiles: Vec<Tile> = offers
             .iter()
             .enumerate()
@@ -744,7 +752,6 @@ impl Find {
                 }
             })
             .collect();
-        self.load_posters(&offers);
         let lens = self.lens;
         let names: Vec<SharedString> = LENSES
             .iter()
@@ -772,18 +779,23 @@ impl Find {
         self.keep_posters();
     }
 
-    /// Lets go of the posters the page no longer shows: a lens, the suggestions and their
-    /// last answer, and the open show. Searching never piles covers up in memory.
+    /// Lets go of the posters neither this view nor the one before it shows: a lens, the
+    /// suggestions and their last answer, and the open show. Going back to the last lens
+    /// draws at once, and searching never piles covers up in memory.
     fn keep_posters(&mut self) {
-        let shown: HashSet<&str> = self
+        let shown: HashSet<String> = self
             .offers
             .iter()
             .chain(&self.suggestions)
             .chain(&self.answered)
             .chain(self.show.as_ref().map(|s| &s.offer))
-            .filter_map(|o| o.poster.as_deref())
+            .filter_map(|o| o.poster.clone())
             .collect();
-        self.posters.retain(|p, _| shown.contains(p.as_str()));
+        if shown == self.posters_shown {
+            return;
+        }
+        let before = std::mem::replace(&mut self.posters_shown, shown);
+        self.posters.retain(|p, _| self.posters_shown.contains(p) || before.contains(p));
     }
 
     /// The list as tiles: a show the library has opens as the library's, with its
@@ -952,6 +964,14 @@ impl Find {
     /// list made threads, and decoded copies waiting for the UI thread, faster than they
     /// finished, until Android killed the app.
     fn load_posters(&mut self, offers: &[Offer]) {
+        // Those decoded lately come at once.
+        for path in offers.iter().filter_map(|o| o.poster.as_deref()) {
+            if !self.posters.contains_key(path)
+                && let Some(poster) = crate::posters::cached(path)
+            {
+                self.posters.insert(path.to_string(), poster.image);
+            }
+        }
         let wanted = new_posters(
             offers.iter().filter_map(|o| o.poster.as_deref()),
             |p| self.posters.contains_key(p) || !crate::posters::may_ask(p),

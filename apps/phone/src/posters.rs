@@ -103,7 +103,8 @@ pub struct Poster {
 /// some 40 MB. The pages hold what they show themselves.
 const KEPT: usize = 48;
 /// How long a file that did not decode waits before it is asked for again, each time it
-/// fails; after the last it is not asked for again until the app starts over.
+/// fails; after the last it keeps that wait, so a cover the image cache fetches late still
+/// shows, and a broken file is read at most every two minutes.
 const RETRIES: [Duration; 3] = [
     Duration::from_secs(5),
     Duration::from_secs(30),
@@ -141,6 +142,16 @@ pub fn reset() {
     lock(&QUEUE).clear();
 }
 
+/// The poster at `path` if it was decoded lately, for a page to show at once.
+pub fn cached(path: &str) -> Option<Poster> {
+    KEPT_POSTERS.with(|k| k.borrow_mut().get(path))
+}
+
+/// A page the person opened asks for its failed files again at once.
+pub fn forget_failures() {
+    FAILED.with(|f| *f.borrow_mut() = Tries::default());
+}
+
 /// Whether the file at `path` may be asked for now: it did not just fail.
 pub fn may_ask(path: &str) -> bool {
     FAILED.with(|f| f.borrow().may_ask(path, Instant::now()))
@@ -156,9 +167,10 @@ pub fn retry_in(path: &str) -> Option<Duration> {
 /// hands it to `land` on the UI thread: `None` when it could not be read or decoded. Called
 /// on the UI thread; `land` always runs later, never inside this call.
 ///
-/// The threads decode the newest asks first, the ones made in the last turn of the event loop
-/// in the order they were made, so the page on screen never waits behind a page asked for
-/// earlier (#1206). Downloads used to start a thread for each draw's posters, and each poster
+/// One thread decodes the newest asks first, the ones made in the last turn of the event
+/// loop in the order they were made, so the page on screen never waits behind a page asked
+/// for earlier; the other decodes the oldest first, so no page waits for good behind newer
+/// ones (#1206). Downloads used to start a thread for each draw's posters, and each poster
 /// that came in drew the page again, so a long list made threads, and decoded copies waiting
 /// for the UI thread, faster than they finished.
 pub fn load(path: String, land: impl FnOnce(Option<Poster>) + 'static) {
@@ -201,25 +213,25 @@ fn batch() -> u64 {
 fn start() -> bool {
     *STARTED.get_or_init(|| {
         let mut any = false;
-        for _ in 0..THREADS {
+        for i in 0..THREADS {
             any |= std::thread::Builder::new()
                 .name("posters".into())
-                .spawn(decode_queued)
+                .spawn(move || decode_queued(i == 0))
                 .is_ok();
         }
         any
     })
 }
 
-/// A posters thread: the newest asks first, each read, decoded and handed back. A decode that
-/// panics is caught and handed back as not decoded, so the thread and the files queued behind
-/// it carry on.
-fn decode_queued() {
+/// A posters thread: the newest asks first, or the oldest, each read, decoded and handed
+/// back. A decode that panics is caught and handed back as not decoded, so the thread and the
+/// files queued behind it carry on.
+fn decode_queued(newest: bool) {
     loop {
         let path = {
             let mut queue = lock(&QUEUE);
             loop {
-                if let Some(path) = queue.pop() {
+                if let Some(path) = queue.pop(newest) {
                     break path;
                 }
                 queue = READY.wait(queue).unwrap_or_else(|e| e.into_inner());
@@ -284,8 +296,8 @@ impl<W> Joins<W> {
     }
 }
 
-/// The files still to decode, in batches, the newest batch first and each batch in the order
-/// it was asked.
+/// The files still to decode, in batches, each in the order it was asked, taken from the
+/// newest batch or the oldest.
 struct Queue {
     batches: BTreeMap<u64, VecDeque<String>>,
 }
@@ -319,11 +331,15 @@ impl Queue {
         self.push(batch, path.to_string());
     }
 
-    fn pop(&mut self) -> Option<String> {
-        let mut newest = self.batches.last_entry()?;
-        let path = newest.get_mut().pop_front();
-        if newest.get().is_empty() {
-            newest.remove();
+    fn pop(&mut self, newest: bool) -> Option<String> {
+        let mut batch = if newest {
+            self.batches.last_entry()?
+        } else {
+            self.batches.first_entry()?
+        };
+        let path = batch.get_mut().pop_front();
+        if batch.get().is_empty() {
+            batch.remove();
         }
         path
     }
@@ -386,9 +402,8 @@ struct Tries {
 impl Tries {
     fn failed(&mut self, path: &str, now: Instant) {
         let tries = self.failed.get(path).map_or(0, |(n, _)| *n);
-        // Past the last retry the time no longer matters: it is not asked for again.
-        let at = RETRIES.get(tries).map_or(now, |wait| now + *wait);
-        self.failed.insert(path.to_string(), (tries + 1, at));
+        let wait = RETRIES.get(tries).unwrap_or(&RETRIES[RETRIES.len() - 1]);
+        self.failed.insert(path.to_string(), (tries + 1, now + *wait));
     }
 
     fn landed(&mut self, path: &str) {
@@ -396,15 +411,12 @@ impl Tries {
     }
 
     fn may_ask(&self, path: &str, now: Instant) -> bool {
-        match self.failed.get(path) {
-            None => true,
-            Some((tries, at)) => *tries <= RETRIES.len() && now >= *at,
-        }
+        self.failed.get(path).is_none_or(|(_, at)| now >= *at)
     }
 
     fn retry_in(&self, path: &str, now: Instant) -> Option<Duration> {
-        let (tries, at) = self.failed.get(path)?;
-        (*tries <= RETRIES.len()).then_some(at.saturating_duration_since(now))
+        let (_, at) = self.failed.get(path)?;
+        Some(at.saturating_duration_since(now))
     }
 }
 
@@ -447,11 +459,24 @@ mod tests {
         }
         // Asked again by the newest page, `b` moves up with it.
         q.bump(2, "b");
-        let order: Vec<String> = std::iter::from_fn(|| q.pop()).collect();
+        let order: Vec<String> = std::iter::from_fn(|| q.pop(true)).collect();
         assert_eq!(order, ["b", "d", "e", "a", "c"]);
         // A file not waiting (being decoded) is not queued twice by a second ask.
         q.bump(3, "a");
-        assert_eq!(q.pop(), None);
+        assert_eq!(q.pop(true), None);
+    }
+
+    /// The other thread takes the oldest asks, so Home's posters never wait for good behind
+    /// every page opened after it.
+    #[test]
+    fn the_oldest_asks_still_move_while_newer_ones_come() {
+        let mut q = Queue::new();
+        q.push(0, "home".into());
+        q.push(1, "downloads".into());
+        q.push(2, "search".into());
+        assert_eq!(q.pop(true).as_deref(), Some("search"));
+        assert_eq!(q.pop(false).as_deref(), Some("home"));
+        assert_eq!(q.pop(false).as_deref(), Some("downloads"));
     }
 
     #[test]
@@ -477,8 +502,10 @@ mod tests {
         assert_eq!(k.get("c"), Some(3));
     }
 
+    /// A cover the image cache fetches late still shows, and a broken file is not read on
+    /// every draw.
     #[test]
-    fn a_file_that_does_not_decode_is_tried_again_later_and_then_left() {
+    fn a_file_that_does_not_decode_is_tried_again_later_and_then_every_two_minutes() {
         let t0 = Instant::now();
         let mut t = Tries::default();
         assert!(t.may_ask("a", t0));
@@ -487,15 +514,17 @@ mod tests {
         assert_eq!(t.retry_in("a", t0), Some(RETRIES[0]));
         assert!(t.may_ask("a", t0 + RETRIES[0]));
         let mut now = t0;
-        for wait in RETRIES {
-            now += wait;
+        for _ in 0..10 {
+            now += Duration::from_secs(600);
             t.failed("a", now);
         }
-        // Past the last retry it is left until the app starts over.
-        assert!(!t.may_ask("a", now + Duration::from_secs(3600)));
-        assert_eq!(t.retry_in("a", now), None);
+        // Past the last retry it keeps the last wait, and is never left for good.
+        let last = RETRIES[RETRIES.len() - 1];
+        assert!(!t.may_ask("a", now + last - Duration::from_secs(1)));
+        assert!(t.may_ask("a", now + last));
         // One that decodes is clear again.
         t.landed("a");
         assert!(t.may_ask("a", now));
+        assert_eq!(t.retry_in("a", now), None);
     }
 }
