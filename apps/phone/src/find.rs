@@ -174,11 +174,8 @@ struct Find {
     posters: BTreeMap<String, Image>,
     /// The poster files asked of the loader and not back yet.
     posters_asked: HashSet<String>,
-    /// The poster files that did not decode, not asked for again until the core reports a
-    /// change: the image cache may have written them by then.
-    posters_failed: HashSet<String>,
-    /// A draw for the posters that came in is on its way.
-    poster_redraw: bool,
+    /// One draw for the posters that come in together.
+    poster_redraw: Coalesce,
     /// The shows under the field as you type, the desktop's suggestions: the library's
     /// first, then AniList's.
     suggestions: Vec<Offer>,
@@ -282,12 +279,7 @@ fn ask(call: Call, then: impl FnOnce(&mut Find, Result<Reply, CoreError>) + Send
 
 /// The app's tick, with whether the core reported a change since the last one.
 pub fn tick(changed: bool) {
-    with(|f| {
-        if changed {
-            f.posters_failed.clear();
-        }
-        f.list_tick(changed);
-    });
+    with(|f| f.list_tick(changed));
 }
 
 /// The language changed: every line this page pushed as a string is pushed again.
@@ -323,8 +315,7 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             list_from_show: false,
             posters: BTreeMap::new(),
             posters_asked: HashSet::new(),
-            posters_failed: HashSet::new(),
-            poster_redraw: false,
+            poster_redraw: Coalesce::default(),
             suggestions: Vec::new(),
             suggest_for: String::new(),
             suggest_why: None,
@@ -778,6 +769,21 @@ impl Find {
             d.set_lens_tiles(model(tiles));
         });
         self.offers = offers;
+        self.keep_posters();
+    }
+
+    /// Lets go of the posters the page no longer shows: a lens, the suggestions and their
+    /// last answer, and the open show. Searching never piles covers up in memory.
+    fn keep_posters(&mut self) {
+        let shown: HashSet<&str> = self
+            .offers
+            .iter()
+            .chain(&self.suggestions)
+            .chain(&self.answered)
+            .chain(self.show.as_ref().map(|s| &s.offer))
+            .filter_map(|o| o.poster.as_deref())
+            .collect();
+        self.posters.retain(|p, _| shown.contains(p.as_str()));
     }
 
     /// The list as tiles: a show the library has opens as the library's, with its
@@ -939,8 +945,8 @@ impl Find {
         });
     }
 
-    /// Asks the posters thread for the posters the offers show that are not in, not asked
-    /// for and not failed since the last change. Each file is asked for once until it comes
+    /// Asks the posters threads for the posters the offers show that are not in, not asked
+    /// for and not waiting to be tried again. Each file is asked for once until it comes
     /// back, however often the page draws (#1206). This used to start a thread on every draw
     /// for every poster not in yet, and each poster that came in drew the page again: a long
     /// list made threads, and decoded copies waiting for the UI thread, faster than they
@@ -948,7 +954,7 @@ impl Find {
     fn load_posters(&mut self, offers: &[Offer]) {
         let wanted = new_posters(
             offers.iter().filter_map(|o| o.poster.as_deref()),
-            |p| self.posters.contains_key(p) || self.posters_failed.contains(p),
+            |p| self.posters.contains_key(p) || !crate::posters::may_ask(p),
             &mut self.posters_asked,
         );
         for path in wanted {
@@ -959,28 +965,33 @@ impl Find {
         }
     }
 
-    /// A poster came back. One that did not decode waits for the core's next change before
-    /// it is asked for again: the image cache may not have had it on disk yet.
+    /// A poster came back. One that did not decode is asked for again after a wait, a few
+    /// times, by a draw at the time: the image cache may not have had it on disk yet.
     fn poster_landed(&mut self, path: String, poster: Option<crate::posters::Poster>) {
         self.posters_asked.remove(&path);
         let Some(poster) = poster else {
-            self.posters_failed.insert(path);
+            if let Some(wait) = crate::posters::retry_in(&path) {
+                slint::Timer::single_shot(wait, || with(Find::redraw_soon));
+            }
             return;
         };
         self.posters.insert(path, poster.image);
-        // Posters come in a run: the page draws once for those that came in together.
-        if self.poster_redraw {
-            return;
+        self.redraw_soon();
+    }
+
+    /// Draws what shows posters, once for everything that asks within `POSTER_REDRAW`:
+    /// posters come in a run.
+    fn redraw_soon(&mut self) {
+        if self.poster_redraw.ask() {
+            slint::Timer::single_shot(POSTER_REDRAW, || {
+                with(|f| {
+                    f.poster_redraw.drawn();
+                    f.show_lens();
+                    f.draw_show();
+                    f.draw_suggestions();
+                })
+            });
         }
-        self.poster_redraw = true;
-        slint::Timer::single_shot(POSTER_REDRAW, || {
-            with(|f| {
-                f.poster_redraw = false;
-                f.show_lens();
-                f.draw_show();
-                f.draw_suggestions();
-            })
-        });
     }
 
     // ---- The suggestions: shows first, the way the desktop's field works
@@ -2427,6 +2438,23 @@ impl Find {
     }
 }
 
+/// One draw for a run of things landing: the first asks for it, the rest wait for that one.
+#[derive(Debug, Default)]
+struct Coalesce {
+    pending: bool,
+}
+
+impl Coalesce {
+    /// True when no draw is on its way yet, so one is to be started.
+    fn ask(&mut self) -> bool {
+        !std::mem::replace(&mut self.pending, true)
+    }
+
+    fn drawn(&mut self) {
+        self.pending = false;
+    }
+}
+
 /// The poster files among `paths` that are neither `shown` nor asked for yet, each once, and
 /// noted as asked for.
 fn new_posters<'a>(
@@ -2739,8 +2767,19 @@ mod tests {
         assert!(asked.is_empty());
     }
 
+    /// Posters that land together draw the page once, not once each: a draw per poster is
+    /// the storm again, only slower (#1206).
     #[test]
-    fn a_poster_that_came_back_is_asked_for_again_only_once_let_go() {
+    fn posters_that_land_together_draw_the_page_once() {
+        let mut redraw = Coalesce::default();
+        let draws = (0..40).filter(|_| redraw.ask()).count();
+        assert_eq!(draws, 1);
+        redraw.drawn();
+        assert!(redraw.ask());
+    }
+
+    #[test]
+    fn a_poster_let_go_is_asked_for_again_and_one_out_is_not() {
         let shown = |_: &str| false;
         let mut asked = HashSet::new();
         let paths = ["/images/a.jpg", "/images/a.jpg", "/images/b.jpg"];

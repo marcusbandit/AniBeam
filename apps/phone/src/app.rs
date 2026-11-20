@@ -429,6 +429,7 @@ impl App {
         }
         for card in &self.cards {
             if let Some(path) = &card.poster
+                && crate::posters::may_ask(path)
                 && self.asked.insert(card.id)
             {
                 load_poster(card.id, path.clone());
@@ -652,7 +653,7 @@ impl App {
             self.trackers.as_ref(),
             &self.art,
         ) {
-            if self.asked.insert(key) {
+            if crate::posters::may_ask(&path) && self.asked.insert(key) {
                 load_poster(key, path);
             }
         }
@@ -989,6 +990,7 @@ impl App {
         for show in &airing.shows {
             let key = AIRING_ART | show.anilist_id;
             if let Some(path) = &show.poster
+                && crate::posters::may_ask(path)
                 && self.asked.insert(key)
             {
                 load_poster(key, path.clone());
@@ -2194,16 +2196,19 @@ fn finished(t: &Torrent) -> bool {
     t.progress >= 1.0 && t.roll.is_none()
 }
 
-/// Decodes the poster file for `id` on the posters thread, which Downloads shares, so a file
-/// both show is decoded once; the pages show it from their next draw.
+/// Decodes the poster file for `id` on the posters threads, which Downloads shares, so a file
+/// both show is decoded once; the pages show it from their next draw. One that did not decode
+/// is asked for again by a later draw, once `posters::may_ask` lets it.
 fn load_poster(id: u64, path: String) {
     crate::posters::load(path, move |poster| {
-        let Some(poster) = poster else {
-            return;
-        };
-        with_app(|app| {
-            app.art.posters.insert(id, poster.image);
-            app.art.tones.insert(id, poster.tone);
+        with_app(|app| match poster {
+            Some(poster) => {
+                app.art.posters.insert(id, poster.image);
+                app.art.tones.insert(id, poster.tone);
+            }
+            None => {
+                app.asked.remove(&id);
+            }
         });
     });
 }
@@ -2252,6 +2257,8 @@ pub fn run(
     commands: Commands,
     inbox: Receiver<Command>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // A new event loop: posters asked of the last one are asked again, not waited on.
+    crate::posters::reset();
     // Before anything talks to a computer, so every request can carry the phone's proof.
     match Store::open(&data_dir).and_then(|s| s.device_key()) {
         Ok(key) => anibeam_companion::client::use_device_key(key),
