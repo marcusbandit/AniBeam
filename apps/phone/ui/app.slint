@@ -364,6 +364,12 @@ export component AppWindow inherits Window {
         keys.focus();
     }
 
+    // Takes the focus back from a field, which puts the on-screen keyboard away, as Back does
+    // on a phone while it shows. For control over adb's `back` (src/control/).
+    public function drop-keyboard() {
+        keys.focus();
+    }
+
     // What Back closes first, by number, for control over adb's `where`: OVER in
     // src/control/ui.rs names each. It follows the handler below, so a question or sheet
     // added there gets the next number here and its name there. 0 is nothing.

@@ -118,9 +118,8 @@ pub fn serve(line: &str) -> (bool, String) {
 /// How long a command can take at most, for the ones that take long on purpose.
 fn worst(c: &Command) -> Option<Duration> {
     match c {
-        Command::Wait { secs, .. } | Command::Perf(secs) => {
-            Some(Duration::from_secs_f32(*secs) + Duration::from_secs(1))
-        }
+        // These fit themselves to what the line has left (`fit`), so need only a moment.
+        Command::Wait { .. } | Command::Perf(_) => Some(Duration::from_secs(1)),
         Command::Swipe { ms, .. } => Some(Duration::from_millis(*ms)),
         Command::Hold(_) => Some(ui::HOLD + Duration::from_millis(200)),
         _ => None,
@@ -137,15 +136,18 @@ fn cut(answer: String) -> String {
         end -= 1;
     }
     let end = answer[..end].rfind('\n').unwrap_or(end);
-    // An error that was the last line stays the last line, so the result code holds, and
-    // is not counted among the lines left out.
-    let last = answer.lines().last().filter(|l| l.starts_with("error:"));
+    // An error at the end stays at the end, all its lines (a list of matches follows it),
+    // so the result code holds; it is not counted among the lines left out.
+    let tail = answer
+        .rfind("\nerror:")
+        .filter(|&at| at >= end && answer.len() - at < 4000)
+        .map(|at| &answer[at + 1..]);
     let left = answer[end..]
         .lines()
         .filter(|l| !l.is_empty())
         .count()
-        .saturating_sub(usize::from(last.is_some()));
-    let error = last.map(|l| format!("\n{l}")).unwrap_or_default();
+        .saturating_sub(tail.map_or(0, |t| t.lines().count()));
+    let error = tail.map(|t| format!("\n{t}")).unwrap_or_default();
     format!(
         "{}\n... {left} more lines; narrow it with a filter{error}",
         &answer[..end]
@@ -197,11 +199,41 @@ fn on_ui<T: Send + 'static>(
     })
 }
 
+/// How long a wait or a sample of `secs` may run on this line: what is left, less a margin
+/// for its last round trip and the answer.
+fn fit(secs: f32, budget: Budget) -> f32 {
+    let room = budget.left().saturating_sub(Duration::from_millis(1500));
+    secs.min(room.as_secs_f32()).max(0.5)
+}
+
+/// A label written for the command line's reader: in double quotes, `"` and `\` escaped.
+fn quoted(label: &str) -> String {
+    format!("\"{}\"", label.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 fn run(command: Command, budget: Budget) -> String {
     match command {
-        Command::Wait { label, secs } => wait(&label, secs, budget),
+        Command::Wait { label, secs } => {
+            let take = fit(secs, budget);
+            let said = wait(&label, take, budget);
+            // Cut short by the line's time, it says how to go on: ctl.sh sends that line
+            // again as it is, so the time is worked out here, once.
+            if take + 0.25 < secs && said.contains("did not show within") {
+                format!("{said}\nagain: wait {} {:.1}s", quoted(&label), secs - take)
+            } else {
+                said
+            }
+        }
         Command::State => state(budget),
-        Command::Perf(secs) => perf(secs, budget),
+        Command::Perf(secs) => {
+            let take = fit(secs, budget);
+            let said = perf(take, budget);
+            if take + 0.25 < secs {
+                format!("{said}\n(cut to {take:.1} s, what a line has on this Android)")
+            } else {
+                said
+            }
+        }
         other => {
             let timeout = match &other {
                 Command::Swipe { ms, .. } => ANSWER + Duration::from_millis(*ms),
@@ -337,11 +369,14 @@ fn thread_times() -> Vec<(u32, String, u64)> {
 fn perf(secs: f32, budget: Budget) -> String {
     // A UI thread too busy to take the mark is the stall perf is there to measure: the
     // sample goes on without the frame count and says why.
+    let asked = Instant::now();
     let mark_failed = on_ui(budget.cap(ANSWER), |tx| {
         ui::frames_mark();
         let _ = tx.send(());
     })
     .err();
+    // How long the mark waited is a wait like the pings', the first and often the longest.
+    let mark_wait = asked.elapsed();
     // The CPU times and the span they are divided by start at the same moment, after the
     // mark, which a busy UI thread can hold up for seconds.
     let start = Instant::now();
@@ -349,8 +384,8 @@ fn perf(secs: f32, budget: Budget) -> String {
     let span = Duration::from_secs_f32(secs);
     // A ping that gets no answer is the stall perf is there to catch: it counts as a wait of
     // its whole timeout, and the sample goes on.
-    let mut waits = Vec::new();
-    let mut unanswered = 0;
+    let mut waits = vec![mark_wait];
+    let mut unanswered = usize::from(mark_failed.is_some());
     while start.elapsed() < span && !budget.left().is_zero() {
         let cap = budget.cap(ANSWER);
         match ping(budget) {
@@ -441,11 +476,19 @@ mod tests {
         let mut long: Vec<String> = (0..30_000)
             .map(|i| format!("  text \"row {i}\" at 1,2"))
             .collect();
-        long.push("error: the last one failed".into());
+        long.push("error: \"x\" matches 3; --nth n picks one:".into());
+        long.push("  1: button \"x\" at 1,2 (3x4)".into());
         let out = cut(long.join("\n"));
         assert!(out.len() < MOST + 200, "{}", out.len());
         assert!(out.contains("more lines; narrow it with a filter"));
-        assert!(out.ends_with("\nerror: the last one failed"));
+        // The whole error stays last, its list of matches included.
+        assert!(
+            out.ends_with(
+                "\nerror: \"x\" matches 3; --nth n picks one:\n  1: button \"x\" at 1,2 (3x4)"
+            ),
+            "{}",
+            &out[out.len() - 200..]
+        );
         assert!(out.lines().all(|l| !l.ends_with("at 1,")));
     }
 
@@ -455,11 +498,16 @@ mod tests {
             label: "x".into(),
             secs: 30.0,
         };
-        assert_eq!(worst(&wait), Some(Duration::from_secs(31)));
-        assert_eq!(worst(&Command::Perf(5.0)), Some(Duration::from_secs(6)));
+        // A wait and a sample fit themselves to the line, so they need only a moment of it.
+        assert_eq!(worst(&wait), Some(Duration::from_secs(1)));
+        assert_eq!(worst(&Command::Perf(5.0)), Some(Duration::from_secs(1)));
         assert_eq!(worst(&Command::Where), None);
-        // Two of the longest waits cannot both fit in one line.
-        assert!(2 * worst(&wait).unwrap() > LINE);
+        // A default wait fits the short line of an older Android, a margin left over.
+        let short = Budget(Instant::now() + SHORT_LINE);
+        let take = fit(command::WAIT, short);
+        assert!(take < command::WAIT && take > 5.0, "{take}");
+        assert_eq!(fit(2.0, short), 2.0);
+        assert_eq!(quoted(r#"Say "hi" \ bye"#), r#""Say \"hi\" \\ bye""#);
         // Off the phone a line has the long budget.
         assert_eq!(line_time(), LINE);
         assert!(SHORT_LINE < LINE);

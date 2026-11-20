@@ -322,13 +322,13 @@ impl Element {
     fn line(&self) -> String {
         let mut s = self.role_name();
         if !self.label.is_empty() {
-            s.push_str(&format!(" {:?}", clip(&self.label)));
+            s.push_str(&format!(" {}", quote(&clip(&self.label))));
         }
         if let Some(v) = &self.value {
-            s.push_str(&format!(" value {:?}", clip(v)));
+            s.push_str(&format!(" value {}", quote(&clip(v))));
         }
         if !self.placeholder.is_empty() {
-            s.push_str(&format!(" placeholder {:?}", clip(&self.placeholder)));
+            s.push_str(&format!(" placeholder {}", quote(&clip(&self.placeholder))));
         }
         for (on, word) in [
             (self.focused, " focused"),
@@ -367,6 +367,24 @@ impl Element {
 /// Labels longer than this are cut in a line, and a cut label still matches what it starts
 /// with (`matches`), so a line copied from `tree` works as a target.
 const CUT: usize = 90;
+
+/// A label in double quotes, `"` and `\` escaped and control characters written out, the
+/// rest as it is: Rust's `{:?}` would write an emoji's variation selector or a combining
+/// accent as `\u{...}`, which matches no label typed back.
+fn quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if c.is_control() => out.extend(c.escape_default()),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
 
 /// A long label, cut to what a line of the tree can hold.
 fn clip(s: &str) -> String {
@@ -628,7 +646,10 @@ fn elements(w: &AppWindow) -> Vec<Element> {
 /// The elements worth listing: in reach, and without the text a control beside it or around
 /// it names already: a button's label, a settings row's title next to its switch.
 fn listed(all: Vec<Element>) -> Vec<Element> {
-    let shown: Vec<Element> = all.into_iter().filter(Element::reachable).collect();
+    let shown: Vec<Element> = all
+        .into_iter()
+        .filter(|e| e.reachable() || (e.focused && e.shown && !e.covered))
+        .collect();
     // The controls by their folded label, so each text looks only at the few that share it.
     let mut controls: HashMap<&str, Vec<&Element>> = HashMap::new();
     for e in shown.iter().filter(|e| e.role != AccessibleRole::Text) {
@@ -1193,6 +1214,16 @@ fn run(w: &AppWindow, command: Command) -> Result<String, String> {
         }
         // Android's backend finishes the activity when nothing takes Back, so a Back that
         // goes untaken here is one that would close the app on the phone.
+        // With the on-screen keyboard up, a phone's Back closes the keyboard and the app never
+        // sees it.
+        Command::Back
+            if w.window()
+                .virtual_keyboard(i_slint_core::InternalToken)
+                .is_some_and(|(_, size)| size.width > 0.0 && size.height > 0.0) =>
+        {
+            w.invoke_drop_keyboard();
+            format!("closed the keyboard; {}", where_line(w))
+        }
         Command::Back | Command::Key(_) => {
             let keys = match command {
                 Command::Key(keys) => keys,
