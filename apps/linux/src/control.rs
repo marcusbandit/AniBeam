@@ -893,10 +893,12 @@ mod tests {
 
     #[test]
     fn a_shot_lands_where_it_is_asked_or_in_temp() {
-        let p = plan("shot", &s(&["/tmp/x/page"]), &Opts::default(), 0).unwrap();
+        let dir = std::env::temp_dir().join("x");
+        let asked = dir.join("page").to_string_lossy().into_owned();
+        let p = plan("shot", &[asked], &Opts::default(), 0).unwrap();
         assert_eq!(p.steps, json!([{"shot": "page"}]));
-        assert_eq!(p.out.as_deref(), Some(Path::new("/tmp/x")));
-        assert_eq!(p.print, Print::Shot(PathBuf::from("/tmp/x/page.png")));
+        assert_eq!(p.out.as_deref(), Some(dir.as_path()));
+        assert_eq!(p.print, Print::Shot(dir.join("page.png")));
         let p = plan("shot", &[], &Opts::default(), 42).unwrap();
         assert_eq!(
             p.print,
