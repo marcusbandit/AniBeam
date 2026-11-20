@@ -602,8 +602,10 @@ impl Core {
         self.call(call)
     }
 
-    /// Returns fast, always. Every call after `shutdown` fails the same
-    /// way, without touching anything else.
+    /// Returns fast, except the calls that wait on the network: the endpoint
+    /// repo fetches and `CheckPhoneUpdate`, which a shell sends off its UI
+    /// thread. Every call after `shutdown` fails the same way, without
+    /// touching anything else.
     ///
     /// A router and nothing more: every arm is one call into the module that
     /// owns it, grouped by the team the call belongs to (#773, #854).

@@ -27,9 +27,17 @@ fn list() -> Vec<u8> {
 }
 
 fn check(core: &Core, current: &str) -> Result<Option<PhoneUpdate>, CoreError> {
+    check_on(core, current, None)
+}
+
+fn check_on(
+    core: &Core,
+    current: &str,
+    nightly: Option<bool>,
+) -> Result<Option<PhoneUpdate>, CoreError> {
     match core.call(Call::CheckPhoneUpdate {
         current: current.into(),
-        nightly: None,
+        nightly,
     })? {
         Reply::PhoneUpdate { update } => Ok(update),
         other => panic!("{other:?}"),
@@ -50,7 +58,7 @@ fn a_phone_hears_of_a_newer_nightly_and_its_apk() {
     let sent = http.requests();
     assert_eq!(sent.len(), 1);
     assert!(
-        sent[0].url.contains("api.github.com/repos/") && sent[0].url.contains("per_page=30"),
+        sent[0].url.contains("api.github.com/repos/") && sent[0].url.contains("per_page=100"),
         "{}",
         sent[0].url
     );
@@ -116,4 +124,25 @@ fn the_check_answers_on_a_current_thread_runtime() {
         answer.map(|u| u.version).as_deref(),
         Some("2.4.3-nightly.20261117.97")
     );
+}
+
+/// The track the phone keeps decides, not the running build: a nightly phone on the stable
+/// release hears of the next nightly, and a stable phone does not.
+#[test]
+fn the_kept_track_decides_what_is_offered() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    let list = json!([
+        { "tag_name": "android-v2.4.4-nightly.20261201.120", "html_url": "https://example.com/release/120" },
+        { "tag_name": "android-v2.4.3", "html_url": "https://example.com/release/243" }
+    ])
+    .to_string();
+    http.push_for("/releases", 200, list.clone());
+    http.push_for("/releases", 200, list);
+    let nightly = check_on(&core, "2.4.3", Some(true)).unwrap();
+    assert_eq!(
+        nightly.map(|u| u.version).as_deref(),
+        Some("2.4.4-nightly.20261201.120")
+    );
+    assert_eq!(check_on(&core, "2.4.3", Some(false)).unwrap(), None);
 }

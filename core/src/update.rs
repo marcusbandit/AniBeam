@@ -23,11 +23,6 @@ use crate::net::{Http, HttpRequest};
 pub mod install;
 
 const RELEASES: &str = "https://api.github.com/repos/marcusbandit/Anibeam/releases?per_page=100";
-/// The phone's page is shorter: the list comes over mobile data too, the repo keeps only the
-/// last few nightlies of each app, and the stable releases sit right behind them.
-const PHONE_RELEASES: &str =
-    "https://api.github.com/repos/marcusbandit/Anibeam/releases?per_page=30";
-
 /// What a desktop release's tag starts with, before its version.
 const DESKTOP_TAG: &str = "v";
 /// What a phone release's tag starts with: `android-v2.4.3-nightly.20261117.97`.
@@ -231,7 +226,7 @@ pub async fn check(
     current: &str,
     track: Track,
 ) -> Result<Option<Update>, CoreError> {
-    newest(&releases(http, RELEASES).await?, current, track)
+    newest(&releases(http).await?, current, track)
 }
 
 /// Asks GitHub for the phone, as `check` does for the desktop.
@@ -240,7 +235,7 @@ pub async fn check_phone(
     current: &str,
     track: Track,
 ) -> Result<Option<PhoneUpdate>, CoreError> {
-    newest_phone_on(&releases(http, PHONE_RELEASES).await?, current, track)
+    newest_phone_on(&releases(http).await?, current, track)
 }
 
 /// `CheckPhoneUpdate`: [`check_phone`] over the core's transport, waited for on its runtime
@@ -265,9 +260,9 @@ pub fn phone_call(
 }
 
 /// GitHub's list of the repo's releases, newest first, as it sends it.
-async fn releases(http: &dyn Http, url: &str) -> Result<Vec<u8>, CoreError> {
+async fn releases(http: &dyn Http) -> Result<Vec<u8>, CoreError> {
     let res = http
-        .send(HttpRequest::get(url).header("Accept", "application/vnd.github+json"))
+        .send(HttpRequest::get(RELEASES).header("Accept", "application/vnd.github+json"))
         .await
         .map_err(|e| CoreError::internal(format!("releases: {}", e.message)))?;
     if !res.is_success() {
