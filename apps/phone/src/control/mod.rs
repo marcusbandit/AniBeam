@@ -335,12 +335,13 @@ fn thread_times() -> Vec<(u32, String, u64)> {
 /// Samples the UI loop for `secs`: how long its calls waited, the frames it drew, and the
 /// threads that used the CPU meanwhile.
 fn perf(secs: f32, budget: Budget) -> String {
-    if let Err(e) = on_ui(budget.cap(ANSWER), |tx| {
+    // A UI thread too busy to take the mark is the stall perf is there to measure: the
+    // sample goes on without the frame count and says why.
+    let mark_failed = on_ui(budget.cap(ANSWER), |tx| {
         ui::frames_mark();
         let _ = tx.send(());
-    }) {
-        return e;
-    }
+    })
+    .err();
     // The CPU times and the span they are divided by start at the same moment, after the
     // mark, which a busy UI thread can hold up for seconds.
     let start = Instant::now();
@@ -365,11 +366,17 @@ fn perf(secs: f32, budget: Budget) -> String {
     let elapsed = start.elapsed().as_secs_f32();
     // A frames read that failed goes last, as the line's error, so the sample counts as
     // failed rather than passing with a hole in it.
-    let (frames, failed) = match on_ui(budget.cap(ANSWER), |tx| {
-        let _ = tx.send(ui::frames_since_mark());
-    }) {
-        Ok(f) => (f, None),
-        Err(e) => ("frames: not read".to_string(), Some(e)),
+    let (frames, failed) = match &mark_failed {
+        Some(e) => (
+            "frames: not counted, the UI thread took no mark".to_string(),
+            Some(e.clone()),
+        ),
+        None => match on_ui(budget.cap(ANSWER), |tx| {
+            let _ = tx.send(ui::frames_since_mark());
+        }) {
+            Ok(f) => (f, None),
+            Err(e) => ("frames: not read".to_string(), Some(e)),
+        },
     };
 
     waits.sort();

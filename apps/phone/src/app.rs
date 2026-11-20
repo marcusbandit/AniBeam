@@ -223,6 +223,14 @@ pub(crate) fn phone_series() -> Vec<(u64, String)> {
 }
 
 /// More's sections' names, by the index Settings.section uses.
+/// More's section by its index, in English, for control over adb's `where`.
+#[cfg(control)]
+pub(crate) fn section_name(index: i32) -> Option<String> {
+    let id = SECTIONS.get(usize::try_from(index).ok()?)?;
+    use anibeam_core::i18n::{Lang, tr_in};
+    Some(tr_in(Lang::En, id, &[]))
+}
+
 const SECTIONS: [&str; 14] = [
     "more-accounts",
     "phone-nav-downloads",

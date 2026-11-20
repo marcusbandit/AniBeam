@@ -10,9 +10,20 @@ use jni::sys::jstring;
 /// when one failed, so Java never reads it out of the text.
 extern "system" fn run(mut env: JNIEnv, _class: JClass, line: JString) -> jstring {
     let line: String = env.get_string(&line).map(Into::into).unwrap_or_default();
-    // A panic must not cross into Java: it would take the whole app down.
-    let (ok, said) = std::panic::catch_unwind(|| super::serve(&line))
-        .unwrap_or_else(|_| (false, "error: the command panicked; logcat has it".into()));
+    // A panic must not cross into Java: it would take the whole app down. Its message goes to
+    // logcat here, since a panic's own print goes to a stderr Android throws away.
+    let (ok, said) = std::panic::catch_unwind(|| super::serve(&line)).unwrap_or_else(|p| {
+        let why = p
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| p.downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        crate::local::log(&format!("control: {line:?} panicked: {why}"));
+        (
+            false,
+            "error: the command panicked; logcat has it under AnibeamCore".into(),
+        )
+    });
     let out = format!("{}{said}", if ok { '0' } else { '1' });
     env.new_string(out)
         .map(|s| s.into_raw())

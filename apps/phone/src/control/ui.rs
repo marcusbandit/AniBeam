@@ -821,7 +821,9 @@ fn where_line(w: &AppWindow) -> String {
     }
     let settings = w.global::<Settings>();
     if page == 3 && settings.get_section() >= 0 {
-        parts.push(format!("more section {}", settings.get_section()));
+        let n = settings.get_section();
+        let name = crate::app::section_name(n).unwrap_or_else(|| n.to_string());
+        parts.push(format!("more section {name}"));
     }
     let data = w.global::<AppData>();
     if data.get_series_open() {

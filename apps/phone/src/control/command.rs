@@ -339,16 +339,14 @@ fn nth(word: &str) -> Result<usize, String> {
         .ok_or_else(|| format!("{word} is not a match number like 2"))
 }
 
-/// A point, or a label with an optional `--nth n` (or `#n`) at its end.
+/// A point, or a label with an optional `--nth n` at its end. A label's own last word may
+/// be `#2`, so that is never read as a match number.
 fn target(words: &[String]) -> Result<Target, String> {
     if let Some(point) = point(words) {
         return Ok(point);
     }
     let (words, nth) = match words {
         [head @ .., flag, n] if !head.is_empty() && flag == "--nth" => (head, Some(nth(n)?)),
-        [head @ .., last] if !head.is_empty() && last.starts_with('#') => {
-            (head, Some(nth(&last[1..])?))
-        }
         _ => (words, None),
     };
     let label = rest(words);
@@ -539,6 +537,13 @@ fn parse(words: &[String]) -> Result<Command, String> {
                 Some((last, words)) if !words.is_empty() && seconds(last).is_some() => {
                     (named(head, words, "a label")?, seconds(last).unwrap())
                 }
+                // `wait Play 5` most likely means five seconds, `wait Season 2` a label:
+                // neither is guessed.
+                Some((last, words)) if !words.is_empty() && number(last).is_some() => {
+                    return Err(format!(
+                        "wait: give the time with an s ({last}s), or quote a label that ends in a number"
+                    ));
+                }
                 _ => (named(head, args, "a label")?, WAIT),
             };
             Command::Wait {
@@ -684,9 +689,10 @@ mod tests {
             one("press Get episodes"),
             Command::Press(label("Get episodes", 1))
         );
+        // A label may end in "#2": it stays part of the label.
         assert_eq!(
-            one("press \"Get episodes\" #2"),
-            Command::Press(label("Get episodes", 2))
+            one("press Episode #2"),
+            Command::Press(label("Episode #2", 1))
         );
         assert_eq!(
             one("click Get episodes --nth 3"),
@@ -706,7 +712,7 @@ mod tests {
         );
         assert_eq!(one("press #1"), Command::Press(label("#1", 1)));
         assert_eq!(one("press --nth"), Command::Press(label("--nth", 1)));
-        assert!(parse_line("press Play #0").is_err());
+        assert_eq!(one("press Play #0"), Command::Press(label("Play #0", 1)));
         assert!(parse_line("click Play --nth x").is_err());
         assert!(parse_line("press").is_err());
         assert!(parse_line("press \"  \"").is_err());
@@ -719,7 +725,10 @@ mod tests {
             Command::Tap(Target::Point(120.0, 640.5))
         );
         assert_eq!(one("tap Season 2"), Command::Tap(label("Season 2", 1)));
-        assert_eq!(one("hold Frieren #3"), Command::Hold(label("Frieren", 3)));
+        assert_eq!(
+            one("hold Frieren --nth 3"),
+            Command::Hold(label("Frieren", 3))
+        );
         assert_eq!(one("hold 5 6"), Command::Hold(Target::Point(5.0, 6.0)));
         assert_eq!(one("tap 5, 6"), Command::Tap(label("5, 6", 1)));
         assert_eq!(
@@ -878,6 +887,19 @@ mod tests {
             one("wait 4s"),
             Command::Wait {
                 label: "4s".into(),
+                secs: WAIT
+            }
+        );
+        // A bare number after the label is neither guessed as seconds nor folded in.
+        assert!(
+            parse_line("wait Play 5")
+                .unwrap_err()
+                .contains("give the time with an s (5s)")
+        );
+        assert_eq!(
+            one("wait \"Season 2\""),
+            Command::Wait {
+                label: "Season 2".into(),
                 secs: WAIT
             }
         );
