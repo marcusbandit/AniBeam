@@ -552,7 +552,7 @@ impl Repos {
             url = d.get_edit_url().to_string();
         });
         let saved = install.clone();
-        spawn(
+        let started = spawn(
             Call::EditCustomEndpoint { install, name, url },
             move |r, answer| {
                 r.saving = false;
@@ -576,6 +576,9 @@ impl Repos {
                 }
             },
         );
+        if !started {
+            self.saving = false;
+        }
     }
 
     fn add_custom(&mut self, name: String, url: String) {

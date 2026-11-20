@@ -8,8 +8,9 @@
 //! The last answer, when it came and the track are kept in `update.json` beside the core's
 //! folder, so a launch inside the six hours shows the answer it already has rather than
 //! fetching the list again. The track is nightly from the first nightly build the phone
-//! runs, and stays nightly when that phone takes a stable release. In memory the state is
-//! process-wide, since the process outlives the activity.
+//! runs, and stays nightly when that phone takes a stable release, until the person picks
+//! Stable in About. In memory the state is process-wide, since the process outlives the
+//! activity.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -29,6 +30,9 @@ const RETRY_AFTER: Duration = Duration::from_secs(30 * 60);
 /// How long a check may be out before another may go. An answer that never reached the UI
 /// thread (the loop ended while it was out) would otherwise hold the check for good.
 const OUT_AT_MOST: Duration = Duration::from_secs(2 * 60);
+/// How far the clock may step back before it counts as set back: an NTP correction moves it
+/// by seconds, and must not send the check again at once.
+const SLACK: Duration = Duration::from_secs(5 * 60);
 
 /// The flavor build.rs passed through: `play` for the Play Store's bundle, empty for the APK.
 const FLAVOR: &str = env!("ANIBEAM_FLAVOR");
@@ -41,6 +45,8 @@ const RUNNING: &str = env!("ANIBEAM_PHONE_VERSION");
 struct Kept {
     /// The phone follows nightlies.
     nightly: bool,
+    /// The person picked the track in About, so a build no longer sets it.
+    picked: bool,
     /// The build that last asked, and when its answer came, in seconds since 1970.
     asked_by: String,
     answered_at: u64,
@@ -56,18 +62,22 @@ struct State {
     due: Option<(SystemTime, Duration)>,
     /// When the check out now went.
     out_since: Option<SystemTime>,
+    /// The number of the latest check; an answer to an older one is dropped.
+    asked: u64,
 }
 
 static STATE: Mutex<State> = Mutex::new(State {
     file: None,
     kept: Kept {
         nightly: false,
+        picked: false,
         asked_by: String::new(),
         answered_at: 0,
         offer: None,
     },
     due: None,
     out_since: None,
+    asked: 0,
 });
 
 thread_local! {
@@ -98,7 +108,7 @@ fn due(at: Option<(SystemTime, Duration)>, now: SystemTime) -> bool {
         Some((at, wait)) => at
             .duration_since(now)
             .ok()
-            .is_none_or(|left| left.is_zero() || left > wait),
+            .is_none_or(|left| left.is_zero() || left > wait + SLACK),
     }
 }
 
@@ -109,13 +119,19 @@ fn after(wait: Duration) -> Option<(SystemTime, Duration)> {
 
 /// Whether a check that went at `since` still counts as out at `now`.
 fn out(since: Option<SystemTime>, now: SystemTime) -> bool {
-    since.is_some_and(|at| now.duration_since(at).is_ok_and(|gone| gone < OUT_AT_MOST))
+    since.is_some_and(|at| match now.duration_since(at) {
+        Ok(gone) => gone < OUT_AT_MOST,
+        // The clock stepped back while it was out: a small step still counts as out
+        Err(back) => back.duration() < SLACK,
+    })
 }
 
 /// What the phone keeps after this build starts: nightly once any nightly build ran, and
 /// the last answer only when this build asked for it.
 fn on_start(mut kept: Kept, running: &str) -> Kept {
-    kept.nightly |= running.contains("-nightly.");
+    if !kept.picked {
+        kept.nightly |= running.contains("-nightly.");
+    }
     if kept.asked_by != running {
         kept.asked_by = running.to_string();
         kept.answered_at = 0;
@@ -126,12 +142,11 @@ fn on_start(mut kept: Kept, running: &str) -> Kept {
 
 /// When the next check is due for what was kept: six hours after its answer.
 fn due_for(kept: &Kept) -> Option<(SystemTime, Duration)> {
-    (kept.answered_at > 0).then(|| {
-        (
-            UNIX_EPOCH + Duration::from_secs(kept.answered_at) + AGAIN_AFTER,
-            AGAIN_AFTER,
-        )
-    })
+    // A damaged file's time past what the clock can hold asks at once
+    let at = UNIX_EPOCH
+        .checked_add(Duration::from_secs(kept.answered_at))?
+        .checked_add(AGAIN_AFTER)?;
+    (kept.answered_at > 0).then_some((at, AGAIN_AFTER))
 }
 
 fn file_in(data_dir: &Path) -> PathBuf {
@@ -157,6 +172,9 @@ fn save(file: &Path, kept: &Kept) {
 
 pub fn install(window: &AppWindow, data_dir: &Path) {
     WINDOW.with(|w| *w.borrow_mut() = Some(window.as_weak()));
+    window
+        .global::<AppData>()
+        .on_set_update_nightly(pick_nightly);
     window.global::<AppData>().on_open_update(|| {
         let url = state().kept.offer.as_ref().map(|o| o.url.clone());
         if let Some(url) = url {
@@ -195,16 +213,44 @@ pub fn tick() {
         current: RUNNING.to_string(),
         nightly: Some(st.kept.nightly),
     };
+    let number = st.asked + 1;
     // A panic in the call still answers, so the check is not left out for good
-    if crate::local::call_off_thread("newer", call, heard) {
+    if crate::local::call_off_thread("newer", call, move |answer| heard(number, answer)) {
+        st.asked = number;
         st.out_since = Some(now);
     }
 }
 
+/// The person picked a track in About: kept, and asked again on it at once.
+fn pick_nightly(nightly: bool) {
+    {
+        let mut st = state();
+        if st.kept.picked && st.kept.nightly == nightly {
+            return;
+        }
+        st.kept.nightly = nightly;
+        st.kept.picked = true;
+        st.kept.answered_at = 0;
+        st.kept.offer = None;
+        st.due = None;
+        // An answer still out is for the other track
+        st.asked += 1;
+        st.out_since = None;
+        if let Some(file) = &st.file {
+            save(file, &st.kept);
+        }
+    }
+    show(None);
+}
+
 /// On the UI thread: keeps the answer, then shows it.
-fn heard(answer: Result<Reply, CoreError>) {
+fn heard(number: u64, answer: Result<Reply, CoreError>) {
     let offer = {
         let mut st = state();
+        // A later check went out since, or the track changed: this answer is stale
+        if number != st.asked {
+            return;
+        }
         st.out_since = None;
         match answer {
             Ok(Reply::PhoneUpdate { update }) => {
@@ -239,9 +285,11 @@ fn show(offer: Option<PhoneUpdate>) {
         return;
     };
     let version = offer.map(|o| o.version).unwrap_or_default();
-    window
-        .global::<AppData>()
-        .set_update_version(version.into());
+    let nightly = state().kept.nightly;
+    let data = window.global::<AppData>();
+    data.set_update_version(version.into());
+    data.set_update_offered(offered());
+    data.set_update_nightly(nightly);
 }
 
 #[cfg(test)]
@@ -292,6 +340,34 @@ mod tests {
     }
 
     #[test]
+    fn a_picked_track_holds_whatever_build_runs() {
+        let stable = Kept {
+            nightly: false,
+            picked: true,
+            ..Kept::default()
+        };
+        assert!(!on_start(stable, "2.4.3-nightly.20261117.97").nightly);
+    }
+
+    #[test]
+    fn a_damaged_answer_time_asks_at_once() {
+        let kept = Kept {
+            answered_at: u64::MAX,
+            ..Kept::default()
+        };
+        assert_eq!(due_for(&kept), None);
+    }
+
+    #[test]
+    fn a_small_clock_step_back_changes_nothing() {
+        let now = SystemTime::now();
+        let in_six_hours = Some((now + AGAIN_AFTER + Duration::from_secs(1), AGAIN_AFTER));
+        assert!(!due(in_six_hours, now));
+        // A check out a moment ago, with the clock stepped back a second, is still out
+        assert!(out(Some(now + Duration::from_secs(1)), now));
+    }
+
+    #[test]
     fn a_launch_inside_six_hours_keeps_its_answer() {
         let offer = PhoneUpdate {
             version: "2.4.3-nightly.20261118.98".into(),
@@ -299,6 +375,7 @@ mod tests {
         };
         let answered = Kept {
             nightly: true,
+            picked: false,
             asked_by: "2.4.3-nightly.20261117.97".into(),
             answered_at: 1_800_000_000,
             offer: Some(offer.clone()),

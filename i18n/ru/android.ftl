@@ -235,6 +235,9 @@ more-set-version = Версия
 more-update-out = Вышел Anibeam { $version }
 more-update-download = Скачать
 more-about-status-update = Вышла новая версия
+more-updates = Обновления
+more-updates-stable = Стабильная
+more-updates-nightly = Nightly
 
 ## Строки состояния, которые Rust пишет на страницах
 

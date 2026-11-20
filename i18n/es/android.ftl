@@ -225,6 +225,9 @@ more-set-version = Versión
 more-update-out = Ya está aquí Anibeam { $version }
 more-update-download = Descargar
 more-about-status-update = Hay una versión nueva
+more-updates = Actualizaciones
+more-updates-stable = Estable
+more-updates-nightly = Nightly
 
 ## Status lines Rust writes on the pages
 

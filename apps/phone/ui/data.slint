@@ -317,6 +317,10 @@ export global AppData {
     out property <bool> update-unseen: self.update-new && self.update-version != self.update-seen;
     callback open-update();
     callback mark-update-seen();
+    // This build asks for its updates at all, and on which track: About's Updates choice.
+    in property <bool> update-offered;
+    in property <bool> update-nightly;
+    callback set-update-nightly(bool);
     // About's IMDb row, from the catalog: its name and IMDb's credit line.
     in property <string> ratings-label;
     in property <string> ratings-credit;

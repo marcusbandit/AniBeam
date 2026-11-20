@@ -261,12 +261,16 @@ more-icon-moved-note = Some launchers take the icon off the home screen when it 
 more-set-whats-new = What's new
 more-set-onboarding = Set up again
 more-set-version = Version
-# A newer version of the app is out, in More's About and on its row in the index.
+# A newer version of the app is out, on its row in More's About, beside the Download button.
 more-update-out = Anibeam { $version } is out
 # The button beside it, which opens the new version's download in the browser.
 more-update-download = Download
 # About's line in More's index while a newer version is out.
 more-about-status-update = A new version is out
+# About's choice of which builds the update check hears about, as the desktop's Updates.
+more-updates = Updates
+more-updates-stable = Stable
+more-updates-nightly = Nightly
 
 ## Status lines Rust writes on the pages
 

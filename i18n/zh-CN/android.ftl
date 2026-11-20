@@ -207,6 +207,9 @@ more-set-version = 版本
 more-update-out = Anibeam { $version } 已发布
 more-update-download = 下载
 more-about-status-update = 有新版本
+more-updates = 更新
+more-updates-stable = 稳定版
+more-updates-nightly = Nightly
 
 ## Status lines Rust writes on the pages
 

@@ -1,2 +1,2 @@
 ### New
-- More says when a newer version is out and opens its download
+- The APK from GitHub says in More when a newer version is out

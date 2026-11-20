@@ -200,6 +200,35 @@ component UpdateRow inherits Rectangle {
     }
 }
 
+// Which builds the update check hears about, as the desktop's Updates choice: Stable or
+// Nightly (#809).
+component TrackRow inherits Rectangle {
+    height: column.preferred-height;
+    column := VerticalLayout {
+        padding: Theme.unit * 3;
+        padding-left: Theme.pad;
+        padding-right: Theme.pad;
+        spacing: Theme.unit * 2;
+        Text {
+            text: Tr.t("more-updates");
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Segmented {
+            options: [Tr.t("more-updates-stable"), Tr.t("more-updates-nightly")];
+            picked: AppData.update-nightly ? 1 : 0;
+            pick(i) => { AppData.set-update-nightly(i == 1); }
+        }
+    }
+    Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
 // One source the phone searches: its name, its address in the faint ledger cut, Remove.
 component SourceItem inherits Rectangle {
     in property <string> name;
@@ -1075,6 +1104,7 @@ export component MorePage inherits Rectangle {
         note: AppData.version;
         ListGroup {
             if AppData.update-new: UpdateRow { }
+            if AppData.update-offered: TrackRow { }
             Lit {
                 on: Settings.lit == Tr.t("more-set-whats-new");
                 reveal(y) => { about.reveal(y); }
@@ -1101,14 +1131,6 @@ export component MorePage inherits Rectangle {
                 ListRow {
                     label: AppData.ratings-label;
                     helper: AppData.ratings-credit;
-                }
-            }
-            Lit {
-                on: Settings.lit == Tr.t("more-set-version");
-                reveal(y) => { about.reveal(y); }
-                ListRow {
-                    label: Tr.t("more-set-version");
-                    helper: AppData.version;
                     last: true;
                 }
             }
