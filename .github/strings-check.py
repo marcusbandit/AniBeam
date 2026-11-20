@@ -26,7 +26,7 @@ BASELINE = ROOT / ".github" / "strings-baseline.txt"
 # The UI files checked for raw strings. One glob a line; a shell adds its own.
 UI = [
     "apps/linux/qml/**/*.qml",
-    "apps/android/ui/**/*.slint",
+    "apps/phone/ui/**/*.slint",
 ]
 
 # Developer tools nobody but a developer sees: the drive and recording harness, the
@@ -54,7 +54,7 @@ CODE = UI + [
     "core/src/**/*.rs",
     "apps/linux/src/**/*.rs",
     "apps/cli/src/**/*.rs",
-    "apps/android/src/**/*.rs",
+    "apps/phone/src/**/*.rs",
 ]
 
 # Properties that never hold words for a person, so a literal on their line is a code.

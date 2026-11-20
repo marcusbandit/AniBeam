@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 90
     defaults:
       run:
-        working-directory: apps/android
+        working-directory: apps/phone
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,7 +52,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/android
+          workspaces: apps/phone
           key: ipa
 
       # The macos-26 image's newest Xcode with a path it names. The hinge code looks
@@ -70,9 +70,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            apps/android/vendor/mpv-ios
-            !apps/android/vendor/mpv-ios/zips
-          key: mpv-ios-${{ hashFiles('apps/android/scripts/fetch-mpv-ios.sh') }}
+            apps/phone/vendor/mpv-ios
+            !apps/phone/vendor/mpv-ios/zips
+          key: mpv-ios-${{ hashFiles('apps/phone/scripts/fetch-mpv-ios.sh') }}
 
       - name: Fetch libmpv for iOS
         run: |
@@ -87,5 +87,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: phone-ipa
-          path: apps/android/build/ios/Anibeam.ipa
+          path: apps/phone/build/ios/Anibeam.ipa
           if-no-files-found: error

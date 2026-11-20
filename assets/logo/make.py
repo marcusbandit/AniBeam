@@ -23,8 +23,8 @@ from pathlib import Path
 here = Path(__file__).resolve().parent
 root = here.parents[1]
 linux = root / "apps/linux"
-android = root / "apps/android"
-res = android / "android/res"
+phone = root / "apps/phone"
+res = phone / "android/res"
 
 YELLOW = "#FDC901"
 INK = "#0D0E11"
@@ -209,7 +209,7 @@ write(anydpi / "ic_launcher_line.xml", adaptive(
 
 # The picker's previews: the two fixed icons as they are, and the outline in white for the
 # app to tint with the phone's own colours.
-icons = android / "ui/icons"
+icons = phone / "ui/icons"
 png(default, icons / "app.png", 256)
 png(dark, icons / "app-dark.png", 256)
 png(outline("#FFFFFF"), icons / "app-line.png", 256)
