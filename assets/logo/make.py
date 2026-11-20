@@ -140,6 +140,12 @@ with tempfile.TemporaryDirectory() as tmp:
         png(default, p, size)
         parts.append(str(p))
     subprocess.run(["magick", *parts, str(linux / "packaging/windows/anibeam.ico")], check=True)
+# The website's favicon.ico, which Google and browsers ask for at the site's root: the
+# hicolor 48, 32 and 16 written above (site/build.sh copies it in).
+subprocess.run(
+    ["magick", *(str(linux / f"assets/hicolor/default/{s}.png") for s in (48, 32, 16)), str(here / "favicon.ico")],
+    check=True,
+)
 
 # ---- Android: adaptive icons from vector layers. The 1024 square maps onto the middle 62 of
 # the 108 dp canvas, which keeps the glyph inside the 66 dp circle every launcher mask shows.
