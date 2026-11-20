@@ -1565,6 +1565,21 @@ mod tests {
         let tree = say("tree Example Show");
         assert!(tree.contains("text \"Example Show\""), "{tree}");
         assert!(!tree.contains("covered"), "{tree}");
+        // DIAG: what Slint's own test click does on the same title.
+        eprintln!("DIAG tree:\n{}", say("tree"));
+        eprintln!("DIAG device {}", data.get_device());
+        for e in
+            i_slint_backend_testing::ElementHandle::find_by_accessible_label(&w, "Example Show")
+        {
+            eprintln!(
+                "DIAG element {:?} {:?} {:?}",
+                e.accessible_role(),
+                e.absolute_position(),
+                e.size()
+            );
+            e.mock_single_click(slint::platform::PointerEventButton::Left);
+            eprintln!("DIAG after mock click: {}", opened.get());
+        }
         let clicked = say("click Example Show");
         assert!(clicked.starts_with("tapped text"), "{clicked}");
         assert_eq!(opened.get(), 3, "{clicked}");
