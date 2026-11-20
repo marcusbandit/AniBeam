@@ -321,6 +321,8 @@ export global AppData {
     in property <bool> update-offered;
     in property <bool> update-nightly;
     callback set-update-nightly(bool);
+    // The window is in front: off while the app sits behind another or the screen is off.
+    in property <bool> foreground: true;
     // About's IMDb row, from the catalog: its name and IMDb's credit line.
     in property <string> ratings-label;
     in property <string> ratings-credit;

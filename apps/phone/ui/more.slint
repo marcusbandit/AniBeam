@@ -1088,7 +1088,7 @@ export component MorePage inherits Rectangle {
         // A newer version counts as seen only while About is on screen: More stays alive
         // behind the other tabs, with this page open in it
         property <string> offered: AppData.update-version;
-        property <bool> on-screen: Nav.page == 3;
+        property <bool> on-screen: Nav.page == 3 && AppData.foreground;
         init => { AppData.mark-update-seen(); }
         changed offered => {
             if (self.on-screen) {
@@ -1104,7 +1104,11 @@ export component MorePage inherits Rectangle {
         note: AppData.version;
         ListGroup {
             if AppData.update-new: UpdateRow { }
-            if AppData.update-offered: TrackRow { }
+            if AppData.update-offered: Lit {
+                on: Settings.lit == Tr.t("more-updates");
+                reveal(y) => { about.reveal(y); }
+                TrackRow { }
+            }
             Lit {
                 on: Settings.lit == Tr.t("more-set-whats-new");
                 reveal(y) => { about.reveal(y); }

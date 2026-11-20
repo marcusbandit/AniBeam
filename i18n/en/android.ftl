@@ -260,7 +260,6 @@ more-icon-line-note = Line art takes your wallpaper's colours, like your other M
 more-icon-moved-note = Some launchers take the icon off the home screen when it changes. It stays in the app drawer; drag it back from there.
 more-set-whats-new = What's new
 more-set-onboarding = Set up again
-more-set-version = Version
 # A newer version of the app is out, on its row in More's About, beside the Download button.
 more-update-out = Anibeam { $version } is out
 # The button beside it, which opens the new version's download in the browser.
@@ -381,7 +380,7 @@ more-words-check = network dns test https secure reach internet
 more-words-computer = tailscale tailnet host address desktop library stream test save device
 more-words-whats-new = changelog patch notes changes update
 more-words-onboarding = onboarding first run start over
-more-words-version = build about
+more-words-updates = version build about stable nightly channel check
 more-words-ratings = imdb credit scores ratings
 more-words-stats = hours episodes genres studios seasons year watched recap busiest month history
 more-words-backup = backup export file save copy move computer json private sign-ins

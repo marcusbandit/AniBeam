@@ -24,6 +24,10 @@ fn android_main(android: slint::android::AndroidApp) {
     slint::android::init_with_event_listener(android, move |event| {
         if let PollEvent::Main(MainEvent::Resume { .. }) = event {
             let _ = on_resume.send(crate::worker::Command::Sync);
+            let _ = slint::invoke_from_event_loop(|| crate::foreground(true));
+        }
+        if let PollEvent::Main(MainEvent::Pause) = event {
+            let _ = slint::invoke_from_event_loop(|| crate::foreground(false));
         }
         // The phone's light or dark setting or its language changed: Appearance's System mode
         // and a language left to follow the phone follow it.

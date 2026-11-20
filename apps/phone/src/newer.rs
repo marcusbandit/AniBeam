@@ -95,7 +95,7 @@ fn train_build(code: &str) -> bool {
 }
 
 /// Whether this build hears about its own updates: only an APK from a release train.
-fn offered() -> bool {
+pub(crate) fn offered() -> bool {
     cfg!(target_os = "android") && FLAVOR != "play" && train_build(env!("ANIBEAM_VERSION_CODE"))
 }
 
@@ -110,11 +110,6 @@ fn due(at: Option<(SystemTime, Duration)>, now: SystemTime) -> bool {
             .ok()
             .is_none_or(|left| left.is_zero() || left > wait + SLACK),
     }
-}
-
-/// The due time `wait` from now, with the wait beside it.
-fn after(wait: Duration) -> Option<(SystemTime, Duration)> {
-    Some((SystemTime::now() + wait, wait))
 }
 
 /// Whether a check that went at `since` still counts as out at `now`.
@@ -206,18 +201,81 @@ pub fn tick() {
     }
     let mut st = state();
     let now = SystemTime::now();
-    if out(st.out_since, now) || !due(st.due, now) {
+    let Some(number) = st.next(now) else {
         return;
-    }
+    };
     let call = Call::CheckPhoneUpdate {
         current: RUNNING.to_string(),
         nightly: Some(st.kept.nightly),
     };
-    let number = st.asked + 1;
     // A panic in the call still answers, so the check is not left out for good
     if crate::local::call_off_thread("newer", call, move |answer| heard(number, answer)) {
-        st.asked = number;
-        st.out_since = Some(now);
+        st.sent(number, now);
+    }
+}
+
+/// What an answer did to the state.
+#[derive(Debug, PartialEq)]
+enum Heard {
+    /// A later check went out since, or the track changed: nothing changed.
+    Stale,
+    /// An offer, or none: show it, and save what is kept.
+    Answered,
+    /// No answer: try again in half an hour.
+    Failed,
+}
+
+impl State {
+    /// The number of the check to send now, when one is due and none is out.
+    fn next(&self, now: SystemTime) -> Option<u64> {
+        (!out(self.out_since, now) && due(self.due, now)).then_some(self.asked + 1)
+    }
+
+    /// Check `number` went out at `now`; an answer to any earlier one is stale from here.
+    fn sent(&mut self, number: u64, now: SystemTime) {
+        self.asked = number;
+        self.out_since = Some(now);
+    }
+
+    /// The person picked a track. False when it is the one already picked.
+    fn pick(&mut self, nightly: bool) -> bool {
+        if self.kept.picked && self.kept.nightly == nightly {
+            return false;
+        }
+        self.kept.nightly = nightly;
+        self.kept.picked = true;
+        self.kept.answered_at = 0;
+        self.kept.offer = None;
+        self.due = None;
+        // An answer still out is for the other track
+        self.asked += 1;
+        self.out_since = None;
+        true
+    }
+
+    /// The answer to check `number`, at `now`.
+    fn hear(
+        &mut self,
+        number: u64,
+        answer: Result<Option<PhoneUpdate>, String>,
+        now: SystemTime,
+    ) -> Heard {
+        if number != self.asked {
+            return Heard::Stale;
+        }
+        self.out_since = None;
+        match answer {
+            Ok(update) => {
+                self.due = Some((now + AGAIN_AFTER, AGAIN_AFTER));
+                self.kept.answered_at = now.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+                self.kept.offer = update;
+                Heard::Answered
+            }
+            Err(_) => {
+                self.due = Some((now + RETRY_AFTER, RETRY_AFTER));
+                Heard::Failed
+            }
+        }
     }
 }
 
@@ -225,17 +283,9 @@ pub fn tick() {
 fn pick_nightly(nightly: bool) {
     {
         let mut st = state();
-        if st.kept.picked && st.kept.nightly == nightly {
+        if !st.pick(nightly) {
             return;
         }
-        st.kept.nightly = nightly;
-        st.kept.picked = true;
-        st.kept.answered_at = 0;
-        st.kept.offer = None;
-        st.due = None;
-        // An answer still out is for the other track
-        st.asked += 1;
-        st.out_since = None;
         if let Some(file) = &st.file {
             save(file, &st.kept);
         }
@@ -245,38 +295,34 @@ fn pick_nightly(nightly: bool) {
 
 /// On the UI thread: keeps the answer, then shows it.
 fn heard(number: u64, answer: Result<Reply, CoreError>) {
+    let answer = match answer {
+        Ok(Reply::PhoneUpdate { update }) => Ok(update),
+        Ok(other) => Err(format!("unexpected reply {other:?}")),
+        Err(e) => Err(e.to_string()),
+    };
+    if let Err(e) = &answer {
+        crate::local::log(&format!("update check: {e}"));
+    }
     let offer = {
         let mut st = state();
-        // A later check went out since, or the track changed: this answer is stale
-        if number != st.asked {
+        if st.hear(number, answer, SystemTime::now()) != Heard::Answered {
             return;
         }
-        st.out_since = None;
-        match answer {
-            Ok(Reply::PhoneUpdate { update }) => {
-                st.due = after(AGAIN_AFTER);
-                st.kept.answered_at = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map_or(0, |d| d.as_secs());
-                st.kept.offer = update;
-                if let Some(file) = &st.file {
-                    save(file, &st.kept);
-                }
-            }
-            Ok(other) => {
-                crate::local::log(&format!("update check: unexpected reply {other:?}"));
-                st.due = after(RETRY_AFTER);
-                return;
-            }
-            Err(e) => {
-                crate::local::log(&format!("update check: {e}"));
-                st.due = after(RETRY_AFTER);
-                return;
-            }
+        if let Some(file) = &st.file {
+            save(file, &st.kept);
         }
         st.kept.offer.clone()
     };
     show(offer);
+}
+
+/// The window came to the front or went behind: About counts a version as seen only while
+/// it is in front.
+pub fn foreground(on: bool) {
+    let Some(window) = WINDOW.with(|w| w.borrow().as_ref().and_then(|w| w.upgrade())) else {
+        return;
+    };
+    window.global::<AppData>().set_foreground(on);
 }
 
 /// On the UI thread: the window says what is offered, or nothing.
@@ -337,6 +383,57 @@ mod tests {
         let after_stable = on_start(first, "2.4.3");
         assert!(after_stable.nightly);
         assert!(!on_start(Kept::default(), "2.4.3").nightly);
+    }
+
+    fn fresh() -> State {
+        State {
+            file: None,
+            kept: Kept::default(),
+            due: None,
+            out_since: None,
+            asked: 0,
+        }
+    }
+
+    fn offer(version: &str) -> Option<PhoneUpdate> {
+        Some(PhoneUpdate {
+            version: version.into(),
+            url: "https://example.com/a.apk".into(),
+        })
+    }
+
+    #[test]
+    fn an_answer_to_an_older_check_is_dropped_and_the_latest_kept() {
+        let now = SystemTime::now();
+        let mut st = fresh();
+        let first = st.next(now).unwrap();
+        st.sent(first, now);
+        assert_eq!(st.next(now), None, "one check out at a time");
+        // Out too long: a second goes, and the first answers after it
+        let later = now + OUT_AT_MOST * 2;
+        let second = st.next(later).unwrap();
+        st.sent(second, later);
+        assert_eq!(st.hear(second, Ok(offer("2.4.4")), later), Heard::Answered);
+        assert_eq!(st.hear(first, Err("late".into()), later), Heard::Stale);
+        assert_eq!(st.kept.offer, offer("2.4.4"));
+        assert_eq!(st.due.map(|(_, wait)| wait), Some(AGAIN_AFTER));
+    }
+
+    #[test]
+    fn picking_a_track_drops_the_answer_for_the_other_one() {
+        let now = SystemTime::now();
+        let mut st = fresh();
+        let number = st.next(now).unwrap();
+        st.sent(number, now);
+        assert!(st.pick(true));
+        assert!(!st.pick(true), "the same pick again changes nothing");
+        assert_eq!(st.hear(number, Ok(offer("2.4.4")), now), Heard::Stale);
+        assert_eq!(st.kept.offer, None);
+        // And the track is asked about at once
+        let again = st.next(now).unwrap();
+        st.sent(again, now);
+        assert_eq!(st.hear(again, Err("offline".into()), now), Heard::Failed);
+        assert_eq!(st.due.map(|(_, wait)| wait), Some(RETRY_AFTER));
     }
 
     #[test]

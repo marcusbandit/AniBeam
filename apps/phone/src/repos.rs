@@ -659,10 +659,18 @@ impl Repos {
         }
         let started = spawn(Call::PhoneNetCheck, |r, answer| {
             r.data(|d| d.set_checking(false));
-            if let Ok(Reply::PhoneNetCheck { checks }) = answer {
-                r.health = health_of(&checks);
-                if let Some(catalog) = r.catalog.clone() {
-                    r.show(catalog);
+            match answer {
+                Ok(Reply::PhoneNetCheck { checks }) => {
+                    r.health = health_of(&checks);
+                    if let Some(catalog) = r.catalog.clone() {
+                        r.show(catalog);
+                    }
+                }
+                Ok(_) => {}
+                // A check that could not run says why, rather than nothing
+                Err(e) => {
+                    let text = e.to_string();
+                    r.data(|d| d.set_error(text.into()));
                 }
             }
         });

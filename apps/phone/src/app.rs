@@ -252,7 +252,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
     (6, "more-set-whats-new", "more-words-whats-new"),
     (6, "more-set-onboarding", "more-words-onboarding"),
     (6, "about-ratings", "more-words-ratings"),
-    (6, "more-set-version", "more-words-version"),
+    (6, UPDATES, "more-words-updates"),
     (8, "more-stats", "more-words-stats"),
     (9, "backup-export", "more-words-backup"),
     (9, "backup-restore", "more-words-restore"),
@@ -268,6 +268,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
 
 const FEEDS: &str = "more-set-feeds";
 const REPOS_CHECK: &str = "repos-check-repos";
+const UPDATES: &str = "more-updates";
 
 /// The settings a search names: each word in the label, the words or the section's name, the
 /// ones whose label holds the whole search first.
@@ -281,6 +282,8 @@ fn find_settings(query: &str, has_feeds: bool, has_repos: bool) -> Vec<SettingHi
         .iter()
         .filter(|(_, label, _)| has_feeds || *label != FEEDS)
         .filter(|(_, label, _)| has_repos || *label != REPOS_CHECK)
+        // A build that never asks for its updates has no Updates choice to land on
+        .filter(|(_, label, _)| crate::newer::offered() || *label != UPDATES)
         .filter_map(|&(section, label_id, words_id)| {
             let label = tr!(label_id);
             let place = tr!(SECTIONS[section as usize]);
@@ -1314,8 +1317,11 @@ impl App {
                 let window = app.window.clone_strong();
                 let data = window.global::<AppData>();
                 data.set_checking(false);
-                let Ok(Reply::PhoneNetCheck { checks }) = answer else {
-                    return;
+                let checks = match answer {
+                    Ok(Reply::PhoneNetCheck { checks }) => checks,
+                    Ok(_) => return,
+                    // A check that could not run says why, rather than nothing
+                    Err(e) => return data.set_check_summary(e.to_string().into()),
                 };
                 app.check_text = std::iter::once(format!(
                     "Anibeam {} connection check",
