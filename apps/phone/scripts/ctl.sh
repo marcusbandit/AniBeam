@@ -68,9 +68,11 @@ ask() {
   local quoted="'${1//\'/\'\\\'\'}'" out rest status=0
   local -a limit=()
   command -v timeout > /dev/null && limit=(timeout "$ANSWER_WAIT")
-  out="$("${limit[@]}" "$ADB" shell "am broadcast -a com.marcusrosado.anibeam.CONTROL -p $PKG --es cmd $quoted" 2>&1)" || status=$?
+  # `sent` is the phone's clock as its own sh runs the command: the app drops a broadcast
+  # that arrives over 10 s late, so after ctl.sh gives up nothing is left to run.
+  out="$("${limit[@]}" "$ADB" shell "am broadcast -a com.marcusrosado.anibeam.CONTROL -p $PKG --es cmd $quoted --el sent \$(date +%s)" 2>&1)" || status=$?
   if (( status == 124 )); then
-    echo "ctl.sh: no answer within ${ANSWER_WAIT} s. Is Anibeam in the background? Android holds broadcasts to a cached app; bring it to the front." >&2
+    echo "ctl.sh: no answer within ${ANSWER_WAIT} s. Is Anibeam in the background? Android holds broadcasts to a cached app; bring it to the front. The command will not run late, so sending it again is safe." >&2
     exit 2
   elif (( status != 0 )); then
     echo "ctl.sh: adb failed: $out" >&2

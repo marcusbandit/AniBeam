@@ -3,16 +3,18 @@
 
 use jni::JNIEnv;
 use jni::objects::{JClass, JString};
-use jni::sys::jstring;
+use jni::sys::{jlong, jstring};
+use std::time::Duration;
 
 /// `Control.run`, which Java calls on the receiver's own thread with the command line. The
 /// answer's first character is the broadcast's result code, 0 when every command ran and 1
 /// when one failed, so Java never reads it out of the text.
-extern "system" fn run(mut env: JNIEnv, _class: JClass, line: JString) -> jstring {
+extern "system" fn run(mut env: JNIEnv, _class: JClass, line: JString, late_ms: jlong) -> jstring {
     let line: String = env.get_string(&line).map(Into::into).unwrap_or_default();
+    let late = Duration::from_millis(u64::try_from(late_ms).unwrap_or(0));
     // A panic must not cross into Java: it would take the whole app down. Its message goes to
     // logcat here, since a panic's own print goes to a stderr Android throws away.
-    let (ok, said) = std::panic::catch_unwind(|| super::serve(&line)).unwrap_or_else(|p| {
+    let (ok, said) = std::panic::catch_unwind(|| super::serve(&line, late)).unwrap_or_else(|p| {
         let why = p
             .downcast_ref::<&str>()
             .map(|s| s.to_string())
@@ -52,7 +54,7 @@ pub fn sdk() -> i32 {
 pub fn start() {
     let natives = [(
         "run",
-        "(Ljava/lang/String;)Ljava/lang/String;",
+        "(Ljava/lang/String;J)Ljava/lang/String;",
         run as *mut std::ffi::c_void,
     )];
     if let Err(e) = crate::platform::register_natives("Control", &natives) {

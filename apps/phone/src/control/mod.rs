@@ -80,13 +80,16 @@ pub fn install(window: &crate::AppWindow) {
 /// Runs a command line and answers whether every command ran, and what each printed, one
 /// after another. A command that fails stops the line, and its `error: ...` is the answer's
 /// last line. The line has `LINE` in all: a command that would run past it is not started.
-pub fn serve(line: &str) -> (bool, String) {
+pub fn serve(line: &str, late: Duration) -> (bool, String) {
     let commands = match command::parse_line(line) {
         Ok(c) => c,
         Err(e) => return (false, format!("error: {e}")),
     };
+    // Held back on its way (Android defers broadcasts to a cached app), the line has less
+    // time left, so its answer still comes before ctl.sh stops waiting; one held too long
+    // never runs (Control.java), so ctl.sh giving up never leaves a command to run later.
     let line = line_time();
-    let budget = Budget(Instant::now() + line);
+    let budget = Budget(Instant::now() + line.saturating_sub(late));
     let total = commands.len();
     let mut out = Vec::new();
     let mut ok = true;
@@ -102,17 +105,32 @@ pub fn serve(line: &str) -> (bool, String) {
                 line.as_secs(),
                 total - i
             ),
-            _ => run(c, budget),
+            _ => run(c, budget, i + 1 == total),
         };
         // A command that failed part way may say so on a later line, `perf`'s frames for one.
         let failed = said.lines().any(|l| l.starts_with("error:"));
         out.push(said);
         if failed {
             ok = false;
+            let left = total - i - 1;
+            if left > 0 && !out.last().is_some_and(|l| l.contains("not run")) {
+                out.push(format!("error: {left} of {total} not run after it"));
+            }
             break;
         }
     }
     (ok, cut(out.join("\n")))
+}
+
+/// A wait's answer once the line's time cut it short: when it is the line's last command,
+/// it ends with the wait to send next, which ctl.sh sends as it is. Anywhere else the line
+/// stops there and says what did not run, since a resend would drop the rest of the line.
+fn again(said: String, label: &str, secs: f32, take: f32, last: bool) -> String {
+    if last && take + 0.25 < secs && said.contains("did not show within") {
+        format!("{said}\nagain: wait {} {:.1}s", quoted(label), secs - take)
+    } else {
+        said
+    }
 }
 
 /// How long a command can take at most, for the ones that take long on purpose.
@@ -211,18 +229,12 @@ fn quoted(label: &str) -> String {
     format!("\"{}\"", label.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-fn run(command: Command, budget: Budget) -> String {
+fn run(command: Command, budget: Budget, last: bool) -> String {
     match command {
         Command::Wait { label, secs } => {
             let take = fit(secs, budget);
             let said = wait(&label, take, budget);
-            // Cut short by the line's time, it says how to go on: ctl.sh sends that line
-            // again as it is, so the time is worked out here, once.
-            if take + 0.25 < secs && said.contains("did not show within") {
-                format!("{said}\nagain: wait {} {:.1}s", quoted(&label), secs - take)
-            } else {
-                said
-            }
+            again(said, &label, secs, take, last)
         }
         Command::State => state(budget),
         Command::Perf(secs) => {
@@ -490,6 +502,31 @@ mod tests {
             &out[out.len() - 200..]
         );
         assert!(out.lines().all(|l| !l.ends_with("at 1,")));
+    }
+
+    #[test]
+    fn only_a_last_wait_cut_short_says_to_send_it_again() {
+        let missed = || "error: \"Play\" did not show within 6 s".to_string();
+        let last = again(missed(), "Play", 30.0, 6.5, true);
+        assert_eq!(
+            last,
+            "error: \"Play\" did not show within 6 s\nagain: wait \"Play\" 23.5s"
+        );
+        // Inside a line, a resend would drop what follows: the line stops and says so.
+        assert_eq!(again(missed(), "Play", 30.0, 6.5, false), missed());
+        // A wait that had its whole time, or found its label, has nothing to send again.
+        assert_eq!(again(missed(), "Play", 6.5, 6.5, true), missed());
+        let found = "button \"Play\" at 5,6 (7x8) after 1.0 s".to_string();
+        assert_eq!(again(found.clone(), "Play", 30.0, 6.5, true), found);
+    }
+
+    #[test]
+    fn a_line_that_arrived_late_has_less_of_its_time() {
+        // Held back longer than its whole time, it runs nothing and says what did not run.
+        let (ok, said) = serve("where; where", LINE + Duration::from_secs(1));
+        assert!(!ok);
+        assert!(said.starts_with("error: the line ran out"), "{said}");
+        assert!(said.contains("2 of 2 not run"), "{said}");
     }
 
     #[test]

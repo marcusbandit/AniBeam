@@ -27,8 +27,14 @@ public final class Control extends BroadcastReceiver {
 
     private static Control receiver;
 
-    /** Runs one command line: the result code, 0 or 1, then what it printed. */
-    static native String run(String line);
+    /**
+     * The most a broadcast may arrive late, by the phone's clock, and still run: past it,
+     * ctl.sh (which waits 60 s) could have given up and a retry would run the command twice.
+     */
+    static final long LATE_MS = 10_000;
+
+    /** Runs one command line, given how late it arrived: the result code, 0 or 1, then what it printed. */
+    static native String run(String line, long lateMs);
 
     /** Registers the receiver once; true when it is registered. */
     public static synchronized boolean start(Context context) {
@@ -56,11 +62,20 @@ public final class Control extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         String line = intent.getStringExtra("cmd");
+        // ctl.sh stamps each broadcast with the phone's own clock as it sends it.
+        long sent = intent.getLongExtra("sent", 0);
+        long late = sent > 0 ? Math.max(0, System.currentTimeMillis() - sent * 1000) : 0;
         String out;
-        try {
-            out = run(line == null ? "" : line);
-        } catch (Throwable t) {
-            out = "1error: " + t;
+        if (late > LATE_MS) {
+            out = "1error: this command reached the app " + (late / 1000)
+                    + " s after it was sent, held back by Android while the app was in the"
+                    + " background; it was not run, so sending it again runs it once";
+        } else {
+            try {
+                out = run(line == null ? "" : line, late);
+            } catch (Throwable t) {
+                out = "1error: " + t;
+            }
         }
         if (out == null || out.isEmpty()) out = "1error: no answer";
         setResultCode(out.charAt(0) == '0' ? 0 : 1);
