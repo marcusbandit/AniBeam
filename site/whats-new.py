@@ -5,7 +5,7 @@
   <out>/whats-new/<version>/index.html        one page per desktop release
   <out>/whats-new/android-<version>/index.html  one page per phone release
 
-The desktop's apps/linux/CHANGELOG.md and the phone's apps/android/CHANGELOG.md hold the shipped
+The desktop's apps/linux/CHANGELOG.md and the phone's apps/phone/CHANGELOG.md hold the shipped
 versions. The change files in apps/*/changes/ hold what has merged since the last stable release
 and ships in the next nightly; they show as "Coming next". The page for a version that ships
 appears with the site deploy the release starts, and the Coming next block with the one each
@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 root, out = Path(sys.argv[1]), Path(sys.argv[2])
-APPS = [("desktop", "Desktop", root / "apps/linux"), ("phone", "Android", root / "apps/android")]
+APPS = [("desktop", "Desktop", root / "apps/linux"), ("phone", "Android", root / "apps/phone")]
 SECTIONS = ["New", "Changed", "Fixed", "Removed"]
 HEAD = re.compile(r"^## (\d+\.\d+\.\d+)(?: · (.+?))? · (\d{4}-\d{2}-\d{2})\s*$")
 
@@ -55,7 +55,14 @@ def change_files(changes_dir, ref):
     """The change files' texts, as main has them, or as the commit `ref` had them."""
     if ref:
         rel = changes_dir.relative_to(root).as_posix()
-        names = git("ls-tree", "--name-only", f"{ref}:{rel}").split()
+        try:
+            names = git("ls-tree", "--name-only", f"{ref}:{rel}").split()
+        except subprocess.CalledProcessError:
+            # A tag from before the phone app moved to apps/phone (#1309) has it in apps/android.
+            if not rel.startswith("apps/phone/"):
+                raise
+            rel = "apps/android/" + rel.removeprefix("apps/phone/")
+            names = git("ls-tree", "--name-only", f"{ref}:{rel}").split()
         return [(n, git("show", f"{ref}:{rel}/{n}")) for n in sorted(names) if n.endswith(".md")]
     return [(f.name, f.read_text()) for f in sorted(changes_dir.glob("*.md"))]
 

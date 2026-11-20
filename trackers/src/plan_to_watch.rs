@@ -8,7 +8,7 @@ use std::sync::Arc;
 use rusqlite::{OptionalExtension, params};
 
 use crate::Trackers;
-use crate::{accounts, no_token, writes};
+use crate::{accounts, cache, quiet, writes};
 use anibeam_contract::*;
 use anibeam_foundation::jobs::{Finished, JobCtx};
 use anibeam_foundation::prefs;
@@ -55,32 +55,20 @@ pub fn plan_to_watch(trackers: &Arc<Trackers>, anilist_id: u64) -> Result<Reply,
             (Tracker::Anilist, Some(anilist_id)),
             (Tracker::Mal, found.0),
         ];
-        for (t, id) in ids {
-            if let Some(id) = id
-                && writes::is_hidden(c, t, id)?
-            {
-                return Err(CoreError::Refused {
-                    reason: Refusal::Hidden,
-                });
-            }
+        if writes::any_hidden(c, Some(anilist_id), found.0)? {
+            return Err(CoreError::Refused {
+                reason: Refusal::Hidden,
+            });
         }
         let mut targets: Vec<(Tracker, u64, Option<u64>)> = Vec::new();
         let (mut connected, mut listed) = (false, false);
         for (t, id) in ids {
-            let Some(row) = accounts::load_row(c, t)? else {
+            let Some(row) = accounts::connected(c, t)? else {
                 continue;
             };
-            if row.connected_at.is_none() {
-                continue;
-            }
             connected = true;
             let Some(id) = id else { continue };
-            let on_list: bool = c.query_row(
-                "SELECT EXISTS (SELECT 1 FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2 AND profile_id = 1)",
-                params![t.as_str(), id as i64],
-                |r| r.get(0),
-            )?;
-            if on_list {
+            if cache::cached(c, t, id)?.is_some() {
                 listed = true;
             } else {
                 targets.push((t, id, row.user_id));
@@ -145,35 +133,19 @@ async fn plan(
     for (t, media_id, user_id) in targets {
         ctx.checkpoint()?;
         let attempt = async {
-            let token = accounts::access_token(&trackers, t)
-                .await?
-                .ok_or_else(|| accounts::tracker_error(t, no_token()))?;
-            let live = writes::read_live(&trackers, t, media_id, user_id, &token).await?;
-            if let Some(live) = live
+            let remote = writes::Remote::connect(&trackers, t, media_id).await?;
+            if let Some(live) = remote.read_live(user_id).await?
                 && let Some(status) = live.status
             {
-                writes::record_progress(
-                    &trackers.services,
-                    t,
-                    media_id,
-                    live.progress,
-                    status,
-                    live.updated_at,
-                )
-                .await?;
+                remote
+                    .record_progress(live.progress, status, live.updated_at)
+                    .await?;
                 return Ok::<Option<ListStatus>, CoreError>(Some(status));
             }
-            let stamp =
-                writes::send_status(&trackers, t, media_id, &token, ListStatus::Planning).await?;
-            writes::record_progress(
-                &trackers.services,
-                t,
-                media_id,
-                0,
-                ListStatus::Planning,
-                stamp,
-            )
-            .await?;
+            let stamp = remote.send_status(ListStatus::Planning).await?;
+            remote
+                .record_progress(0, ListStatus::Planning, stamp)
+                .await?;
             Ok(None)
         };
         match attempt.await {
@@ -239,11 +211,6 @@ async fn plan(
             message: format!("{title} could not go on Planning: {why}"),
             body: EventBody::Notice,
         },
-        (true, None, None) => Finished {
-            plain: None,
-            level: Level::Debug,
-            message: format!("{title} needed no change"),
-            body: EventBody::Notice,
-        },
+        (true, None, None) => quiet(format!("{title} needed no change")),
     })
 }

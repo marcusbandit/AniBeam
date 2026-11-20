@@ -29,7 +29,7 @@ use crate::Trackers;
 use crate::accounts;
 use crate::cache::normalize_status;
 use crate::writes;
-use crate::{TRACKER_TIMEOUT, as_count, as_u32, no_token};
+use crate::{TRACKER_TIMEOUT, as_count, as_u32};
 use anibeam_contract::*;
 use anibeam_foundation::jobs::Finished;
 use anibeam_foundation::prefs;
@@ -243,7 +243,7 @@ pub fn refresh_call(trackers: &Arc<Trackers>, force: bool) -> Result<Reply, Core
 }
 
 fn is_connected(conn: &Connection) -> Result<bool, CoreError> {
-    Ok(accounts::load_row(conn, Tracker::Anilist)?.is_some_and(|row| row.connected_at.is_some()))
+    Ok(accounts::connected(conn, Tracker::Anilist)?.is_some())
 }
 
 /// A cached image's absolute path, and only while its file is still there:
@@ -304,9 +304,7 @@ async fn refresh(trackers: &Arc<Trackers>) -> Result<Finished, CoreError> {
     let user_id = account.user_id.ok_or_else(|| {
         tracker_error(anibeam_contract::i18n::tr("core-trackers-no-user-id", &[]))
     })?;
-    let token = accounts::access_token(trackers, Tracker::Anilist)
-        .await?
-        .ok_or_else(|| tracker_error(no_token()))?;
+    let token = accounts::token(trackers, Tracker::Anilist).await?;
     // Anything written to the cache after this moment (a status the user
     // just set) is newer than what the fetch can know, and is left alone.
     let started = time::now_secs();

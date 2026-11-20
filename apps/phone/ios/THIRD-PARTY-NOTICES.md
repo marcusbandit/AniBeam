@@ -5,7 +5,7 @@ later (see `LICENSE` at the root of the repository). The iPhone app plays video
 with libmpv, which is statically linked together with FFmpeg and the libraries
 below. They come from the LGPL build of MPVKit 1.1.0-n9.0.2
 (https://github.com/mpvkit/MPVKit/releases/tag/1.1.0-n9.0.2), pinned and
-hash-checked by `apps/android/scripts/fetch-mpv-ios.sh`.
+hash-checked by `apps/phone/scripts/fetch-mpv-ios.sh`.
 
 That build is not GPL: mpv is configured with `-Dgpl=false` and FFmpeg with
 `--enable-version3` but without `--enable-gpl`, so libmpv and FFmpeg are
