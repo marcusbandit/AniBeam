@@ -57,12 +57,23 @@ else
   for a in "$@"; do line+=" $(word "$a")"; done
 fi
 
+# How long ctl.sh waits for an answer: past the app's own 45 s for a line. Android 14 and
+# later hold broadcasts back from an app sitting cached in the background, and `am` waits
+# with them.
+ANSWER_WAIT=60
+
 # ask <line>: sends a line and sets $code (the result code) and $data (the answer). Exits 2
 # when the app did not answer.
 ask() {
   # adb shell runs the command through the device's sh: the line goes in single quotes.
-  local quoted="'${1//\'/\'\\\'\'}'" out rest
-  if ! out="$("$ADB" shell "am broadcast -a com.marcusrosado.anibeam.CONTROL -p $PKG --es cmd $quoted" 2>&1)"; then
+  local quoted="'${1//\'/\'\\\'\'}'" out rest status=0
+  local -a limit=()
+  command -v timeout > /dev/null && limit=(timeout "$ANSWER_WAIT")
+  out="$("${limit[@]}" "$ADB" shell "am broadcast -a com.marcusrosado.anibeam.CONTROL -p $PKG --es cmd $quoted" 2>&1)" || status=$?
+  if (( status == 124 )); then
+    echo "ctl.sh: no answer within ${ANSWER_WAIT} s. Is Anibeam in the background? Android holds broadcasts to a cached app; bring it to the front." >&2
+    exit 2
+  elif (( status != 0 )); then
     echo "ctl.sh: adb failed: $out" >&2
     exit 2
   fi
@@ -90,6 +101,12 @@ if [[ "${given[0]}" == wait ]] && (( ${#given[@]} >= 2 )); then
   if (( ${#args[@]} >= 2 )) && [[ "${args[-1]}" =~ ^[0-9]+(\.[0-9]+)?s$ ]]; then
     total="${args[-1]%s}"
     unset 'args[-1]'
+  elif (( ${#args[@]} >= 2 )) && [[ "${args[-1]}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    # A bare number: the app answers that it wants an s, rather than ctl.sh guessing.
+    ask "$line"
+    printf '%s\n' "$data"
+    [[ "$code" == 0 ]] || exit 1
+    exit 0
   fi
   label=""
   for a in "${args[@]}"; do label+=" $(word "$a")"; done
@@ -120,8 +137,10 @@ if [[ "$line" =~ (^|\;)[[:space:]]*(tree|dump)[[:space:]]*($|\;) ]] \
   && grep -q '^shown: ' <<<"$data"; then
   cache="${XDG_CACHE_HOME:-$HOME/.cache}/anibeam-ctl"
   mkdir -p "$cache"
-  sed -n 's/^  [a-z]* "\(\([^"\\]\|\\.\)*\)".*/\1/p' <<<"$data" | sed 's/\\\(["\\]\)/\1/g' \
-    | sort -u > "$cache/labels.new" || true
+  # Bash's own regex, so any sed will do for the unescape (BSD sed has no \| either).
+  while IFS= read -r l; do
+    [[ "$l" =~ ^\ \ [a-z]+\ \"((\\.|[^\"\\])*)\" ]] && printf '%s\n' "${BASH_REMATCH[1]}"
+  done <<<"$data" | sed 's/\\\(["\\]\)/\1/g' | sort -u > "$cache/labels.new" || true
   [[ -s "$cache/labels.new" ]] && mv -f "$cache/labels.new" "$cache/labels"
   rm -f "$cache/labels.new"
 fi
