@@ -1,52 +1,52 @@
-//! What's new: the phone's CHANGELOG.md and the notes in changes/ that have not shipped,
-//! built into the APK, read through the core's rules and laid out as the rows the page
-//! draws. build.sh refuses an APK whose newest notes are not its own version.
+//! What's new: the phone's curated CHANGELOG.md, built into the app, read through the core's
+//! rules and laid out as the rows the page draws. build.sh refuses an APK whose newest notes
+//! are not its own version.
 
-use anibeam_core::changelog::{self, Seen, WhatsNew};
+use anibeam_core::changelog::{self, Block, Seen, WhatsNew};
 
 use crate::NoteLine;
 
 const NOTES: &str = include_str!("../CHANGELOG.md");
-
-/// The notes in changes/ that have not shipped yet, which show under the newest heading.
-const CHANGES: &[&str] = include!(concat!(env!("OUT_DIR"), "/changes.rs"));
 
 /// This build's version, the one its notes are for.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// What's new for this build, given what the phone has read.
 pub fn view(seen: &Seen, used_before: bool) -> WhatsNew {
-    changelog::whats_new(
-        &changelog::parse_with(NOTES, CHANGES),
-        VERSION,
-        seen,
-        used_before,
-    )
+    changelog::whats_new(&changelog::parse(NOTES), VERSION, seen, used_before)
 }
 
-/// The page's rows, top to bottom: each version, its sections and their changes, and the
-/// line under the last version above it. Where the line goes and what reads dimmer are the
-/// core's answers.
+/// The page's rows, top to bottom: each version, its paragraphs, subheadings and highlight
+/// items, and the line under the last version above it. Where the line goes and what reads
+/// dimmer are the core's answers.
 pub fn lines(view: &WhatsNew) -> Vec<NoteLine> {
     let mut out = Vec::new();
     for (i, v) in view.versions.iter().enumerate() {
-        out.push(row(0, &v.version, &v.day, v.lit));
-        for s in &v.sections {
-            out.push(row(1, &s.kind, "", v.lit));
-            out.extend(s.lines.iter().map(|l| row(2, l, "", v.lit)));
+        out.push(row(0, &v.version, &v.day, &v.title, v.lit));
+        for b in &v.blocks {
+            match b {
+                Block::Paragraph { text, .. } => out.push(row(4, text, "", "", v.lit)),
+                Block::Heading { text } => out.push(row(1, text, "", "", v.lit)),
+                Block::List { items } => {
+                    for item in items {
+                        out.push(row(2, &item.body, "", &item.lead, v.lit));
+                    }
+                }
+            }
         }
         if i + 1 == view.above && !view.line.is_empty() {
-            out.push(row(3, &view.line, "", true));
+            out.push(row(3, &view.line, "", "", true));
         }
     }
     out
 }
 
-fn row(kind: i32, text: &str, note: &str, lit: bool) -> NoteLine {
+fn row(kind: i32, text: &str, note: &str, lead: &str, lit: bool) -> NoteLine {
     NoteLine {
         kind,
         text: text.into(),
         note: note.into(),
+        lead: lead.into(),
         lit,
     }
 }

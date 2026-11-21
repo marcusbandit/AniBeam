@@ -695,6 +695,7 @@ inspect-holds = { $count ->
 
 phone-notes-title = What's new
 notes-got-it = Got it
+notes-github = Full changelog on GitHub
 
 ## Move the list to a tracker
 

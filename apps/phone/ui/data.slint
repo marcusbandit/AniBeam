@@ -206,13 +206,16 @@ export struct SourceRow {
     enabled: bool,
 }
 
-// One row of What's new, read top to bottom: a version, a section of it, one change, or
-// the line under what is new since the version this phone had.
+// One row of What's new, read top to bottom: a version, a subheading, a bullet item,
+// a paragraph, or the line under what is new since the version this phone had.
 export struct NoteLine {
-    // 0 a version (text, and its day in note), 1 a section's name, 2 a change, 3 the line.
+    // 0 a version (text, day in note, optional title in lead), 1 a subheading,
+    // 2 a bullet item (optional bold lead in lead, body in text), 3 the line,
+    // 4 a paragraph.
     kind: int,
     text: string,
     note: string,
+    lead: string,
     // Read brighter: above the line, new since the version this phone came from, or every
     // version when there is no line.
     lit: bool,
@@ -377,6 +380,7 @@ export global AppData {
     callback open-notes();
     // Got it or Back: the notes count as read.
     callback close-notes();
+    callback open-notes-github();
 
     // The series page, over whichever page opened it.
     in property <bool> series-open;
