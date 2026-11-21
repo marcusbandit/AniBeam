@@ -127,58 +127,58 @@ core-error-service = { $service }: { $message }
 
 ## releases/src/repos/mod.rs
 
-core-repos-paste-address = füge die Adresse eines Repos ein
-core-repos-must-be-https = die Adresse muss mit https beginnen
-core-repos-unreachable = Repo nicht erreichbar: { $message }
-core-repos-not-found = unter dieser Adresse ist nichts (ein privates GitHub-Repo antwortet auch mit 404)
-core-repos-http-status = das Repo antwortete mit HTTP { $status }
+core-repos-paste-address = füge die Adresse einer Quellenliste ein
+core-repos-must-be-https = die Adresse muss https verwenden
+core-repos-unreachable = Quellenliste nicht erreichbar: { $message }
+core-repos-not-found = unter dieser Adresse wurde nichts gefunden (ein privates GitHub-Repo liefert ebenfalls 404)
+core-repos-http-status = die Quellenliste lieferte HTTP { $status }
 core-repos-unreadable = { $path } konnte nicht gelesen werden: { $error }
-core-repos-no-such-endpoint = kein installierter Endpoint mit dieser ID
-core-repos-key-changed = das Repo ist jetzt mit einem anderen Schlüssel signiert als dem, dem du vertraut hast. Entferne es und füge es neu hinzu, um den neuen Schlüssel anzunehmen.
-core-repos-stale = das Repo lieferte einen älteren Index (Serial { $serial } nach { $kept }); der neuere bleibt
-core-repos-key-not-shown = der Schlüssel des Repos ist nicht der, der dir gezeigt wurde. Füge es neu hinzu und vergleiche den Fingerabdruck.
-core-repos-repo-added = Eine Liste mit Downloadquellen hinzugefügt.
-core-repos-repo-removed = Eine Liste mit Downloadquellen entfernt.
+core-repos-no-such-endpoint = keine installierte Quelle mit dieser ID
+core-repos-key-changed = diese Quellenliste ist jetzt mit einem anderen Schlüssel signiert als dem, dem du vertraut hast. Entferne sie und füge sie neu hinzu, um den neuen Schlüssel anzunehmen.
+core-repos-stale = die Quellenliste lieferte einen älteren Index (Serial { $serial } nach { $kept }); der neuere bleibt
+core-repos-key-not-shown = der Signaturschlüssel passt nicht zu dem, der dir gezeigt wurde. Füge die Quellenliste neu hinzu und vergleiche den Fingerabdruck.
+core-repos-repo-added = Quellenliste hinzugefügt.
+core-repos-repo-removed = Quellenliste entfernt.
 core-repos-no-field = { $name } hat kein Feld { $key }
 core-repos-needs-field = { $name } braucht { $label }
-core-repos-host-only = { $name }: { $label } ist nur ein Host oder Host:Port, etwa 192.0.2.10:9696
-core-repos-not-added = dieses Repo ist nicht hinzugefügt
+core-repos-host-only = { $name }: { $label } darf nur ein Host oder Host:Port sein, etwa 192.0.2.10:9696
+core-repos-not-added = diese Quellenliste wurde nicht hinzugefügt
 core-repos-not-offered = { $repo } bietet { $id } nicht an
 core-repos-already-installed = { $name } ist schon installiert
-core-repos-taken-by-you = ein Endpoint namens { $id } ist schon installiert (von dir hinzugefügt); entferne ihn zuerst
-core-repos-taken-by-repo = ein Endpoint namens { $id } ist schon installiert (aus einem anderen Repo); entferne ihn zuerst
+core-repos-taken-by-you = eine Quelle namens { $id } ist schon installiert (von Hand hinzugefügt); entferne sie zuerst
+core-repos-taken-by-repo = eine Quelle namens { $id } ist schon installiert (aus einer anderen Quellenliste); entferne sie zuerst
 core-repos-source-added = Eine Downloadquelle hinzugefügt.
 core-repos-source-updated = Eine Downloadquelle aktualisiert.
 core-repos-source-removed = Eine Downloadquelle entfernt.
-core-repos-source-changed = Eine Downloadquelle geändert.
-core-repos-give-name = gib ihr einen Namen
-core-repos-put-query = setze {"{"}query{"}"} dort in die Adresse, wo die Suche hingehört
-core-repos-name-taken = ein Endpoint namens { $id } ist schon installiert
-core-repos-only-by-hand = nur eine von Hand hinzugefügte Quelle lässt sich bearbeiten
+core-repos-source-changed = Downloadquelle bearbeitet.
+core-repos-give-name = gib einen Namen ein
+core-repos-put-query = setze {"{"}query{"}"} dort in die Adresse, wo der Suchbegriff hingehört
+core-repos-name-taken = eine Quelle namens { $id } ist schon installiert
+core-repos-only-by-hand = nur von Hand hinzugefügte Quellen lassen sich bearbeiten
 core-repos-keep-key = lass {"{"}{ $key }{"}"} in der Adresse und ändere den Wert über { $label } ändern, oder entferne die Seite und füge sie ohne neu hinzu
-core-repos-note-kind = anirss kann die Art { $kind } nicht durchsuchen, also lässt der Desktop sie weg; das Handy durchsucht sie
-core-repos-note-by-hand = anirss hat ein eigenes, von Hand geschriebenes { $id }; der Desktop durchsucht dieses
-core-repos-note-theirs = Dieses anirss betreibst du selbst, und der Desktop ändert seine Konfiguration nie: Trag { $id } in die Konfiguration dieses anirss ein, damit der Desktop es durchsucht
-core-repos-note-sandbox = Dieser Lauf schreibt nie in die Konfiguration von anirss, also durchsucht der Desktop { $id } hier nicht
-core-repos-note-old = anirss { $version } kann keine Endpoints von { -app-name } übernehmen; aktualisiere es auf { $min } oder neuer, damit der Desktop das durchsucht
+core-repos-note-kind = anirss kann { $kind }-Quellen nicht durchsuchen, also überspringt der Desktop sie; die Handy-App kann sie durchsuchen
+core-repos-note-by-hand = anirss hat ein eigenes, von Hand eingerichtetes { $id }; der Desktop durchsucht dieses
+core-repos-note-theirs = Diese anirss-Instanz verwaltest du selbst, also ändert { -app-name } ihre Konfiguration nicht: Trag { $id } in die Konfiguration von anirss ein, um es am Desktop zu durchsuchen
+core-repos-note-sandbox = Im Sandbox-Modus wird nicht in die Konfiguration von anirss geschrieben, also durchsucht der Desktop { $id } hier nicht
+core-repos-note-old = anirss { $version } unterstützt keine Quellen von { -app-name }; aktualisiere auf { $min } oder neuer, um das am Desktop zu durchsuchen
 
 ## releases/src/repos/index.rs
 
-core-repos-key-not-ed25519 = der Schlüssel des Index ist kein ed25519-Schlüssel
-core-repos-key-not-base64 = der Schlüssel des Index sind keine 32 Byte Base64
-core-repos-key-invalid = der Schlüssel des Index ist kein gültiger ed25519-Schlüssel
-core-repos-too-large = die Datei ist zu groß für ein Repo
-core-repos-not-a-repo = das ist kein Endpoint-Repo für { -app-name }
-core-repos-format-version = das Repo hat Formatversion { $found }; dieses { -app-name } liest Version { $reads }. Aktualisiere { -app-name }.
-core-repos-payload-not-base64 = die Nutzdaten des Repos sind kein Base64
-core-repos-signature-malformed = die Signatur des Repos ist fehlerhaft
-core-repos-index-unreadable = der Index des Repos ist nicht lesbar: { $error }
-core-repos-signature-mismatch = die Signatur des Repos passt nicht zu seinem Inhalt
+core-repos-key-not-ed25519 = der Index-Schlüssel ist kein ed25519-Schlüssel
+core-repos-key-not-base64 = der Index-Schlüssel sind keine 32 Byte Base64
+core-repos-key-invalid = der Index-Schlüssel ist kein gültiger ed25519-Schlüssel
+core-repos-too-large = die Datei ist zu groß für eine Quellenliste
+core-repos-not-a-repo = das ist keine gültige Quellenliste für { -app-name }
+core-repos-format-version = diese Quellenliste nutzt Formatversion { $found }, aber { -app-name } liest Version { $reads }. Aktualisiere { -app-name }.
+core-repos-payload-not-base64 = die Nutzdaten der Quellenliste sind kein Base64
+core-repos-signature-malformed = die Signatur der Quellenliste ist fehlerhaft
+core-repos-index-unreadable = der Index der Quellenliste ist nicht lesbar: { $error }
+core-repos-signature-mismatch = die Signatur der Quellenliste passt nicht zu ihrem Inhalt
 core-repos-check-scheme = { $id }: die Adresse muss mit https:// beginnen
 core-repos-check-scheme-http = { $id }: die Adresse muss mit http:// oder https:// beginnen
 core-repos-check-auth-key = { $id }: ungültiger Auth-Schlüssel { $key }
-core-repos-check-host-torznab = { $id }: nur eine torznab-Adresse darf ihren Host als {"{"}{ $key }{"}"} angeben
-core-repos-check-host-placeholder = { $id }: ein Platzhalter im Host
+core-repos-check-host-torznab = { $id }: nur eine torznab-Adresse darf {"{"}{ $key }{"}"} als Host verwenden
+core-repos-check-host-placeholder = { $id }: im Host ist kein Platzhalter erlaubt
 
 ## playback/src/tracks.rs
 
@@ -347,32 +347,32 @@ core-cast-nothing = Es wird nichts gesendet
 core-cast-still-starting = Das Gerät startet noch
 core-cast-no-route = dieses Gerät hat keinen Weg zum TV
 core-cast-no-control = der TV hat keine Steueradresse geliefert
-core-cast-not-handed = der andere Computer hat die Folge nicht übergeben: { $error }
+core-cast-not-handed = der andere Computer konnte die Folge nicht senden: { $error }
 core-cast-empty-playlist = der andere Computer hat eine leere Playlist geschickt
-core-cast-refused-both = { $error }; auch die unveränderte Datei hat er abgelehnt ({ $first })
+core-cast-refused-both = { $error }; auch die Originaldatei wurde abgelehnt ({ $first })
 core-cast-chromecast-stopped = der Chromecast hat gestoppt
-core-cast-hevc = { $error }. Diese Folge ist HEVC, das nur neuere Chromecasts (mit Google TV oder Ultra) dekodieren
+core-cast-hevc = { $error }. Diese Folge nutzt HEVC, das nur neuere Chromecasts (mit Google TV oder Ultra) unterstützen
 
 ## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = Chromecast nicht erreichbar: { $error }
 core-cast-chromecast-broke = die Verbindung zum Chromecast ist abgebrochen: { $error }
 core-cast-chromecast-no-player = der Chromecast hat seinen Mediaplayer nicht gestartet
-core-cast-chromecast-refused-player = der Chromecast wollte seinen Mediaplayer nicht starten ({ $reason })
+core-cast-chromecast-refused-player = der Chromecast konnte seinen Mediaplayer nicht starten ({ $reason })
 core-cast-no-reason = kein Grund
-core-cast-chromecast-cannot-play = der Chromecast konnte das nicht abspielen ({ $kind })
-core-cast-chromecast-error = der Chromecast ist beim Abspielen mit einem Fehler gestoppt
+core-cast-chromecast-cannot-play = der Chromecast konnte diese Datei nicht abspielen ({ $kind })
+core-cast-chromecast-error = der Chromecast ist beim Abspielen dieser Datei mit einem Fehler gestoppt
 
 ## playback/src/cast/dlna.rs
 
-core-cast-tv-no-answer = der TV hat nicht geantwortet: { $error }
+core-cast-tv-no-answer = der TV hat nicht reagiert: { $error }
 core-cast-tv-refused = der TV hat { $action } abgelehnt
 core-cast-tv-refused-code = der TV hat { $action } abgelehnt ({ $code })
 
 ## playback/src/cast/media.rs
 
 core-cast-no-video = Diese Datei hat kein Video.
-core-cast-hi10p = Diese Folge ist 10-Bit-H.264 (Hi10P), das kein TV und kein Chromecast dekodiert. Zum Senden müsste sie umgewandelt werden, und das gibt es noch nicht.
+core-cast-hi10p = Diese Folge nutzt 10-Bit-H.264 (Hi10P), das TVs und Chromecasts nicht dekodieren können. Zum Senden müsste sie umgewandelt werden, und das wird noch nicht unterstützt.
 core-cast-video-codec = Das Video dieser Folge ({ $codec }) lässt sich nicht senden.
 core-cast-audio-codec = Der Ton dieser Folge ({ $codec }) lässt sich nicht senden.
 
@@ -383,12 +383,13 @@ core-phone-download-started =
         [one] Download einer Folge von { $folder } gestartet.
        *[other] Download von { $count } Folgen von { $folder } gestartet.
     }
+core-phone-download-partial = Nicht jedes Release von { $folder } konnte hinzugefügt werden: { $error }
 core-phone-subscribed = { $name } abonniert.
-core-phone-rule-stopped = { $name } wird nicht mehr auf neue Folgen geprüft: Die Quelle ist weg oder braucht ihren Schlüssel neu.
+core-phone-rule-stopped = { $name } prüft nicht auf neue Folgen: Die Quelle wurde entfernt oder braucht ihren Schlüssel neu.
 core-phone-new-episode = Eine neue Folge von { $name } wird geladen.
 core-phone-name-taken = { $name }: eine andere Quelle hat diesen Namen
 core-phone-nothing-to-download = nichts zu laden
-core-phone-over-cap = damit käme { -app-name } über sein Speicherlimit ({ $used } von { $cap } GB belegt oder unterwegs); lösche Folgen oder erhöhe das Limit
+core-phone-over-cap = damit würde das Speicherlimit von { -app-name } überschritten ({ $used } von { $cap } GB belegt oder in der Warteschlange); lösche Folgen oder erhöhe das Limit
 core-phone-empty-search = die Suche ist leer
 core-phone-no-results = keine Treffer für { $query }
 core-phone-own-engine = eine eigene Torrent-Engine
@@ -398,15 +399,15 @@ core-phone-own-engine = eine eigene Torrent-Engine
 core-phone-check-connected = verbunden
 core-phone-check-refused = abgelehnt: { $error }
 core-phone-check-dropped = keine Antwort (verworfen)
-core-phone-check-finding = { $label }: Adresse wird gesucht
+core-phone-check-finding = { $label }: Adresse wird aufgelöst
 core-phone-check-failed = fehlgeschlagen: { $error }
 core-phone-check-no-answer = keine Antwort
-core-phone-check-private = { $label }: private Suche
-core-phone-check-skipped-address = übersprungen, eine Adresse
-core-phone-check-skipped-home = übersprungen, Name im Heimnetz
-core-phone-check-no-record = keine öffentliche Adresse, dem DNS dieses Netzes überlassen
-core-phone-check-no-resolver = kein Resolver hat geantwortet
-core-phone-check-reaching = { $label }: erreiche { $ip }
+core-phone-check-private = { $label }: private Auflösung
+core-phone-check-skipped-address = übersprungen, IP-Adresse
+core-phone-check-skipped-home = übersprungen, lokaler Netzwerkname
+core-phone-check-no-record = kein öffentlicher Eintrag, Rückgriff auf das DNS des Netzes
+core-phone-check-no-resolver = kein DNS-Resolver hat geantwortet
+core-phone-check-reaching = { $label }: verbinde mit { $ip }
 core-phone-check-http = HTTP { $status }, { $bytes } Byte
 core-phone-check-setup = Aufbau
 
@@ -417,32 +418,32 @@ core-playback-still-downloading = Folge { $number } wird noch geladen, { $done }
 
 ## playback/src/skip.rs
 
-core-playback-bad-duration = eine Dauer ist eine positive Zahl an Sekunden
+core-playback-bad-duration = die Dauer muss eine positive Zahl an Sekunden sein
 
 ## core/src/agent.rs
 
-core-agent-no-answer = der Agent hat nicht geantwortet
+core-agent-no-answer = der Agent hat keine Antwort geliefert
 core-agent-searching = Suche im Web nach { $query }
 core-agent-searching-schedule = Suche im Web nach dem Sendeplan
 core-agent-reading = Lese { $url }
 core-agent-reading-page = Lese eine Seite
 core-agent-using = Nutze { $tool }
 core-agent-none = ein Coding-Agent auf diesem Computer
-core-agent-ended = { $name } hat ohne Antwort aufgehört
+core-agent-ended = { $name } wurde ohne Antwort beendet
 core-agent-too-long = { $name } hat zu lange gebraucht
 
 ## core/src/core.rs
 
-core-core-guest-trackers = die Tracker-Konten auf diesem Computer gehören seinem Besitzer, also markiert dieses Gerät dort nichts
-core-core-guest-not-interested = Kein Interesse auf diesem Computer ist die Liste seines Besitzers, also ändert dieses Gerät dort nichts
+core-core-guest-trackers = die Tracker-Konten auf diesem Computer gehören seinem Besitzer, also kann dieses Gerät sie nicht aktualisieren
+core-core-guest-not-interested = Kein Interesse auf diesem Computer gehört seinem Besitzer, also kann dieses Gerät es nicht ändern
 core-core-guest-recommended = die Empfehlungen auf diesem Computer stammen aus der Liste seines Besitzers
-core-core-nothing-picked = nichts gewählt
+core-core-nothing-picked = nichts ausgewählt
 
 ## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } ist kein Anbieter für Zuordnungen
-core-prefs-provider-count = { $provider } steht { $count }-mal drin; jeder Anbieter steht genau einmal drin
-core-prefs-outside = { $value } liegt außerhalb von { $low } bis { $high }
+core-prefs-provider-count = { $provider } steht { $count }-mal drin; jeder Anbieter darf nur einmal vorkommen
+core-prefs-outside = { $value } muss zwischen { $low } und { $high } liegen
 core-prefs-empty = leer
 
 ## metadata/src/recommended/mod.rs
@@ -472,7 +473,7 @@ core-host-cannot-listen-on = Konnte nicht auf { $address } lauschen: { $error }
 
 ## host/src/addr.rs
 
-core-host-not-an-address = { $text } ist keine Adresse mit Port
+core-host-not-an-address = { $text } ist keine gültige Adresse mit Port
 
 ## host/src/keys.rs
 
@@ -485,7 +486,7 @@ core-net-rate-limited = { $provider } drosselt die Anfragen
 
 ## net/src/lib.rs
 
-core-net-waiting = { $host }: eben eine Zeitüberschreitung; { -app-name } wartet { $seconds } s, bevor es wieder fragt
+core-net-waiting = { $host }: vor Kurzem Zeitüberschreitung; { -app-name } wartet { $seconds } s, bevor es es erneut versucht
 
 ## net/src/anilist.rs
 
@@ -497,7 +498,7 @@ core-update-no-download = { -app-name } { $version } hat keinen Download für di
 core-update-cannot-make = { $path } konnte nicht angelegt werden: { $error }
 core-update-cannot-mark = Das neue AppImage konnte nicht ausführbar gemacht werden: { $error }
 core-update-cannot-replace = { $path } konnte nicht ersetzt werden: { $error }
-core-update-not-here = Diese Kopie wird nicht hier aktualisiert
+core-update-not-here = Diese Installation kann sich hier nicht selbst aktualisieren
 core-update-cannot-start = Der Download konnte nicht starten: { $error }
 core-update-did-not-start = Der Download ist nicht gestartet: { $error }
 core-update-cannot-write = { $path } konnte nicht geschrieben werden: { $error }
@@ -506,9 +507,9 @@ core-update-cancelled = Abgebrochen
 core-update-ended-early = Der Download endete zu früh ({ $got } von { $size } Byte)
 core-update-checksum = Der Download passt nicht zur Prüfsumme von GitHub
 core-update-cannot-move = Der Download konnte nicht an seinen Platz verschoben werden: { $error }
-core-update-cannot-open-dmg = Die dmg konnte nicht geöffnet werden: { $error }
-core-update-cannot-read-dmg = Die dmg konnte nicht gelesen werden: { $error }
-core-update-no-app = Die dmg enthält keine App
+core-update-cannot-open-dmg = Die DMG konnte nicht geöffnet werden: { $error }
+core-update-cannot-read-dmg = Die DMG konnte nicht gelesen werden: { $error }
+core-update-no-app = Die DMG enthält keine App
 core-update-cannot-copy = Die neue App konnte nicht neben diese kopiert werden: { $error }
 
 ## metadata/src/calendar.rs
@@ -535,8 +536,8 @@ core-presence-no-room = Zu dieser Discord-Einladung gibt es noch keinen Raum. Bi
 
 core-trackers-no-client-id = Keine Client-ID für { $tracker } gesetzt.
 core-trackers-mal-reconnect = Verbinde MyAnimeList in den Einstellungen neu.
-core-trackers-mal-wants-secret = MyAnimeList verlangt das Client-Secret dieser App. Trag es in den Einstellungen unter Tracker ein, oder registriere die App mit App Type "other".
-core-trackers-token-reply-unreadable = unlesbare Token-Antwort: { $error }
+core-trackers-mal-wants-secret = MyAnimeList verlangt das Client-Secret dieser App. Trag es in den Einstellungen von Anibeam unter Konten ein, oder registriere die App mit App Type "other".
+core-trackers-token-reply-unreadable = Token-Antwort nicht lesbar: { $error }
 core-trackers-token-reply-no-token = die Token-Antwort enthielt kein Access-Token
 
 ## trackers/src/lib.rs
@@ -545,11 +546,11 @@ core-trackers-no-token = kein Access-Token gespeichert, verbinde in den Einstell
 
 ## trackers/src/cache.rs
 
-core-trackers-no-user-id = das Konto hat keine Nutzer-ID
+core-trackers-no-user-id = die Kontoantwort enthielt keine Nutzer-ID
 
 ## trackers/src/move_up.rs
 
-core-trackers-move-none-picked = keine Serie zum Verschieben gewählt
+core-trackers-move-none-picked = keine Serie zum Verschieben ausgewählt
 core-trackers-moved-up =
     { $count ->
         [one] { $count } Serie von diesem Computer zu { $site } verschoben.
@@ -559,11 +560,11 @@ core-trackers-moved-up-some-refused =
     { $moved ->
         [one] { $moved } Serie
        *[other] { $moved } Serien
-    } zu { $site } verschoben; { $site } hat { $failed ->
-        [one] { $failed } Serie
-       *[other] { $failed } Serien
-    } nicht übernommen.
-core-trackers-move-refused = { $site } hat { $show } nicht übernommen: { $error }
+    } zu { $site } verschoben; { $failed ->
+        [one] { $failed } Serie konnte
+       *[other] { $failed } Serien konnten
+    } nicht verschoben werden.
+core-trackers-move-refused = { $site } konnte { $show } nicht aktualisieren: { $error }
 
 ## trackers/src/oauth.rs
 
@@ -573,22 +574,22 @@ core-trackers-oauth-no-code = kein Code im Callback
 core-trackers-oauth-no-token = kein access_token im Callback
 core-trackers-oauth-waiting = Warte, bis du dich im Browser bei { $site } anmeldest.
 core-trackers-oauth-connected = { $site } als { $username } verbunden.
-core-trackers-oauth-no-name = das Profil kam ohne Namen zurück
-core-trackers-oauth-could-not-start = Anmeldung konnte nicht starten
+core-trackers-oauth-no-name = die Profilantwort enthielt keinen Nutzernamen
+core-trackers-oauth-could-not-start = Anmeldung konnte nicht gestartet werden
 core-trackers-oauth-port-failed = Port { $port } auf diesem Computer ließ sich nicht öffnen: { $error }
 core-trackers-oauth-port-busy = Port { $port } auf diesem Computer wird von einem anderen Programm genutzt. Warte kurz und versuch es nochmal, oder schließ das Programm, falls er belegt bleibt.
 core-trackers-oauth-provider-error = { $site } hat einen Fehler gemeldet: { $error }
 core-trackers-page-connected = { $site } ist mit { $app } verbunden
 core-trackers-page-close-tab = Du kannst diesen Tab schließen.
 core-trackers-page-failed-title = { $app }, Anmeldung fehlgeschlagen
-core-trackers-page-failed = Die Anmeldung wurde nicht abgeschlossen
+core-trackers-page-failed = Anmeldung nicht abgeschlossen
 core-trackers-page-go-back = Geh zurück zu { $app } und versuch es nochmal.
 core-trackers-page-finishing-title = { $app }, wird noch abgeschlossen
 core-trackers-page-finishing = Wird noch abgeschlossen
-core-trackers-page-finishing-body = { $site } hat geantwortet, und Anibeam schließt die Anmeldung ab. Geh zurück zu { $app }, dort steht, wann es fertig ist.
+core-trackers-page-finishing-body = { $site } hat geantwortet, und Anibeam schließt die Anmeldung ab. Geh zurück zu { $app }, um fortzufahren.
 core-trackers-page-cancelled-title = { $app }, Anmeldung abgebrochen
-core-trackers-page-cancelled = Diese Anmeldung wurde abgebrochen
-core-trackers-page-cancelled-body = Du kannst diesen Tab schließen. Starte in { $app } neu, wenn du das wolltest.
+core-trackers-page-cancelled = Anmeldung wurde abgebrochen
+core-trackers-page-cancelled-body = Du kannst diesen Tab schließen. Starte in { $app } neu, wenn du dich noch anmelden willst.
 
 ## trackers/src/on_hold.rs
 
@@ -636,12 +637,12 @@ core-trackers-auth-expired = Anmeldung bei { $tracker } abgelaufen, verbinde in 
 core-trackers-entry-not-found = Eintrag bei { $tracker } nicht gefunden.
 core-trackers-server-error = Serverfehler bei { $tracker } ({ $status }), versuch es später nochmal.
 core-trackers-error-see-log = Fehler bei { $tracker }, siehe Aktivitätsprotokoll.
-core-trackers-episode-not-whole = { $episode } ist keine ganze Folge über null
-core-trackers-score-out-of-range = { $score } liegt außerhalb von 0 bis 10
-core-trackers-rewatch-not-settable = Erneut ist kein Status, den man von Hand setzt
-core-trackers-notes-too-long = Notizen haben höchstens { $max } Zeichen
-core-trackers-nothing-picked = nichts gewählt
-core-trackers-notes-not-on-list = Noch nicht auf deiner Liste bei { $tracker }, füge sie zuerst einer Liste hinzu.
+core-trackers-episode-not-whole = { $episode } muss eine ganze Zahl größer als 0 sein
+core-trackers-score-out-of-range = { $score } muss zwischen 0 und 10 liegen
+core-trackers-rewatch-not-settable = Erneut schauen lässt sich nicht von Hand setzen
+core-trackers-notes-too-long = Notizen dürfen höchstens { $max } Zeichen haben
+core-trackers-nothing-picked = nichts ausgewählt
+core-trackers-notes-not-on-list = Noch nicht auf deiner Liste bei { $tracker }. Füge sie zuerst einer Liste hinzu.
 core-trackers-sites =
     { $sites ->
         [both] { -anilist } und { -mal }
@@ -917,15 +918,15 @@ core-library-fix-specials =
         [one] die fehlende Folge
        *[other] die fehlenden Folgen
     } { $numbers }.
-core-library-fix-numbered-on = Die Folgen { $from } sehen aus wie { $to } dieses Eintrags, weitergezählt aus einer früheren Staffel.
+core-library-fix-numbered-on = Die Folgen { $from } sehen aus wie die Folgen { $to }, weitergezählt aus einer früheren Staffel.
 core-library-runs-span = { $first } bis { $last }
 core-library-runs-list = { $init } und { $last }
 
 ## library/src/fixes.rs
 
-core-library-fix-episode-range = eine Folgennummer liegt zwischen 0 und 10000
-core-library-fix-season-range = eine Staffel geht bis 200
-core-library-fix-extra-range = der Index eines Extras geht bis 10000
+core-library-fix-episode-range = die Folgennummer muss zwischen 0 und 10000 liegen
+core-library-fix-season-range = die Staffelnummer darf höchstens 200 sein
+core-library-fix-extra-range = der Index eines Extras darf höchstens 10000 sein
 core-library-file-elsewhere-not-fixed = Datei { $id } gehört zu einer anderen Serie, also wurde nichts korrigiert
 core-library-fix-undone =
     { $count ->
@@ -999,7 +1000,7 @@ core-library-scan-done =
 core-library-agent-no-answer = keine Antwort innerhalb von { $span }
 core-library-agent-stopped-code = er hat mit Code { $code } aufgehört
 core-library-agent-stopped = er hat aufgehört
-core-library-agent-answered-nothing = er hat nichts geantwortet
+core-library-agent-answered-nothing = er hat nichts ausgegeben
 core-library-span-minutes =
     { $count ->
         [one] { $count } Minute
@@ -1021,8 +1022,8 @@ core-transfer-progress-done = fertig
 
 ## downloads/src/anirss.rs
 
-core-downloads-anirss-no-answer = anirss hat nicht geantwortet: { $message }
-core-downloads-anirss-answered = anirss antwortete { $status }: { $text }
+core-downloads-anirss-no-answer = anirss hat nicht reagiert: { $message }
+core-downloads-anirss-answered = anirss lieferte HTTP { $status }: { $text }
 core-downloads-no-free-port = kein freier Port: { $error }
 core-downloads-anirss-exited = anirss wurde beendet ({ $status })
 core-downloads-anirss-exited-said = anirss wurde beendet ({ $status }): { $said }
@@ -1037,30 +1038,30 @@ core-downloads-anirss-update-linux = Aktualisiere das Paket anirss, oder führe 
 
 ## downloads/src/contents.rs
 
-core-downloads-torrent-file-no-answer = die Torrent-Datei kam nicht: { $message }
-core-downloads-torrent-file-answered = die Torrent-Datei antwortete { $status }
+core-downloads-torrent-file-no-answer = die Torrent-Datei konnte nicht geladen werden: { $message }
+core-downloads-torrent-file-answered = die Torrent-Datei lieferte HTTP { $status }
 
 ## downloads/src/feed.rs
 
-core-downloads-feed-answered = der Feed antwortete { $status }
+core-downloads-feed-answered = der Feed lieferte HTTP { $status }
 core-downloads-not-a-feed = kein Feed: { $error }
 
 ## downloads/src/jackett.rs
 
 core-downloads-jackett-missing = Jackett ist nicht installiert: { $program } wurde nicht gefunden. Installiere es oder ändere den Befehl in den Einstellungen.
 core-downloads-endpoint-start-failed = { $name } konnte nicht starten: { $why }
-core-downloads-endpoint-start-timeout = { $name } ist gestartet, hat aber nicht innerhalb von { $seconds } Sekunden geantwortet.
+core-downloads-endpoint-start-timeout = { $name } ist gestartet, hat aber nicht innerhalb von { $seconds } Sekunden reagiert.
 core-downloads-command-exited = der Befehl endete mit { $status }
 
 ## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss wurde beendet
-core-downloads-anirss-missing = { $install }. Oder trag in den Einstellungen einen laufenden Server ein.
-core-downloads-anirss-command-missing = { $command } wurde nicht gefunden. { $install }. Oder trag in den Einstellungen einen laufenden Server ein.
+core-downloads-anirss-missing = { $install }. Du kannst in den Einstellungen auch einen laufenden Server eintragen.
+core-downloads-anirss-command-missing = { $command } wurde nicht gefunden. { $install }. Du kannst in den Einstellungen auch einen laufenden Server eintragen.
 core-downloads-anirss-start-failed = { $command } konnte nicht starten: { $error }
 core-downloads-anirss-too-old-said = { $tooOld } Es meldete: { $message }
-core-downloads-no-torrent-client = Unter { $address } antwortet kein qBittorrent, und Anibeam hat kein eigenes zum Starten. Installiere qBittorrent und schalte sein Web UI ein, oder installiere qbittorrent-nox, das Anibeam dann für dich startet
-core-downloads-own-client-gone = Das qBittorrent von Anibeam ist weg: qbittorrent-nox ist nicht installiert. Installiere Anibeam neu, oder trag in den Einstellungen ein eigenes qBittorrent ein
+core-downloads-no-torrent-client = Unter { $address } reagiert kein qBittorrent, und Anibeam hat keinen eingebauten Client zur Verfügung. Installiere qBittorrent und schalte sein Web UI ein, oder installiere qbittorrent-nox, das Anibeam dann automatisch startet
+core-downloads-own-client-gone = Das eingebaute qBittorrent von Anibeam fehlt (qbittorrent-nox ist nicht installiert). Installiere Anibeam neu, oder trag in den Einstellungen dein eigenes qBittorrent ein
 core-downloads-no-port = kein Port in { $address }
 core-downloads-own-client-settings = die Einstellungen von qBittorrent lassen sich nicht schreiben: { $error }
 core-downloads-own-client-start-failed = { $command } konnte nicht starten: { $error }
@@ -1070,16 +1071,16 @@ core-downloads-not-ready = Downloads sind nicht bereit. Prüfe Downloads in den 
 core-downloads-ready = Downloads sind bereit.
 core-downloads-helper-sources =
     { $count ->
-        [one] Downloads suchen jetzt mit Anibeam selbst, das die { $count } Quelle aus der Konfiguration des Suchhelfers nicht liest. Füge sie unter Einstellungen, Downloads hinzu, oder wähle dort den Suchhelfer.
-       *[other] Downloads suchen jetzt mit Anibeam selbst, das die { $count } Quellen aus der Konfiguration des Suchhelfers nicht liest. Füge sie unter Einstellungen, Downloads hinzu, oder wähle dort den Suchhelfer.
+        [one] Downloads suchen jetzt direkt in Anibeam, das die { $count } Quelle aus der Konfiguration des Suchhelfers nicht liest. Füge sie unter Einstellungen > Downloads hinzu, oder wechsle dort zurück zum Suchhelfer.
+       *[other] Downloads suchen jetzt direkt in Anibeam, das die { $count } Quellen aus der Konfiguration des Suchhelfers nicht liest. Füge sie unter Einstellungen > Downloads hinzu, oder wechsle dort zurück zum Suchhelfer.
     }
 core-downloads-client-connected = Die Download-App ist verbunden.
 core-downloads-client-not-connected = Die Download-App ist nicht verbunden. Prüfe ihre Adresse in den Einstellungen.
-core-downloads-not-on-demand = { $name } ist kein Endpoint auf Abruf
+core-downloads-not-on-demand = { $name } ist keine Quelle auf Abruf
 core-downloads-source-running = Die Downloadquelle läuft.
-core-downloads-source-not-running = { $name } läuft nicht. Schalte die Quelle bei den Quellen ein und bestätige den Start.
+core-downloads-source-not-running = { $name } läuft nicht. Schalte die Quelle bei deinen Quellen ein und bestätige den Start.
 core-downloads-empty-query = gib etwas zum Suchen ein
-core-downloads-first-endpoint = der erste Endpoint
+core-downloads-first-endpoint = die erste Quelle
 core-downloads-search-starting = Suche startet
 core-downloads-search-starting-endpoint = Starte { $endpoint }
 core-downloads-search-searching-endpoint = Durchsuche { $endpoint }
@@ -1095,7 +1096,7 @@ core-downloads-added =
     }
 core-downloads-movie-link = ein Filmlink muss ein Magnet oder eine http(s)-URL sein
 core-downloads-added-movie = Einen Film zu den Downloads hinzugefügt.
-core-downloads-library-folder = { $folder } ist der Bibliotheksordner von { $name }, mit Folgen, die dieses Abo nicht geladen hat: Entferne das Abo ohne seine Dateien, oder entferne { $name } auf seiner Seite
+core-downloads-library-folder = { $folder } ist der Bibliotheksordner von { $name } und enthält Folgen, die dieses Abo nicht geladen hat. Entferne das Abo, ohne seine Dateien zu löschen, oder entferne { $name } auf seiner Seite
 core-downloads-no-torrents-named = keine Torrents genannt
 core-downloads-paused =
     { $count ->
@@ -1121,47 +1122,47 @@ core-downloads-nothing-to-remove = nichts zu entfernen
 core-downloads-removed-show = { $title } aus den Downloads entfernt.
 core-downloads-removed-the-show = Die Serie aus den Downloads entfernt.
 core-downloads-deleted-still-listed = Gelöschte Dateien stehen noch in der Download-App.
-core-downloads-feed-url = ein Feed ist eine http(s)-URL
-core-downloads-rule-needs-name = eine Regel braucht einen Namen
+core-downloads-feed-url = die Feed-URL muss mit http:// oder https:// beginnen
+core-downloads-rule-needs-name = der Regelname darf nicht leer sein
 core-downloads-no-rule = keine Regel namens { $name }
-core-downloads-feed-no-search = der Feed enthält keine Suche zum Kürzen
+core-downloads-feed-no-search = dieser Feed hat keine Suchanfrage zum Kürzen
 core-downloads-no-repair = { $name } muss nicht repariert werden.
 core-downloads-repaired = Abo von { $name } repariert.
-core-downloads-repair-failed = keine kürzere Suche findet etwas; selbst „{ $search }“ bleibt leer
+core-downloads-repair-failed = keine kürzere Suche lieferte Ergebnisse; selbst „{ $search }“ blieb leer
 core-downloads-no-saved-client = kein gespeicherter Torrent-Client { $id }
 core-downloads-client-switched = Downloads nutzen jetzt eine andere Download-App.
 core-downloads-host-not-running = läuft nicht auf dem Host
-core-downloads-host-late = hat nicht rechtzeitig geantwortet
+core-downloads-host-late = hat nicht rechtzeitig reagiert
 
 ## downloads/src/native.rs
 
 core-downloads-native-empty-query = leere Suche
 core-downloads-native-no-results = keine Treffer für { $query }
-core-downloads-native-feed-taken = ein Feed namens { $name } liest schon eine andere Adresse
+core-downloads-native-feed-taken = ein Feed namens { $name } zeigt schon auf eine andere Adresse
 core-downloads-native-no-items = keine Einträge angegeben
 core-downloads-native-bad-link = Links müssen magnet: oder http(s)-URLs sein, bekommen: { $link }
 core-downloads-native-no-links = keine Links angegeben
 core-downloads-native-no-names = keine Abo-Namen angegeben
-core-downloads-native-files-elsewhere = der Torrent-Client hält seine Dateien auf einem anderen Rechner, also können sie nur mit seinen Torrents gehen
+core-downloads-native-files-elsewhere = der Torrent-Client speichert seine Dateien auf einem anderen Rechner, also lassen sie sich nur zusammen mit seinen Torrents löschen
 core-downloads-native-unknown-feeds = unbekannte Feeds: { $names }
 core-downloads-native-outside-folders = Dateien außerhalb der Downloadordner werden nicht entfernt: { $paths }
-core-downloads-refuse-home-folder = { $path } ist der Home-Ordner oder enthält ihn, also wurde nichts entfernt
+core-downloads-refuse-home-folder = { $path } ist dein Home-Ordner oder enthält ihn, also wurde nichts entfernt
 core-downloads-refuse-library-folder = { $path } ist ein Bibliotheksordner oder enthält einen, also wurde nichts entfernt
 
 ## downloads/src/paths.rs
 
-core-downloads-no-default-folder = qBittorrent nennt keinen Standard-Speicherordner; leg einen in qBittorrent fest
+core-downloads-no-default-folder = in qBittorrent ist kein Standard-Speicherordner festgelegt; leg einen in qBittorrent fest
 # $folder is the folder given
 core-downloads-save-folder-not-absolute = { $folder } ist kein vollständiger Pfad zu einem Ordner
 # $folder is the folder given
-core-downloads-save-folder-unusable = { $folder } kann keine Downloads aufnehmen: wähle einen Ordner, den es gibt und der nicht dein Home-Ordner ist
+core-downloads-save-folder-unusable = { $folder } lässt sich nicht für Downloads nutzen: wähle einen vorhandenen Ordner, der nicht dein Home-Ordner ist
 core-downloads-name-empty = der Name darf nicht leer sein
 core-downloads-name-slash = der Name darf kein / oder \ enthalten
 core-downloads-name-not-folder = { $name } ist kein Ordnername
 
 ## downloads/src/prune.rs
 
-core-downloads-pruned = Abo von { $title } beendet, die Serie ist zu Ende gelaufen.
+core-downloads-pruned = Abo von { $title } beendet (fertig ausgestrahlt).
 core-downloads-prune-failed = Abo von { $title } konnte nicht beendet werden. Prüfe Downloads in den Einstellungen.
 
 ## library/src/trash.rs
@@ -1169,11 +1170,11 @@ core-downloads-prune-failed = Abo von { $title } konnte nicht beendet werden. Pr
 core-downloads-refuse-not-absolute = { $path } ist kein einfacher absoluter Pfad, also wurde nichts entfernt
 core-downloads-refuse-root = { $path } ist die Wurzel des Dateisystems, also wurde nichts entfernt
 core-downloads-refuse-outside-library = { $path } liegt in keinem Bibliotheksordner, also wurde nichts entfernt
-core-downloads-refuse-save-folder = { $path } ist der Ordner, in dem der Torrent gespeichert wurde, nicht das, was er geladen hat, also wurde nichts entfernt
+core-downloads-refuse-save-folder = { $path } ist der Speicherordner des Torrents, nicht die geladenen Dateien, also wurde nichts entfernt
 
 ## downloads/src/watch.rs
 
-core-downloads-episode-missed = Folge { $episode } von { $title } ist drei Tage nach der Ausstrahlung noch nicht aufgetaucht. Dein Feed sucht weiter.
+core-downloads-episode-missed = Folge { $episode } von { $title } ist drei Tage nach der Ausstrahlung noch nicht aufgetaucht. Dein Feed prüft weiter.
 
 ## downloads/src/settings.rs
 
@@ -1183,19 +1184,19 @@ core-downloads-settings-client-address = die Adresse von { $client } muss mit ht
 core-downloads-settings-bad-id = { $id } ist keine Client-ID: nutze Buchstaben, Ziffern, - und _
 core-downloads-settings-same-id = zwei Clients haben die ID { $id }
 core-downloads-settings-saved-address = die Adresse von { $name } muss mit http:// oder https:// beginnen
-core-downloads-settings-same-name = zwei Clients heißen { $name }; gib jedem einen eigenen Namen
+core-downloads-settings-same-name = zwei Clients heißen { $name }; gib jedem einen eindeutigen Namen
 
 ## downloads/src/qbt.rs
 
-core-downloads-qbt-no-answer = qBittorrent hat unter { $address } nicht geantwortet: { $message }
+core-downloads-qbt-no-answer = qBittorrent hat unter { $address } nicht reagiert: { $message }
 core-downloads-qbt-password-rejected = qBittorrent hat das Passwort abgelehnt; korrigiere es in den Einstellungen
 core-downloads-qbt-banned = qBittorrent hat diese Adresse nach fehlgeschlagenen Anmeldungen gesperrt; warte oder starte qBittorrent neu
 core-downloads-qbt-login-rejected = qBittorrent hat Benutzername oder Passwort abgelehnt
-core-downloads-qbt-login-failed = Die Anmeldung bei qBittorrent unter { $address } antwortete { $status }; nächster Versuch beim nächsten Aufruf
-core-downloads-qbt-not-web-ui = { $address } antwortete { $status }, aber nicht als Web UI von qBittorrent. Prüfe die Adresse in den Einstellungen und ob das Web UI in qBittorrent eingeschaltet ist
+core-downloads-qbt-login-failed = Die Anmeldung bei qBittorrent unter { $address } lieferte HTTP { $status }; nächster Versuch bei der nächsten Anfrage
+core-downloads-qbt-not-web-ui = { $address } lieferte HTTP { $status }, das sieht nicht nach dem Web UI von qBittorrent aus. Prüfe die Adresse in den Einstellungen und ob das Web UI in qBittorrent eingeschaltet ist
 core-downloads-qbt-not-added = qBittorrent hat die Torrents nicht hinzugefügt: { $said }
 core-downloads-qbt-some-not-added = qBittorrent konnte { $count } der Torrents nicht hinzufügen: { $said }
-core-downloads-qbt-answered = qBittorrent antwortete { $status }: { $line }
+core-downloads-qbt-answered = qBittorrent lieferte HTTP { $status }: { $line }
 
 ## downloads/src/replace.rs
 
@@ -1207,14 +1208,14 @@ core-downloads-no-video = { $name } enthält kein Video, Anibeam kann es also ni
 
 ## downloads/src/rolling.rs
 
-core-downloads-no-roll = kein rollender Download { $id }
+core-downloads-no-roll = kein fortlaufender Download { $id }
 core-downloads-rolled = { $title }: jetzt bei den Folgen { $from } bis { $to } von { $total }.
 core-downloads-roll-ahead = halte mindestens eine Folge Vorsprung
 core-downloads-roll-nothing = nichts zu holen
 
 ## releases/src/endpoints.rs
 
-core-releases-json-needs-repo = eine JSON-Suchquelle kommt aus einem Endpoint-Repo, dessen Definition ihre Felder zuordnet
+core-releases-json-needs-repo = eine JSON-Suchquelle muss aus einer Quellenliste kommen, deren Definition ihre Felder zuordnet
 core-releases-endpoint-no-name = `name` fehlt
 core-releases-endpoint-bad-name = { $name }: nur Buchstaben, Ziffern, '.', '_', '-'
 core-releases-endpoint-json = { $name }: { $why }
@@ -1222,13 +1223,13 @@ core-releases-endpoint-unknown-kind = { $name }: unbekannte Art { $kind } (gült
 core-releases-endpoint-no-url = { $name }: `url` fehlt
 core-releases-endpoint-not-http = { $name }: die Adresse muss mit http:// oder https:// beginnen
 core-releases-endpoint-needs-query = { $name }: eine { $kind }-URL muss den Platzhalter {"{"}query{"}"} enthalten
-core-releases-endpoint-no-query = { $name }: eine { $kind }-URL hängt die Suche selbst an, also kein {"{"}query{"}"}
+core-releases-endpoint-no-query = { $name }: eine { $kind }-URL hängt die Suchanfrage selbst an, darf also kein {"{"}query{"}"} enthalten
 
 ## releases/src/fetch.rs
 
-core-releases-indexer-error = der Indexer antwortete mit Fehler { $code }
+core-releases-indexer-error = der Indexer lieferte Fehler { $code }
 core-releases-bad-feed = fehlerhafter Feed: { $error }
-core-releases-feed-answered = der Feed antwortete { $status }
+core-releases-feed-answered = der Feed lieferte HTTP { $status }
 
 ## releases/src/json_feed.rs
 
@@ -1237,18 +1238,18 @@ core-releases-not-feed-json = nicht das JSON des Feeds: { $error }
 ## releases/src/json.rs
 
 core-releases-not-json = kein JSON: { $error }
-core-releases-search-error-said = die Suche antwortete mit einem Fehler: { $message }
-core-releases-search-error = die Suche antwortete mit einem Fehler
+core-releases-search-error-said = die Suche lieferte einen Fehler: { $message }
+core-releases-search-error = die Suche lieferte einen Fehler
 core-releases-no-results-field = die Antwort hat keine Ergebnisse unter { $path }
 core-releases-results-not-list = die Ergebnisse der Antwort sind keine Liste
-core-releases-search-answered = die Suche antwortete { $status }
+core-releases-search-answered = die Suche lieferte HTTP { $status }
 
 ## releases/src/native.rs
 
-core-releases-no-endpoints = noch keine Endpoints: füge unter Mehr, Endpoints ein Repo oder einen von Hand hinzu
+core-releases-no-endpoints = noch keine Downloadquellen: füge zuerst eine Quellenliste oder eine eigene Quelle hinzu
 core-releases-no-source-named = keine Quelle namens { $name }
 core-releases-empty-query = gib etwas zum Suchen ein
-core-releases-cannot-follow = { $name } lässt sich nicht abonnieren: Es beantwortet Suchen, hat aber keinen Feed für neue Folgen
+core-releases-cannot-follow = { $name } lässt sich nicht abonnieren: Es unterstützt die Suche, hat aber keinen Feed für neue Folgen
 core-releases-endpoint-gone = { $name } ist nicht mehr verfügbar: entfernt, ausgeschaltet oder ohne Schlüssel
 
 ## releases/src/quirks.rs
@@ -1284,40 +1285,40 @@ core-releases-episode-range = { $from } bis { $to }
 
 ## Watch together (#846)
 
-core-prefs-room-name = ein Name hat 1 bis { $max } Zeichen, ohne Steuerzeichen
+core-prefs-room-name = der Name muss 1 bis { $max } Zeichen haben, ohne Steuerzeichen
 core-prefs-room-relay = die Relay-Adresse muss mit https:// oder http:// beginnen
 core-room-service = Gemeinsam schauen
 core-room-not-found = Kein Raum hat diesen Code. Vielleicht wurde er geschlossen.
 core-room-full = Dieser Raum ist voll.
-core-room-proto = Dieses Relay nutzt eine andere Version von Räumen. Aktualisiere { -app-name }, um beizutreten.
-core-room-needs-episode = Dieses Relay braucht eine Folge, um einen Raum zu starten. Starte ihn im Player oder aktualisiere das Relay.
-core-room-unreachable = Relay nicht erreichbar: { $message }
-core-room-refused = Das Relay hat abgelehnt: { $message }
+core-room-proto = Dieser Server nutzt eine andere Version von Gemeinsam schauen. Aktualisiere { -app-name }, um beizutreten.
+core-room-needs-episode = Dieser Server braucht eine Folge, bevor ein Raum startet. Starte einen im Player oder aktualisiere den Server.
+core-room-unreachable = Raumserver nicht erreichbar: { $message }
+core-room-refused = Der Raumserver hat die Anfrage abgelehnt: { $message }
 core-room-not-in = Du bist in keinem Raum.
-core-room-no-name = wähle den Namen, unter dem andere im Raum dich sehen
-core-room-bad-code = ein Raumcode hat 6 Buchstaben und Ziffern
-core-room-created = Raum zum gemeinsamen Schauen gestartet. Der Code ist { $code }.
+core-room-no-name = gib den Anzeigenamen ein, den andere im Raum sehen
+core-room-bad-code = Raumcodes bestehen aus 6 Buchstaben oder Ziffern
+core-room-created = Raum zum gemeinsamen Schauen gestartet. Code: { $code }.
 core-room-joined = Dem Raum { $code } zum gemeinsamen Schauen beigetreten.
 core-room-left = Raum zum gemeinsamen Schauen verlassen.
 core-room-member-joined = { $name } ist dem Raum beigetreten.
 core-room-member-left = { $name } hat den Raum verlassen.
 core-room-closed = Der Raum zum gemeinsamen Schauen wurde geschlossen.
-core-room-lost = Verbindung zum Raum zum gemeinsamen Schauen verloren. Neuer Versuch läuft.
-core-room-back = Wieder im Raum zum gemeinsamen Schauen.
+core-room-lost = Verbindung zum Raum zum gemeinsamen Schauen verloren. Verbinde neu.
+core-room-back = Wieder mit dem Raum zum gemeinsamen Schauen verbunden.
 core-room-media-asked = Den Host um die Folge gebeten.
 core-room-media-cannot = Der Host kann diese Folge gerade nicht teilen.
 core-room-media-sent = { $name } den Torrent der Folge geschickt.
 core-room-media-sent-name = { $name } den Namen des Releases der Folge geschickt.
 core-room-media-nothing = Der Host hat keine Kopie der Folge zum Teilen.
-core-room-media-no-answer = Die App des Hosts hat nicht geantwortet. Versuch es gleich noch einmal.
+core-room-media-no-answer = Die App des Hosts hat nicht reagiert. Versuch es gleich noch einmal.
 core-room-media-torrent = Lade die Folge über den Torrent des Hosts herunter.
 core-room-media-searching = Suche in deinen Quellen nach dem Release des Hosts.
 core-room-media-not-found = Keine deiner Quellen hat das Release des Hosts.
-core-room-media-no-sources = Jede Quelle ist ausgeschaltet. Schalte eine ein, um zu suchen.
+core-room-media-no-sources = Alle Quellen sind ausgeschaltet. Schalte eine ein, um zu suchen.
 core-room-media-no-start = Der Download ließ sich nicht starten: { $message }
-core-room-media-client = der Torrent-Client hat ihn nicht angenommen
+core-room-media-client = der Torrent-Client hat ihn abgelehnt
 core-room-media-lost = Der Torrent-Client hat den Download der Folge verloren.
-core-room-media-stalled = Der Download ist seit zehn Minuten nicht weitergekommen. Versuch es später noch einmal.
-core-room-media-not-in-library = Die Folge ist heruntergeladen, aber nicht in deiner Bibliothek. Prüfe, ob Downloads in einem Bibliotheksordner landen.
+core-room-media-stalled = Der Download hängt seit zehn Minuten fest. Versuch es später noch einmal.
+core-room-media-not-in-library = Die Folge ist fertig geladen, aber nicht in deiner Bibliothek aufgetaucht. Prüfe, ob Downloads in einem Bibliotheksordner landen.
 core-room-media-here = Die Folge ist jetzt in deiner Bibliothek.
 core-room-media-rest-missing = Der Rest der Serie war nicht zu bekommen. Nur diese Folge wird geladen.

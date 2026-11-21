@@ -54,7 +54,7 @@ lang-name-zh-CN = 中国語（簡体字）
 ## Onboarding
 
 onb-welcome-title = Anibeam
-onb-welcome-note = この端末でアニメを楽しめます。作品を探し、入手先を確認してダウンロード。リストの同期もできます。
+onb-welcome-note = この端末でアニメを。作品を探し、エピソードをダウンロードし、リストを同期できます。
 onb-language-title = 言語
 onb-language-note = 別の言語を選ばない限り、Anibeamは端末の言語で表示されます。あとから「その他」で変更できます。
 onb-lists-title = リスト
@@ -62,19 +62,19 @@ onb-lists-note = ログインすると、ここでの視聴がAniListやMyAnimeL
 onb-wifi-title = Wi-Fiのみ
 onb-wifi-note = エピソードは大容量です。指定しない限り、AnibeamはWi-Fi接続時だけダウンロードします。
 onb-storage-title = ストレージ
-onb-storage-note = Anibeamがダウンロードできる容量の上限です。容量はあらかじめ確保されず、エピソードが増えるまで空いたままです。
+onb-storage-note = Anibeamがダウンロードできる容量の上限を設定します。容量はあらかじめ確保されず、エピソードをダウンロードするまで空いたままです。
 onb-notify-title = 通知
 onb-notify-note = ダウンロード中は進み具合を通知し、視聴できる状態になったらもう1件通知します。通知がなくてもダウンロードは進みます。
-onb-sites-title = 検索サイト
-onb-sites-note = Anibeamには検索先が入っていません。リポジトリは署名付きの検索サイト一覧です。リポジトリのアドレスを貼り付け、鍵を確認してから、使いたいサイトをインストールします。あとから「その他」でも設定できます。
+onb-sites-title = ソースリスト
+onb-sites-note = Anibeamにはダウンロードソースが入っていません。ソースリストは、検索するサイトの署名付きカタログです。アドレスを貼り付け、鍵を確認して、使いたいソースをインストールしてください。あとから「その他」でも設定できます。
 onb-computer-title = パソコン
-onb-computer-note = パソコンのAnibeamは、Tailscale経由でこのスマホとライブラリを共有できます。その作品が「ライブラリ」に表示され、エピソードをここで再生できます。Tailscaleでのパソコンの名前とポートを入力し、「テスト」を押してください。パソコンがない場合は空欄のまま始めてください。あとから「その他」で設定できます。
+onb-computer-note = パソコンのAnibeamは、Tailscale経由でこのスマホとライブラリを共有できます。その作品が「ライブラリ」に表示され、ここで再生できます。Tailscaleでのパソコンの名前とポートを入力し、「テスト」をタップしてください。パソコンがない場合は空欄のまま「始める」をタップしてください。あとから「その他」で設定できます。
 onb-wifi-only = Wi-Fiのみ
-onb-wifi-on = オン。モバイルデータでは確認します。
+onb-wifi-on = オン。モバイルデータを使う前にAnibeamが確認します。
 onb-wifi-off = オフ。モバイルデータでもダウンロードします。
 onb-storage-caption = 18 GBでおよそ12話分です。端末の全容量まで自由に設定できます。
 onb-use-cap = この上限にする
-onb-cap-on = オン。{ $cap }に達すると、エピソードを削除するまでダウンロードを止めます。
+onb-cap-on = オン。{ $cap }に達すると、エピソードを削除するまで新しいダウンロードを開始しません。
 onb-cap-off = オフ。端末がいっぱいになるまでダウンロードします。
 onb-start = 始める
 onb-continue = 次へ
@@ -101,7 +101,7 @@ look-size-normal = 標準
 look-size-large = 大
 look-size-larger = 特大
 look-size-largest = 最大
-look-text-size-note = Anibeam全体の文字の大きさです。端末のフォントサイズに上乗せされます。
+look-text-size-note = Anibeam全体の文字の大きさです。端末のシステム設定に上乗せされます。
 
 ## The window: tabs and the sheets over every page
 
@@ -127,7 +127,7 @@ more-search = 設定を検索
 more-search-none = 該当なし
 more-search-hits = { $count }件の設定
 more-search-tap = タップして移動
-more-search-hint = 言葉を変えてみてください: ストレージ、Wi-Fi、トラッカー、サイト、パソコン。
+more-search-hint = ストレージ、Wi-Fi、トラッカー、サイト、パソコンなどのキーワードで検索してみてください。
 more-accounts = アカウント
 more-streaming = ストリーミング
 more-subtitles = 字幕
@@ -149,12 +149,12 @@ more-dl-status-mobile-cap = Wi-Fiとモバイルデータ、上限{ $cap }
 more-stream-status-auto = 自動、モバイルデータと中継時は720p
 more-stream-status-original = 常に元のファイル
 more-stream-status-converted = { $quality }に変換
-more-sites-status-none = リポジトリなし
-more-sites-status-on = { $sites }サイトが有効
-more-sites-status-on-from = { $sites }サイトが有効、{ $repos }リポジトリから
+more-sites-status-none = ソースリストなし
+more-sites-status-on = { $sites }件のソースが有効
+more-sites-status-on-from = { $sites }件のソースが有効、{ $repos }件のリストから
 more-conn-status-unchecked = 未確認
-more-conn-status-ok = すべて成功
-more-conn-status-failed = { $total }ステップ中{ $failed }件が失敗
+more-conn-status-ok = すべてのチェックに成功
+more-conn-status-failed = { $total }件中{ $failed }件のチェックに失敗
 more-computer-status-none = 未接続
 more-icon-default = デフォルト
 more-icon-dark = ダーク
@@ -168,7 +168,7 @@ more-stats-status-empty = 1年分の視聴記録
 
 ## More: the sections' own settings
 
-more-accounts-note = ここで視聴した作品がリストに反映され、リスト側の進捗も作品に表示されます。
+more-accounts-note = ここで視聴したエピソードがリストに反映され、リストの進捗がライブラリに表示されます。
 more-storage = ストレージ
 more-storage-capped = 上限{ $cap }
 more-storage-no-cap = 上限なし
@@ -176,12 +176,31 @@ more-storage-used = エピソードが使用
 more-storage-cap-caption = 上限
 more-storage-free = 端末の空き
 more-set-storage-cap = ストレージ上限
-more-storage-cap-on = { $cap }に達すると、エピソードを削除するまで追加のダウンロードはしません。
+more-set-rolling = 先読みダウンロード
+more-roll-note-over = { $count }話を超えると
+more-roll-note-asked = 指定したとき
+more-roll-big = 長い作品では自動でオン
+more-roll-big-help = { $count }話を超える作品は、自動で数話ずつダウンロードします。「ダウンロード」からすべてを一度にダウンロードすることもできます。
+more-roll-ahead = 先の話数
+more-roll-ahead-help = 今見ている話の先に、何話分をダウンロードしておくかです。12話でおよそ1シーズンです。
+more-roll-over = 先読みの基準話数
+more-roll-over-help = これより話数の多いダウンロードは、数話ずつ取得します。
+more-roll-watched = 視聴済みのエピソード
+more-roll-delete = 削除
+more-roll-keep-all = すべて残す
+more-roll-delete-help = 先に進むと自動で削除され、端末にはこれからのエピソードだけが残ります。
+more-roll-keep-all-help = 視聴後もすべてのファイルが端末に残ります。
+more-roll-behind = 残す視聴済みの話数
+more-roll-behind-help = { $count ->
+    [0] 1話見終わると、その前の話を削除します。
+   *[other] 見終わった話の前に残す視聴済みエピソードの数です。{ $count }の場合、第{ $episode }話を見終わると第1話が削除されます。
+    }
+more-storage-cap-on = { $cap }に達すると、エピソードを削除するまで新しいダウンロードを開始しません。
 more-storage-cap-off = オフ: 端末がいっぱいになるまでダウンロードします。
 more-network = 通信
 more-network-wifi = Wi-Fiのみ
 more-network-mobile = Wi-Fiとモバイルデータ
-more-wifi-on = オン。ダウンロードはWi-Fi接続まで待ち、モバイルデータでは確認します。
+more-wifi-on = オン。ダウンロードはWi-Fiを待ち、モバイルデータを使う前にAnibeamが確認します。
 more-set-stream-quality = ストリーミング画質
 more-stream-question = パソコンのエピソードをここで再生する方法です。
 more-stream-auto-note = 自動では、Wi-Fiなら元のファイルのまま再生し、モバイルデータ時やTailscaleがパソコンへ中継経由で届く場合は720pに変換して再生します。
@@ -190,14 +209,14 @@ more-stream-converted-note = パソコン側で{ $quality }に変換します。
 more-set-feeds = 自分のフィード
 more-feeds-note = サイトより先に検索します
 more-set-check = 接続を確認
-more-check-note = この端末と検索サイトの間の各ステップをテストします。サイトの検出、到達、セキュア接続です。
+more-check-note = この端末とダウンロードソースの間の各ステップをテストします: DNSルックアップ、接続、HTTPS。
 more-check-copy = 結果をコピー
 more-set-computer = パソコンのAnibeam
 more-computer-note = ライブラリは「ライブラリ」に表示され、エピソードはここで再生できます。my-computerのような名前か、100.64.0.1のようなアドレスを入力します。
 more-computer-placeholder = my-computer:8790
 more-subs-note = この端末のすべてのエピソードの初期設定です。パソコンからストリーミングする場合は、そのパソコンの設定が使われます。
 more-icon-note = ホーム画面とアプリ一覧に表示されるアイコンです。
-more-icon-line-note = ラインは壁紙の色を取り入れます。ほかのMaterial Youアイコンと同じです。
+more-icon-line-note = ラインアートは、ほかのMaterial Youアイコンと同じく壁紙の色を取り入れます。
 more-icon-moved-note = アイコンを変更すると、ホーム画面から消えるランチャーがあります。アプリ一覧には残るので、そこからドラッグして戻してください。
 more-set-whats-new = 更新内容
 more-set-onboarding = 再セットアップ
@@ -214,6 +233,7 @@ host-synced = { $when }に同期しました。
 host-last-try = 前回の試行 { $when }: { $error }
 host-asking = 確認中...
 host-reached = { $host }に接続しました。Anibeam { $version }。
+host-reached-for = { $host }に接続しました。Anibeam { $version }、{ $name }の進捗。
 host-saved = 保存しました。同期中...
 host-none = パソコンなし。このスマホは自分のライブラリだけを使います。
 acct-signed-in-as = { $name }でログイン中
@@ -230,6 +250,7 @@ home-note = この端末、{ $count }作品
 lib-this-phone = この端末
 lib-note-phone = この端末、{ $count }作品
 lib-note-remote = { $device }、{ $when }に同期
+lib-note-remote-for = { $device }、{ $name }の進捗、{ $when }に同期
 lib-empty-search = 「{ $query }」に一致する作品はありません。
 lib-empty-phone = この端末にはまだ何もありません。
 lib-empty-remote = そのデバイスのライブラリは空です。
@@ -245,7 +266,7 @@ airing-this-season = 今期
 airing-next-season = 来期
 airing-other-season = その他
 airing-hidden = 「興味なし」で{ $count }件を非表示
-airing-plan-needs-tracker = 視聴予定への追加にはAniListかMALが必要です。「その他」の「アカウント」からログインしてください。
+airing-plan-needs-tracker = 「視聴予定」にはAniListかMALが必要です。「その他」の「アカウント」でログインしてください。
 airing-plan-failed = 視聴予定に追加できませんでした: { $error }
 list-watching = 視聴中
 list-planning = 視聴予定
@@ -253,8 +274,8 @@ list-completed = 視聴完了
 list-paused = 保留
 list-dropped = 中止
 list-repeating = 再視聴中
-more-check-all-ok = すべて成功しました。
-more-check-failed = { $total }ステップ中{ $failed }件が失敗しました。この一覧のスクリーンショットで原因が分かります。
+more-check-all-ok = すべてのチェックに成功しました。
+more-check-failed = { $total }件中{ $failed }件のチェックに失敗しました。この一覧のスクリーンショットで失敗した箇所が分かります。
 more-check-row = { $step }  { $ms } ms
 more-check-copied = コピーしました。メッセージに貼り付けてください。
 more-version = Anibeam for Android { $version }（ビルド { $build }）
@@ -286,6 +307,7 @@ more-set-subs-style = 字幕のスタイル
 more-words-anilist = anilist トラッカー ログイン サインイン アカウント 連携 リスト 進捗
 more-words-mal = mal myanimelist トラッカー ログイン サインイン アカウント 連携 リスト 進捗
 more-words-storage-cap = 容量 ディスク 上限 gb いっぱい ストレージ 削除 サイズ
+more-words-rolling = 先読み ローリング 長い 作品 エピソード 先 削除 視聴済み 残す バッチ 容量
 more-words-wifi = wifi wi-fi モバイルデータ 携帯 通信 ネットワーク
 more-words-notifications = 通知 お知らせ 進捗 許可 権限 バナー
 more-words-stream-quality = 自動 オリジナル 1080p 720p 480p 変換 データ パソコン 再生 画質
@@ -540,6 +562,7 @@ inspect-holds = { $count }話を収録: { $runs }
 
 phone-notes-title = 更新内容
 notes-got-it = OK
+notes-github = GitHubで全変更履歴を見る
 
 ## Move the list to a tracker
 
@@ -547,7 +570,7 @@ move-lists-label = この端末のリスト
 move-title = リストを{ $site }に移動
 move-here = この端末: { $list }
 move-there = { $site }の現在: { $list }
-move-later-hint = あとで: その他、アカウント
+move-later-hint = あとで: 「その他」の「アカウント」
 move-not-now = 今はしない
 move-nothing = なし
 move-not-on-list = リストにありません
@@ -559,7 +582,7 @@ move-label = { $count }作品を移動
 move-waiting = { $count }作品のステータスやスコアが、ここにしかありません。{ $site }に移動すると、パソコンやプロフィールでも見られます。
 move-moving = { $count }作品を{ $site }に移動中
 move-moved = { $count }作品を{ $site }に移動しました
-move-failed = { $site }が{ $count }作品を受け付けませんでした。アクティビティを確認してください
+move-failed = { $count }作品を{ $site }に移動できませんでした。動作履歴を確認してください
 
 ## Downloads: find (search, shows, sources, releases)
 
@@ -576,9 +599,9 @@ find-lens-downloaded = 保存済み
 find-lens-with-count = { $lens } { $count }
 find-what-to-get = 入手する作品
 find-lens-list-line = リストの視聴中と視聴予定です。開くとエピソードを入手できます。
-find-lens-gaps-line = 放送済みで、この端末にないエピソードです。作品を開くと、入手先が分かります。
+find-lens-gaps-line = 放送済みで、この端末にないエピソードです。作品を開くと検索できます。
 find-lens-airing-line = これから放送される新エピソードです。近い順に表示します。
-find-lens-following-line = 購読中の作品です。新エピソードは自動でダウンロードされます。開くと停止できます。
+find-lens-following-line = 購読中: 新エピソードは自動でダウンロードされます。開くとフォローを停止できます。
 find-lens-downloaded-line = この端末にダウンロードしたものを、作品ごとに表示します。
 
 find-lens-gaps-empty = 欠けはありません。視聴を始めた作品の放送済みエピソードは、すべてここにあります。
@@ -606,18 +629,18 @@ find-list-status-watching = リスト: 視聴中
 find-list-status-already = すでにリストにあります
 find-going-planning = { $title }を視聴予定に追加します。
 find-already-listed = { $title }はすでにリストにあります。
-find-plan-needs-tracker = リストへの追加にはAniListかMALが必要です。「その他」の「アカウント」からログインしてください。
+find-plan-needs-tracker = リストへの追加にはAniListかMALが必要です。「その他」の「アカウント」でログインしてください。
 find-plan-failed = リストに追加できませんでした: { $error }
 find-show-gone = その作品は、この端末のライブラリにもうありません。
 
 ## Shows as you type
 
 find-shows = 作品
-find-suggesting = AniList確認中...
-find-suggest-tap = タップすると入手先を確認できます。Returnでリリース名を検索します。
-find-suggest-none = その名前の作品はありません。Returnでリリース名を検索します。
+find-suggesting = AniListを検索中...
+find-suggest-tap = 作品をタップするとソースを検索します。Returnでリリース名を検索します。
+find-suggest-none = その名前の作品はありません。Returnでリリース名を検索できます。
 find-suggest-hint = 入力に合わせて作品が表示されます。Returnでリリース名を検索します。
-find-suggest-failed = AniListに問い合わせできませんでした: { $error }
+find-suggest-failed = AniListに接続できませんでした: { $error }
 find-library-line = ライブラリにあります
 find-library-line-none = ライブラリ: 全{ $total }話中、端末に0話
 find-library-line-some = ライブラリ: 全{ $total }話中、端末に{ $here }話
@@ -647,17 +670,17 @@ find-stop-failed = 停止を完了できませんでした: { $error }
 find-where = 入手先
 find-where-pick = ソースを選ぶと、入手できるものが表示されます。
 find-where-nothing = 指示するまで何もダウンロードしません。
-find-source-idle = タップで確認
+find-source-idle = タップで検索
 find-source-trying = { $name }で試行中
 find-source-searching = 検索中
 find-source-silent = 応答なし
-find-no-sites-title = 検索サイトがありません
-find-no-sites-body = 「その他」で、検索サイトのリポジトリか自分のフィードを追加してください。
+find-no-sites-title = ダウンロードソースがまだありません
+find-no-sites-body = 「その他」でソースリストかカスタムフィードを追加してください。
 find-open-more = その他を開く
 find-pick-source-title = ソースを選択
 find-pick-source-body = リリースがグリッドで表示されます。1話が1マスです。
 find-releases = { $count }件のリリース
-find-unreachable = { $host }に接続できませんでした。ネットワークや国によっては、リリースサイトがブロックされています。Anibeamは名前のブロックは回避しますが、これはサイト自体のブロックか、サイトが停止中です。VPNを使うか、別のソースをお試しください。
+find-unreachable = { $host }に接続できませんでした。ネットワークによってはリリースサイトがブロックされています。AnibeamはDNSブロックをすでに回避しているため、このサイトが直接ブロックされているか、停止中の可能性があります。VPNか別のソースをお試しください。
 find-the-source = ソース
 
 find-has = 入手可能
@@ -669,18 +692,22 @@ find-on-this-phone = この端末
 find-on-computer = { $name }
 
 find-plan-no-releases = このソースにこの作品のリリースはありません。
-find-plan-nothing-picked = 未選択: 行かマスをタップしてください。
+find-plan-nothing-picked = 未選択: 行か個別のエピソードをタップしてください。
 find-plan-line = { $groups }の{ $episodes }、{ $size }
 find-plan-skipped = { $count ->
-    [one] 入手済みの{ $count }話は除外しています。もう一度入手するには「置き換え」をオンにしてください。
-   *[other] 入手済みのエピソードは除外しています。もう一度入手するには「置き換え」をオンにしてください。
+    [one] 入手済みの{ $count }話は除外しています。もう一度ダウンロードするには「入手済みを置き換え」をオンにしてください。
+   *[other] 入手済みのエピソードは除外しています。もう一度ダウンロードするには「入手済みを置き換え」をオンにしてください。
 }
 find-plan-follow-note = { $query }の新エピソードは自動でダウンロードされます。
 find-plan-on-desk = { $name }のライブラリにダウンロードされます。
 find-follow-new = 新エピソードをフォロー
 find-follow-new-note = 放送されると自動でダウンロードされます。
+find-roll-title = 先読みダウンロード
+find-roll-on = 今{ $count }話をダウンロードし、1話見終わるごとに次を開始します。
+find-roll-on-delete = 今{ $count }話をダウンロードし、1話見終わるごとに次を開始します。視聴済みのエピソードは自動で削除されます。
+find-roll-off = 選んだエピソードを一度にすべてダウンロードします。
 find-replace = 入手済みを置き換え
-find-replace-note = 選んだエピソードを、この端末にあるものの上からダウンロードし直します。
+find-replace-note = 選んだエピソードを、この端末にあるものに上書きしてダウンロードし直します。
 find-go = { $mode ->
     [replace] { common-episodes }を入手して置き換え
     [subscribe] { common-episodes }を入手して購読
@@ -696,7 +723,7 @@ find-download-to = 保存先
 find-this-phone = この端末
 find-your-computer = パソコン
 find-desk-asking = { $name }に確認中...
-find-desk-silent = { $name }から応答がありません。「この端末」を選ぶか、電源を入れてからもう一度お試しください。
+find-desk-silent = { $name }が応答しません。「この端末」を選ぶか、オンラインになってからもう一度お試しください。
 find-sending-to = { $name }に送信中...
 
 ## The release list
@@ -741,7 +768,7 @@ find-subscribed-as = 「{ $name }」として購読しました。新エピソ�
 find-downloading = { $count }件のリリースをダウンロード中。
 find-not-added = 追加失敗: { $error }
 find-not-subscribed = 購読できませんでした: { $error }
-find-desk-refused = { $name }が受け付けませんでした: { $error }
+find-desk-refused = { $name }が拒否しました: { $error }
 find-desk-not-subscribed = { $name }で購読できませんでした: { $error }
 
 ## Player
@@ -775,7 +802,7 @@ player-android-only = プレーヤーはAndroidでのみ動作します
 ## Player: delays
 
 player-delay-title = 遅延
-player-delay-note = タップするごとに0.1秒ずれます。次のファイルまで有効です。
+player-delay-note = タップごとに0.1秒ずれます。次のエピソードでリセットされます。
 phone-player-delay-seconds = { $value }秒
 player-sub-delay-now = 字幕の遅延 { $value }
 player-audio-delay-now = 音声の遅延 { $value }
@@ -819,12 +846,12 @@ subs-position = 位置
 subs-position-helper = 100が下端です。小さい値ほど、字幕が画面の上へ上がります。
 subs-style-title = スタイル
 subs-styled = スタイル付き字幕
-subs-styled-as-made = スタイル付き（ASS）ファイルは、作者が設定したとおりに表示されます。
-subs-styled-mine = 下の自分のスタイルをすべてのファイルに適用します。看板やカラオケ表示が崩れることがあります。
-subs-styled-size-only = スタイル付き字幕は見た目を保ち、サイズだけ反映します。通常のファイルには自分のスタイルを適用します。
-subs-mode-as-made = そのまま
+subs-styled-as-made = スタイル付き（ASS）字幕は、作成されたとおりに表示されます。
+subs-styled-mine = 下のスタイルですべてのファイルを上書きします。看板やカラオケ表示が崩れることがあります。
+subs-styled-size-only = スタイル付き字幕ファイルは見た目を保ち、サイズだけ反映します。通常のファイルには自分のスタイルを適用します。
+subs-mode-as-made = 元のまま
 subs-mode-size-only = サイズのみ
-subs-mode-mine = カスタム
+subs-mode-mine = 上書き
 subs-font = フォント
 subs-font-bad = Noto Sansのようにフォント名を入力してください。
 subs-bold = 太字
@@ -833,14 +860,14 @@ subs-colour-bad = #ffcc00のように色を入力してください。
 subs-outline = 縁取り
 subs-outline-bad-width = 幅は0以上の数値です。
 subs-outline-bad-colour = #000000のように色を入力してください。
-subs-outline-helper = 幅、次に色です。
+subs-outline-helper = 幅、次に色。
 subs-shadow = 影
 subs-shadow-bad = 0以上の数値です。0は影なしです。
 subs-shadow-helper = 影が落ちる距離です。0でなしになります。
 subs-box = 背景ボックス
 subs-box-helper = 字幕の後ろに暗いボックスを敷きます。0で非表示です。
-subs-reset-title = リセット
-subs-reset-helper = サイズ、フォント、色、縁取り、ボックス、位置を初期状態に戻します。
+subs-reset-title = 字幕のスタイルをリセット
+subs-reset-helper = サイズ、フォント、色、縁取り、ボックス、位置を初期設定に戻します。
 subs-reset = リセット
 
 ## Streaming
@@ -849,11 +876,11 @@ stream-quality-auto = 自動
 stream-quality-original = オリジナル
 stream-app-starting = アプリは起動中です
 stream-no-computer = まだパソコンがありません。「その他」で追加してください。
-stream-off-on-host = { $host }でストリーミングがオフです。そちらの「設定」の「スマホアプリ」で「エピソードをストリーミング」をオンにしてください。
+stream-off-on-host = { $host }でストリーミングがオフです。そちらの設定の「アカウント」（スマホアプリ）で「エピソードをストリーミング」をオンにしてください。
 stream-cannot-stream = { $host }のAnibeam { $version }はまだストリーミングに対応していません。そちらで更新してください。
-stream-no-session = 相手のデバイスからセッションが返りませんでした
+stream-no-session = 相手のデバイスからストリームセッションが返りませんでした
 stream-answer-unreadable = 応答を読み取れませんでした: { $why }
-stream-answered-status = { $name }の応答: { $status }
+stream-answered-status = { $name }がHTTP { $status }を返しました
 
 ## Stats
 
@@ -904,7 +931,7 @@ backup-export-helper = フォルダ、照合結果、視聴記録を1つのフ�
 backup-private = 非公開データを含める
 backup-private-helper = AniListとMyAnimeListのログイン情報、視聴履歴、設定を追加します。ログイン情報は平文で書き込まれるため、ファイルは他人に渡さないでください。
 backup-restore = バックアップから復元
-backup-restore-helper = バックアップをこのライブラリに読み込みます。ディスク上の内容が優先され、ファイルは不足分を補います。
+backup-restore-helper = バックアップをこのライブラリに復元します。バックアップの照合と設定が優先され、この端末のものは何も削除されません。
 backup-done = バックアップしました。ファイルは保存先にあります。
 backup-not-saved = 保存されませんでした。何も書き込んでいません。
 backup-starting = Anibeamは起動中です。少し待ってからもう一度お試しください。
@@ -925,8 +952,8 @@ backup-sum-series = 作品{ $count }件を作成
 backup-sum-matches = 照合{ $count }件を適用
 backup-sum-views = 視聴記録{ $views }件と視聴済みエピソード{ $episodes }話を統合
 backup-sum-resume = 再開位置{ $count }件を統合
-backup-sum-accounts = リストアカウント{ $count }件を取り込み
-backup-sum-fixes = { $count }個のファイルに、作成済みの修正を適用します。
+backup-sum-accounts = リストのアカウント{ $count }件を取り込みました
+backup-sum-fixes = { $count }個のファイルに保存済みの修正を適用しました。
 backup-sum-missing = { $count }件のフォルダがこの端末に見つかりませんでした。
 backup-sum-left-out = 除外: { $fields }。
 
@@ -938,7 +965,7 @@ activity-copied = コピー済み
 activity-clear-every-line = すべて消去
 activity-fold = たたむ
 activity-no-problems = 問題はありません。すべて正常に動作しました。
-activity-nothing-yet = 報告することはまだありません。Anibeamの動作がここに表示されます。
+activity-nothing-yet = まだ報告することはありません。Anibeamの動作がここに表示されます。
 activity-time-today = %H:%M:%S
 activity-time-other = %-m月%-d日 %H:%M
 
@@ -978,27 +1005,28 @@ fmt-bytes-tb = { $value } TB
 ## Talking to the computer (companion client.rs, sync.rs, address.rs)
 
 client-not-found = { $host }は端末から見つけられない名前です。Tailscaleは接続されていますか?
-client-timeout = { $host }から応答がありません。電源は入っていますか? 両方でTailscaleは接続されていますか?
-client-connect-failed = { $host }に接続できませんでした。電源は入っていますか? 両方でTailscaleは接続されていますか?
-client-refused = { $host }は起動していますが、そちらのAnibeamが閉じているか、共有していません。そちらでAnibeamを開き、「設定」の「スマホアプリ」で「Tailscaleで共有」をオンにしてください。
+client-timeout = { $host }が応答しません。電源は入っていますか? 両方のデバイスでTailscaleは接続されていますか?
+client-connect-failed = { $host }に接続できませんでした。電源は入っていますか? 両方のデバイスでTailscaleは接続されていますか?
+client-refused = { $host }は起動していますが、そちらのAnibeamが閉じているか、共有していません。そちらでAnibeamを開き、設定の「アカウント」で「Tailscaleで共有」をオンにしてください。
 client-no-route = { $host }への経路がありません。Tailscaleは接続されていますか?
 client-invalid-input = { $host }に接続できませんでした
 client-unreachable = { $host }に接続できませんでした: { $why }
 client-cannot-find = 端末は{ $host }を見つけられません。Tailscaleは接続されていますか?
-client-broke-off = { $host }からの応答が途中で切れました: { $why }
-client-answered = { $host }が{ $path }に{ $status }を返しました
-client-not-anibeam-status = 何かが応答しましたが、Anibeamではありません（{ $host }が{ $path }に{ $status }を返しました）
-client-not-anibeam-hello = 何かが応答しましたが、Anibeamではありません（応答がAnibeamのあいさつではありません）
-client-not-anibeam-name = 何かが応答しましたが、Anibeamではありません（名乗った名前: { $name }）
-client-too-new = ホストはAPI { $host_api }で動作していますが、このアプリはAPI { $app_api }を読み取ります。アプリを更新してください。
-client-snapshot-unreadable = スナップショットを読み取れませんでした: { $why }
+client-broke-off = { $host }との接続が中断されました: { $why }
+client-answered = { $host }が{ $path }にHTTP { $status }を返しました
+client-not-anibeam-status = 何かが応答しましたが、Anibeamではありません（{ $host }が{ $path }にHTTP { $status }を返しました）
+client-not-anibeam-hello = 何かが応答しましたが、Anibeamではありません（予期しない応答）
+client-not-anibeam-name = 何かが応答しましたが、Anibeamではありません（{ $name }と名乗っています）
+client-too-new = ホストはAPI { $host_api }を使っていますが、このアプリが対応しているのは{ $app_api }までです。アプリを更新してください。
+client-snapshot-unreadable = ライブラリのスナップショットを読み取れませんでした: { $why }
 client-probe-unreadable = ファイルの詳細を読み取れませんでした: { $why }
-client-peers-unreadable = Anibeamの一覧を読み取れませんでした: { $why }
+client-peers-unreadable = デバイスの一覧を読み取れませんでした: { $why }
 sync-save-failed = スナップショットを保存できませんでした: { $why }
 address-https = パソコンのAnibeamはTailscale上で通常のhttpで応答します。https://は外してください。
 address-empty = ホストの名前かアドレスを入力してください。例: my-computer:8790。
 address-ipv6-close = IPv6アドレスには閉じ括弧 ] が必要です。
 address-ipv6-port = ポートは ] のあとに、[fd7a::1]:8790のように付けてください。
+address-ipv6-brackets = IPv6アドレスは[fd7a::1]:8790のように角かっこで囲んでください。
 address-bad-host = 「{ $text }」はホスト名ではありません。
 address-bad-port = 「{ $port }」はポートではありません。
 
@@ -1014,17 +1042,17 @@ clib-format-music = 音楽
 ## Search sites and repos
 
 repos-by-hand-title = 手動で追加
-repos-by-hand-note = リポジトリにないサイト用です。検索語を入れる場所に{ "{query}" }を含むフィードなら使えます。JackettやProwlarrのフィードも含みます。アドレス内のキーやトークンは、この端末のシークレットストアに移されます。
+repos-by-hand-note = ソースリストにないサイト用です。検索語が入る位置に{ "{query}" }を含むフィードなら使えます。JackettやProwlarrのフィードも使えます。アドレス内のキーやトークンは、この端末のシークレットストアに移されます。
 repos-name-placeholder = 名前
 repos-url-placeholder = https://...{ "{query}" }...
 repos-index-placeholder = https://.../index.json
 repos-add-site = サイトを追加
-repos-add-title = リポジトリ追加
-repos-add-note = リポジトリのインデックスのアドレスを貼り付けてください。保存する前に、Anibeamが署名を確認し、鍵を表示します。
-repos-add-repo = 追加
-repos-trust-title = 信頼しますか?
+repos-add-title = ソースリストを追加
+repos-add-note = ソースリストのインデックスのアドレスを貼り付けてください。保存する前に、Anibeamが署名を確認して鍵を表示します。
+repos-add-repo = ソースリストを追加
+repos-trust-title = このソースリストを信頼しますか?
 repos-fingerprint = フィンガープリント
-repos-trust-warning = そのサイトが検索の送信先を決めます。信頼できる人のリポジトリだけを信頼してください。
+repos-trust-warning = ソースが検索の送信先を決めます。信頼できる人のソースリストだけを信頼してください。
 repos-trust = 信頼する
 repos-open-link = { $url }を開く
 repos-saving = 保存中...
@@ -1033,20 +1061,20 @@ repos-update = 更新
 repos-edit-note = アドレスに入力したキーやトークンは、この端末のシークレットストアに移されます。
 repos-edit-note-keys = アドレス内の{ "{key}" }はそのままにしてください。値はこの端末に保存されます。
 repos-change-its = { $keys }を変更
-repos-check-repos = リポジトリの新しいサイトを確認
-repos-check-sites = サイトを確認
+repos-check-repos = ソースリストの更新を確認
+repos-check-sites = ソースを確認
 repos-add-site-label = サイトを手動で追加
 repos-needs-before-search = 検索するには{ $labels }が必要です
-repos-no-longer-offered = リポジトリでの提供は終了しました
+repos-no-longer-offered = ソースリストでの提供は終了しました
 repos-update-host = 更新により{ $host }にリクエストを送ります
 repos-tap-change-custom = タップして名前かアドレスを変更
 repos-tap-change-keys = タップして{ $labels }を変更
-repos-line-custom = { $host }  { $kind }  自分で追加
+repos-line-custom = { $host }  { $kind }  手動で追加
 repos-update-to = v{ $version }に更新
 repos-add-its-value = 値を追加
 repos-asks-for = { $labels }の入力が必要です
-repos-preview-line = 署名付きサイト{ $count }件
-repos-preview-trusted = 署名付きサイト{ $count }件、信頼済み
+repos-preview-line = 署名付きソース{ $count }件
+repos-preview-trusted = 署名付きソース{ $count }件、信頼済み
 repos-ask-kept-empty = この端末にのみ保存します。空欄の項目は、保存済みの値のままです。
 repos-ask-kept-never = この端末にのみ保存し、ライブラリやエクスポートには含めません。
 repos-ask-new-host = 新しいバージョンは{ $host }に送信するため、もう一度入力が必要です。
@@ -1063,6 +1091,15 @@ dl-wifi-and-mobile = Wi-Fiとモバイルデータ
 dl-joined = { $first }、{ $second }
 dl-batch-files = バッチ、{ $count }ファイル
 dl-batch-tag = バッチ
+dl-roll-line = { $watched ->
+    [0] { $ahead }話を準備中: 全{ $total }話中 第{ $next }〜{ $through }話
+   *[other] { $ahead }話を準備中: 全{ $total }話中 第{ $next }〜{ $through }話、{ $watched }話視聴済み
+    }
+dl-roll-more = さらに{ $count }話入手
+dl-roll-all = すべて入手
+dl-roll-all-ask = 残りの{ $count }話をすべてダウンロードしますか?
+dl-roll-keep = 先読みを続ける
+dl-roll-ahead = { $count }話先まで
 dl-downloading-count = { $count }件ダウンロード中
 dl-free-on-phone = 端末の空き
 dl-search-placeholder = 作品名またはリリース名
@@ -1097,9 +1134,9 @@ disk-list-three = { $a }、{ $b }、{ $c }
 disk-list-more = { $a }、{ $b }、{ $c }ほか{ $count }件
 disk-delete-finished-title = 完結作品{ $count }件（{ $size }）を削除しますか?
 disk-delete-watched-title = 視聴済みエピソード{ $count }話（{ $size }）を削除しますか?
-disk-delete-finished-body = { $names }。配信元が完結としていて、全話を視聴した作品だけが対象です。放送中の作品や、終了時期が未確定の作品は残ります。特典を含め、これらのファイルはすべてこの端末から削除されます。ダウンロード履歴も消えるため、再びダウンロードできます。
-disk-delete-watched-body = すべての作品の、視聴済みのエピソードです。未視聴のエピソードと特典は残ります。ファイルと字幕は、この端末から完全に削除されます。
-disk-no-finished = 全話を観終えた完結作品はありません
+disk-delete-finished-body = { $names }。完結済みで全話視聴した作品だけが対象です。放送中の作品や、完結が未確認の作品は残ります。特典を含め、これらのファイルはすべてこの端末から削除され、ダウンロードも削除されるので、もう一度ダウンロードできます。
+disk-delete-watched-body = すべての作品の、視聴済みのエピソードすべてです。未視聴のエピソードと特典は残ります。ファイルと字幕はこの端末から完全に削除されます。
+disk-no-finished = 全話を見終わった完結作品はありません
 disk-nothing-watched = この端末に視聴済みのものはありません
 disk-deleted = { $count }話（{ $size }）を削除しました
 disk-delete-failed = 何も削除されませんでした: { $error }
@@ -1228,7 +1265,7 @@ dates-tile-guess = ≈ { $date }
 dates-summary-none = 未設定
 dates-summary-ends = 第{ $episode }話で完結
 dates-summary-record = { $count }話は{ $site }の日付
-dates-summary-record-unnamed = { $count }話は記録の日付
+dates-summary-record-unnamed = { $count }話はメタデータの日付
 dates-summary-set = { $count }話は手動で設定
 dates-summary-guessed = { $count }話は毎週と推定
 dates-told-one = 第{ $episode }話
@@ -1238,7 +1275,7 @@ dates-told-due = { $episodes }は{ $when }後に公開
 dates-told-ends = 第{ $episode }話で完結
 dates-told-season-ends = シーズン{ $season }は第{ $episode }話で完結
 dates-told-by-you = { $told }（手動で設定）
-dates-told-gave-way = 手動で設定した{ $count }話は、現在は適用されません
+dates-told-gave-way = 手動で設定した{ $count }話は、もう適用されません
 
 ## The series page
 
@@ -1273,9 +1310,10 @@ mark-menu-unwatched = ここから未視聴にする
 mark-menu-cancel = キャンセル
 mark-watched-up-to = 第{ $episode }話まで視聴済み
 mark-unwatched-from = 第{ $episode }話から未視聴
-mark-not-connected = { $reason }「その他」の「アカウント」からログインしてください。
+mark-not-connected = { $reason }「その他」の「アカウント」でログインしてください。
 series-not-tracked = 未トラッキング
 series-not-tracked-on-phone = 未トラッキング、この端末に{ $count }話
+host-progress = { $name }の進捗
 
 ## The player
 

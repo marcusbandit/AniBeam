@@ -57,7 +57,7 @@ lang-name-zh-CN = Chinês (simplificado)
 ## Onboarding
 
 onb-welcome-title = Anibeam
-onb-welcome-note = Seus animes neste celular. Encontre uma série, veja quem tem, baixe e mantenha suas listas em dia.
+onb-welcome-note = Seus animes neste celular. Encontre séries, baixe episódios e mantenha suas listas sincronizadas.
 onb-language-title = Idioma
 onb-language-note = O Anibeam usa o idioma do seu celular, a menos que você escolha outro. Dá para mudar depois em Mais.
 onb-lists-title = Suas listas
@@ -65,19 +65,19 @@ onb-lists-note = Entre para que o que você assiste aqui conte no AniList ou no 
 onb-wifi-title = Só Wi-Fi
 onb-wifi-note = Os episódios são grandes. O Anibeam baixa só no Wi-Fi, a menos que você diga o contrário.
 onb-storage-title = Espaço
-onb-storage-note = Um limite de quanto o Anibeam pode baixar. Ele não reserva nada: o espaço continua livre até os episódios o ocuparem.
+onb-storage-note = Define um limite de quanto o Anibeam pode baixar. Nenhum espaço é reservado de antemão: o armazenamento continua livre até os episódios serem baixados.
 onb-notify-title = Notificações
 onb-notify-note = Enquanto os episódios baixam, uma notificação mostra o andamento, e outra avisa quando um está pronto para assistir. Os downloads acontecem de qualquer jeito.
-onb-sites-title = Sites de busca
-onb-sites-note = O Anibeam não vem com nada para buscar. Um repositório é uma lista assinada de sites de busca. Cole o endereço de um repositório, confira a chave e instale os sites que quiser. Dá para fazer isso depois em Mais.
+onb-sites-title = Listas de fontes
+onb-sites-note = O Anibeam não vem com nenhuma fonte de download. Uma lista de fontes é um catálogo assinado de sites de busca. Cole o endereço dela, confira a chave e instale as fontes que quiser. Dá para fazer isso depois em Mais.
 onb-computer-title = Seu computador
-onb-computer-note = O Anibeam em um computador pode compartilhar a biblioteca dele com este celular pelo Tailscale: as séries aparecem em Biblioteca e os episódios tocam aqui. Digite o nome dele no Tailscale e a porta, depois Testar. Sem computador? Deixe vazio e comece; Mais tem isso depois.
+onb-computer-note = O Anibeam em um computador pode compartilhar a biblioteca dele com este celular pelo Tailscale, e as séries aparecem em Biblioteca e tocam aqui. Digite o nome dele no Tailscale e a porta, depois toque em Testar. Sem computador? Deixe vazio e toque em Começar; dá para configurar isso depois em Mais.
 onb-wifi-only = Só no Wi-Fi
-onb-wifi-on = Ativado. Dados móveis pedem permissão.
+onb-wifi-on = Ativado. O Anibeam pergunta antes de usar dados móveis.
 onb-wifi-off = Desativado. Os downloads usam dados móveis também.
 onb-storage-caption = 18 GB dão cerca de 12 episódios. Deslize até o armazenamento total do celular.
 onb-use-cap = Usar este limite
-onb-cap-on = Ativado. Em { $cap }, o Anibeam não baixa mais nada até você excluir episódios.
+onb-cap-on = Ativado. Em { $cap }, o Anibeam não inicia novos downloads até você excluir episódios.
 onb-cap-off = Desativado. O Anibeam baixa até o celular encher.
 onb-start = Começar
 onb-continue = Continuar
@@ -104,7 +104,7 @@ look-size-normal = Normal
 look-size-large = Grande
 look-size-larger = Maior
 look-size-largest = Máximo
-look-text-size-note = O tamanho das palavras em todo o Anibeam, somado ao tamanho de fonte do celular.
+look-text-size-note = Tamanho do texto em todo o Anibeam, somado à configuração do sistema do celular.
 
 ## The window: tabs and the sheets over every page
 
@@ -133,7 +133,7 @@ more-search-hits = { $count ->
    *[other] { $count } configurações
 }
 more-search-tap = Toque para ir até lá
-more-search-hint = Tente uma palavra mais simples: armazenamento, Wi-Fi, lista, site, computador.
+more-search-hint = Tente palavras como armazenamento, Wi-Fi, lista, site ou computador.
 more-accounts = Contas
 more-streaming = Streaming
 more-subtitles = Legendas
@@ -155,22 +155,22 @@ more-dl-status-mobile-cap = Wi-Fi e dados móveis, limite de { $cap }
 more-stream-status-auto = Auto, 720p em dados móveis ou relay
 more-stream-status-original = O arquivo original, sempre
 more-stream-status-converted = Convertido para { $quality }
-more-sites-status-none = Sem repo ainda
+more-sites-status-none = Nenhuma lista de fontes ainda
 more-sites-status-on = { $sites ->
-    [one] 1 site ativo
-   *[other] { $sites } sites ativos
+    [one] 1 fonte ativa
+   *[other] { $sites } fontes ativas
 }
 more-sites-status-on-from = { $sites ->
-    [one] 1 site ativo
-   *[other] { $sites } sites ativos
+    [one] 1 fonte ativa
+   *[other] { $sites } fontes ativas
 }, { $repos ->
-    [one] de 1 repo
-   *[other] de { $repos } repos
+    [one] de 1 lista
+   *[other] de { $repos } listas
 }
 more-conn-status-unchecked = Ainda não verificado
-more-conn-status-ok = Todas as etapas passaram
+more-conn-status-ok = Todas as verificações passaram
 more-conn-status-failed = { $total ->
-    *[other] { $failed } de { $total } etapas falharam
+    *[other] { $failed } de { $total } verificações falharam
 }
 more-computer-status-none = Ainda não conectado
 more-icon-default = Padrão
@@ -188,7 +188,7 @@ more-stats-status-empty = Um ano assistindo
 
 ## More: the sections' own settings
 
-more-accounts-note = O que você assiste aqui atualiza suas listas, e o progresso delas aparece nas suas séries.
+more-accounts-note = Os episódios que você assiste aqui atualizam suas listas, e o progresso das listas aparece na sua biblioteca.
 more-storage = Espaço
 more-storage-capped = Limite de { $cap }
 more-storage-no-cap = Sem limite
@@ -196,12 +196,37 @@ more-storage-used = usados por episódios
 more-storage-cap-caption = limite
 more-storage-free = livres no celular
 more-set-storage-cap = Limite
-more-storage-cap-on = Em { $cap }, nada mais é baixado até você excluir episódios.
+more-set-rolling = Downloads contínuos
+more-roll-note-over = { $count ->
+    [one] Acima de { $count } episódio
+   *[other] Acima de { $count } episódios
+}
+more-roll-note-asked = Quando pedido
+more-roll-big = Ativar automaticamente em séries longas
+more-roll-big-help = { $count ->
+    [one] Tudo acima de { $count } episódio baixa alguns por vez automaticamente. Ainda dá para baixar tudo de uma vez em Downloads.
+   *[other] Tudo acima de { $count } episódios baixa alguns por vez automaticamente. Ainda dá para baixar tudo de uma vez em Downloads.
+}
+more-roll-ahead = Episódios à frente
+more-roll-ahead-help = Quantos ficam baixados depois do que você está vendo. 12 é cerca de uma temporada.
+more-roll-over = Contínuo para séries com mais de
+more-roll-over-help = Downloads com mais episódios do que isso são baixados alguns por vez.
+more-roll-watched = Episódios assistidos
+more-roll-delete = Excluir
+more-roll-keep-all = Manter todos
+more-roll-delete-help = Excluídos automaticamente quando você avança, mantendo só os próximos episódios no celular.
+more-roll-keep-all-help = Todos os arquivos ficam no celular depois que você assiste.
+more-roll-behind = Episódios assistidos a manter
+more-roll-behind-help = { $count ->
+    [0] Terminar um episódio exclui o anterior.
+   *[other] Episódios assistidos mantidos antes do que você acabou de terminar. Com { $count }, terminar o episódio { $episode } exclui o episódio 1.
+}
+more-storage-cap-on = Em { $cap }, o Anibeam não inicia novos downloads até você excluir episódios.
 more-storage-cap-off = Desativado: o Anibeam baixa até o celular encher.
 more-network = Rede
 more-network-wifi = Só Wi-Fi
 more-network-mobile = Wi-Fi e dados móveis
-more-wifi-on = Ativado. Os downloads esperam o Wi-Fi; dados móveis pedem permissão.
+more-wifi-on = Ativado. Os downloads esperam o Wi-Fi, e o Anibeam pergunta antes de usar dados móveis.
 more-set-stream-quality = Qualidade do vídeo
 more-stream-question = Como um episódio do seu computador toca aqui.
 more-stream-auto-note = Auto toca o arquivo como ele é no Wi-Fi, e convertido para 720p em dados móveis ou quando o Tailscale chega ao seu computador por um relay.
@@ -210,17 +235,17 @@ more-stream-converted-note = Convertido no seu computador para { $quality }. Gas
 more-set-feeds = Seus feeds
 more-feeds-note = Buscados antes dos sites
 more-set-check = Verificar a conexão
-more-check-note = Testa cada etapa entre este celular e os sites de busca: encontrá-los, alcançá-los e a conexão segura.
+more-check-note = Testa cada etapa entre este celular e suas fontes de download: consulta DNS, conexão e HTTPS.
 more-check-copy = Copiar os resultados
 more-set-computer = Anibeam do seu computador
 more-computer-note = A biblioteca dele aparece em Biblioteca, e os episódios tocam aqui. Um nome como my-computer ou um endereço como 100.64.0.1.
 more-computer-placeholder = my-computer:8790
 more-subs-note = Com o que todo episódio neste celular começa. Um episódio transmitido do seu computador começa com as configurações desse computador.
 more-icon-note = O ícone na tela inicial e na gaveta de apps.
-more-icon-line-note = O ícone de contorno usa as cores do seu papel de parede, como seus outros ícones do Material You.
+more-icon-line-note = O ícone de contorno usa as cores do seu papel de parede, como outros ícones do Material You.
 more-icon-moved-note = Alguns launchers tiram o ícone da tela inicial quando ele muda. Ele continua na gaveta de apps; arraste-o de volta de lá.
 more-set-whats-new = Novidades
-more-set-onboarding = Rever a intro
+more-set-onboarding = Refazer a configuração
 more-update-out = Saiu o Anibeam { $version }
 more-update-download = Baixar
 more-about-status-update = Há uma versão nova
@@ -234,6 +259,7 @@ host-synced = Sincronizado { $when }.
 host-last-try = Última tentativa, { $when }: { $error }
 host-asking = Contatando...
 host-reached = Conectado a { $host }, Anibeam { $version }.
+host-reached-for = Conectado a { $host }, Anibeam { $version }, progresso de { $name }.
 host-saved = Salvo. Atualizando...
 host-none = Sem computador. Este celular fica com a própria biblioteca.
 acct-signed-in-as = Conectado como { $name }
@@ -256,6 +282,7 @@ lib-note-phone = { $count ->
    *[other] Este celular, { $count } séries
 }
 lib-note-remote = { $device }, sincronizado { $when }
+lib-note-remote-for = { $device }, progresso de { $name }, sincronizado { $when }
 lib-empty-search = Nada encontrado para "{ $query }".
 lib-empty-phone = Nada neste celular ainda.
 lib-empty-remote = Esse dispositivo não tem nada na biblioteca.
@@ -276,7 +303,7 @@ airing-other-season = Outras
 airing-hidden = { $count ->
     *[other] { $count } ocultas por falta de interesse
 }
-airing-plan-needs-tracker = Para planejar assistir, é preciso o AniList ou o MAL. Entre em Mais, Contas.
+airing-plan-needs-tracker = Para planejar assistir, é preciso o AniList ou o MAL. Entre em Mais > Contas.
 airing-plan-failed = Não foi possível planejar assistir: { $error }
 list-watching = Assistindo
 list-planning = Planejando
@@ -284,8 +311,8 @@ list-completed = Concluído
 list-paused = Em pausa
 list-dropped = Abandonado
 list-repeating = Reassistindo
-more-check-all-ok = Todas as etapas passaram.
-more-check-failed = { $failed } de { $total } etapas falharam. Uma captura de tela desta lista mostra onde.
+more-check-all-ok = Todas as verificações passaram.
+more-check-failed = { $failed } de { $total } verificações falharam. Uma captura de tela desta lista mostra onde.
 more-check-row = { $step }  { $ms } ms
 more-check-copied = Copiado. Cole em uma mensagem.
 more-version = Anibeam para Android { $version } (build { $build })
@@ -317,6 +344,7 @@ more-set-subs-style = Estilo da legenda
 more-words-anilist = anilist tracker lista entrar login conta conectar progresso acompanhar
 more-words-mal = mal myanimelist tracker lista entrar login conta conectar progresso acompanhar
 more-words-storage-cap = espaço disco limite gb cheio armazenamento apagar excluir tamanho
+more-words-rolling = contínuo contínuos downloads longa série episódios à frente excluir assistidos manter lote espaço rolling
 more-words-wifi = wifi wi-fi dados móveis celular rede
 more-words-notifications = notificação notificações avisar alerta progresso permissão permitir
 more-words-stream-quality = auto original 1080p 720p 480p converter dados computador reproduzir qualidade
@@ -476,7 +504,7 @@ show-status-completed = Concluído
 show-status-paused = Em pausa
 show-status-dropped = Abandonado
 show-status-repeating = Reassistindo
-show-status-now = { $label }, agora
+show-status-now = { $label } (atual)
 phone-show-add-to-list = Incluir na lista
 phone-show-your-score = Sua nota { $score }
 show-rate = Avaliar
@@ -592,6 +620,7 @@ inspect-holds = { $count ->
 
 phone-notes-title = Novidades
 notes-got-it = Entendi
+notes-github = Lista completa de mudanças no GitHub
 
 ## Move the list to a tracker
 
@@ -599,7 +628,7 @@ move-lists-label = Listas neste celular
 move-title = Mover sua lista para o { $site }
 move-here = Neste celular: { $list }
 move-there = No { $site } agora: { $list }
-move-later-hint = Depois: Mais, Contas
+move-later-hint = Depois: Mais > Contas
 move-not-now = Agora não
 move-nothing = Nada
 move-not-on-list = Fora da sua lista
@@ -627,8 +656,8 @@ move-moved = { $count ->
    *[other] { $count } séries movidas para o { $site }
 }
 move-failed = { $count ->
-    [one] O { $site } não aceitou { $count } série; veja o log de atividade
-   *[other] O { $site } não aceitou { $count } séries; veja o log de atividade
+    [one] Não foi possível mover { $count } série para o { $site }; veja o log de atividade
+   *[other] Não foi possível mover { $count } séries para o { $site }; veja o log de atividade
 }
 
 ## Downloads: find (search, shows, sources, releases)
@@ -646,9 +675,9 @@ find-lens-downloaded = Baixados
 find-lens-with-count = { $lens } { $count }
 find-what-to-get = O que baixar
 find-lens-list-line = Assistindo e Planejando na sua lista. Abra uma para baixar os episódios.
-find-lens-gaps-line = Episódios já exibidos que não estão neste celular. Abra uma série para ver quem tem.
+find-lens-gaps-line = Episódios já exibidos que não estão neste celular. Abra uma série para buscá-los.
 find-lens-airing-line = Novos episódios por vir, os mais próximos primeiro.
-find-lens-following-line = As séries seguidas: os novos episódios baixam sozinhos. Abra uma para parar.
+find-lens-following-line = Séries seguidas: os novos episódios baixam automaticamente. Abra uma para deixar de seguir.
 find-lens-downloaded-line = O que este celular baixou, uma série por vez.
 
 find-lens-gaps-empty = Sem faltas: toda série que você começou tem os episódios exibidos aqui.
@@ -657,7 +686,7 @@ find-lens-following-empty = Nenhuma série seguida ainda. Abra uma série e ativ
 find-lens-downloaded-empty = Nada baixado ainda.
 find-list-empty = Nada na sua lista ainda. Busque uma série acima e inclua.
 find-list-reading = Lendo sua lista...
-find-list-signed-out = Entre no AniList em Mais, Contas, e sua lista aparece aqui.
+find-list-signed-out = Entre no AniList em Mais > Contas para ver sua lista aqui.
 find-list-failed = Não foi possível ler sua lista: { $error }
 
 find-aired = exibidos
@@ -679,18 +708,18 @@ find-list-status-watching = Na sua lista: Assistindo
 find-list-status-already = Já está na sua lista
 find-going-planning = { $title } vai para Planejando.
 find-already-listed = { $title } já está na sua lista.
-find-plan-needs-tracker = Para incluir na lista, é preciso o AniList ou o MAL. Entre em Mais, Contas.
+find-plan-needs-tracker = Para incluir na lista, é preciso o AniList ou o MAL. Entre em Mais > Contas.
 find-plan-failed = Não incluído na lista: { $error }
 find-show-gone = Essa série não está mais na biblioteca deste celular.
 
 ## Shows as you type
 
 find-shows = Séries
-find-suggesting = Lendo o AniList...
-find-suggest-tap = Toque em uma para ver quem tem. Enter busca nomes de releases.
+find-suggesting = Buscando no AniList...
+find-suggest-tap = Toque em uma série para buscar nas fontes. Enter busca nomes de releases.
 find-suggest-none = Nenhuma série com esse nome. Enter busca nomes de releases.
 find-suggest-hint = As séries aparecem enquanto você digita. Enter busca nomes de releases.
-find-suggest-failed = Não foi possível consultar o AniList: { $error }
+find-suggest-failed = Não foi possível acessar o AniList: { $error }
 find-library-line = Na sua biblioteca
 find-library-line-none = Na sua biblioteca, nenhum de { $total } neste celular
 find-library-line-some = Na sua biblioteca, { $here } de { $total } neste celular
@@ -732,20 +761,20 @@ find-stop-failed = Não foi possível concluir: { $error }
 find-where = Onde baixar
 find-where-pick = Escolha uma fonte para ver o que ela tem.
 find-where-nothing = Nada é baixado até você mandar.
-find-source-idle = Consultar
+find-source-idle = Toque para buscar
 find-source-trying = Tentando { $name }
 find-source-searching = Buscando
 find-source-silent = Sem resposta
-find-no-sites-title = Sem sites de busca
-find-no-sites-body = Inclua um repositório de sites de busca, ou um feed seu, em Mais.
+find-no-sites-title = Nenhuma fonte de download ainda
+find-no-sites-body = Inclua uma lista de fontes ou um feed personalizado em Mais.
 find-open-more = Abrir Mais
 find-pick-source-title = Escolha uma fonte
-find-pick-source-body = Os releases dela aparecem aqui em uma grade, um episódio por cubo.
+find-pick-source-body = Os releases aparecem aqui em uma grade, um quadrado por episódio.
 find-releases = { $count ->
     [one] { $count } release
    *[other] { $count } releases
 }
-find-unreachable = Não foi possível acessar { $host }. Algumas redes e países bloqueiam sites de releases; o Anibeam já contorna bloqueios por nome, então esta rede bloqueia o próprio site, ou o site está fora do ar. Uma VPN resolve, ou tente outra fonte.
+find-unreachable = Não foi possível acessar { $host }. Algumas redes bloqueiam sites de releases; o Anibeam já contorna bloqueios de DNS, então este site pode estar bloqueado diretamente ou fora do ar. Tente uma VPN ou outra fonte.
 find-the-source = A fonte
 
 find-has = O que ela tem
@@ -757,18 +786,28 @@ find-on-this-phone = Neste celular
 find-on-computer = Em { $name }
 
 find-plan-no-releases = Esta fonte não tem releases desta série.
-find-plan-nothing-picked = Nada escolhido: toque em uma linha ou nos cubos.
+find-plan-nothing-picked = Nada selecionado: toque em uma linha ou em episódios avulsos.
 find-plan-line = { $episodes } de { $groups }, { $size }
 find-plan-skipped = { $count ->
-    [one] { $count } episódio que você já tem foi deixado de fora. Ative Substituir para baixar de novo.
-   *[other] Os episódios que você já tem foram deixados de fora. Ative Substituir para baixar de novo.
+    [one] { $count } episódio que você já tem foi pulado. Ative Substituir para baixá-lo de novo.
+   *[other] Os episódios que você já tem foram pulados. Ative Substituir para baixá-los de novo.
 }
-find-plan-follow-note = Os novos episódios de { $query } serão baixados sozinhos.
+find-plan-follow-note = Os novos episódios de { $query } serão baixados automaticamente.
 find-plan-on-desk = Eles baixam em { $name }, na biblioteca dele.
 find-follow-new = Seguir novos episódios
-find-follow-new-note = Baixam sozinhos conforme vão ao ar.
+find-follow-new-note = Baixam automaticamente conforme vão ao ar.
+find-roll-title = Downloads contínuos
+find-roll-on = { $count ->
+    [one] { $count } episódio baixa agora, e terminá-lo inicia o próximo.
+   *[other] { $count } episódios baixam agora, e terminar um inicia o próximo.
+}
+find-roll-on-delete = { $count ->
+    [one] { $count } episódio baixa agora, e terminá-lo inicia o próximo. Os episódios assistidos são excluídos automaticamente.
+   *[other] { $count } episódios baixam agora, e terminar um inicia o próximo. Os episódios assistidos são excluídos automaticamente.
+}
+find-roll-off = Todos os episódios selecionados baixam de uma vez.
 find-replace = Substituir o que você tem
-find-replace-note = Baixa de novo os episódios escolhidos por cima dos que estão neste celular.
+find-replace-note = Baixa de novo os episódios selecionados por cima dos que estão neste celular.
 find-go = { $mode ->
     [replace] Baixar { common-episodes } e substituir
     [subscribe] Baixar { common-episodes } e seguir
@@ -784,7 +823,7 @@ find-download-to = Baixar em
 find-this-phone = Este celular
 find-your-computer = Seu computador
 find-desk-asking = Consultando { $name }...
-find-desk-silent = { $name } não responde. Escolha Este celular, ou tente de novo quando ele estiver ligado.
+find-desk-silent = { $name } não está respondendo. Escolha Este celular, ou tente de novo quando ele estiver online.
 find-sending-to = Enviando para { $name }...
 
 ## The release list
@@ -833,7 +872,7 @@ find-downloading = { $count ->
 }
 find-not-added = Não incluído: { $error }
 find-not-subscribed = Não está seguindo: { $error }
-find-desk-refused = { $name } não aceitou: { $error }
+find-desk-refused = { $name } recusou: { $error }
 find-desk-not-subscribed = Não está seguindo em { $name }: { $error }
 
 ## Player
@@ -867,7 +906,7 @@ player-android-only = o player só roda no Android
 ## Player: delays
 
 player-delay-title = Atraso
-player-delay-note = Cada toque move 0,1 s. Vale até o próximo arquivo.
+player-delay-note = Cada toque ajusta 0,1 s. Volta ao normal no próximo episódio.
 phone-player-delay-seconds = { $value } s
 player-sub-delay-now = Atraso da legenda { $value }
 player-audio-delay-now = Atraso do áudio { $value }
@@ -911,12 +950,12 @@ subs-position = Posição
 subs-position-helper = 100 fica na borda inferior. Números menores sobem as linhas na tela.
 subs-style-title = Estilo
 subs-styled = Legendas estilizadas
-subs-styled-as-made = Arquivos estilizados (ASS) ficam exatamente como os autores definiram.
-subs-styled-mine = Seu estilo abaixo vale para todos os arquivos. Letreiros e karaokê podem quebrar.
+subs-styled-as-made = Legendas estilizadas (ASS) aparecem exatamente como os autores definiram.
+subs-styled-mine = Seu estilo abaixo substitui o de todos os arquivos. Letreiros e karaokê podem quebrar.
 subs-styled-size-only = Arquivos estilizados mantêm o visual e usam seu tamanho. Arquivos simples usam seu estilo.
 subs-mode-as-made = Original
 subs-mode-size-only = Só tamanho
-subs-mode-mine = Meu
+subs-mode-mine = Personalizado
 subs-font = Fonte
 subs-font-bad = Digite o nome de uma fonte, como Noto Sans.
 subs-bold = Negrito
@@ -924,15 +963,15 @@ subs-colour = Cor do texto
 subs-colour-bad = Digite uma cor como #ffcc00.
 subs-outline = Contorno
 subs-outline-bad-width = A largura é um número, 0 ou mais.
-subs-outline-bad-colour = Digite a cor como #000000.
+subs-outline-bad-colour = Digite uma cor como #000000.
 subs-outline-helper = Primeiro a largura, depois a cor.
 subs-shadow = Sombra
 subs-shadow-bad = Um número, 0 ou mais. 0 significa sem sombra.
 subs-shadow-helper = Quanto a sombra cai, 0 para nenhuma.
 subs-box = Caixa de fundo
 subs-box-helper = Uma caixa escura atrás das linhas. 0 deixa sem caixa.
-subs-reset-title = Restaurar
-subs-reset-helper = Volta o tamanho, a fonte, as cores, o contorno, a caixa e a posição ao padrão.
+subs-reset-title = Restaurar estilo das legendas
+subs-reset-helper = Restaura o tamanho, a fonte, as cores, o contorno, a caixa e a posição ao padrão.
 subs-reset = Redefinir
 
 ## Streaming
@@ -941,11 +980,11 @@ stream-quality-auto = Auto
 stream-quality-original = Original
 stream-app-starting = O app ainda está iniciando
 stream-no-computer = Ainda sem computador. Adicione o seu em Mais.
-stream-off-on-host = O streaming está desativado em { $host }. Ative "Stream episodes" lá, em Settings, Phone app.
+stream-off-on-host = O streaming está desativado em { $host }. Ative Transmitir episódios lá, em Configurações > Contas (App do celular).
 stream-cannot-stream = { $host } roda o Anibeam { $version }, que ainda não faz streaming. Atualize-o lá.
-stream-no-session = O outro dispositivo não deu uma sessão
-stream-answer-unreadable = A resposta não pôde ser lida: { $why }
-stream-answered-status = { $name } respondeu { $status }
+stream-no-session = O outro dispositivo não retornou uma sessão de streaming
+stream-answer-unreadable = Não foi possível ler a resposta: { $why }
+stream-answered-status = { $name } retornou HTTP { $status }
 
 ## Stats
 
@@ -1002,7 +1041,7 @@ backup-export-helper = Um arquivo com suas pastas, vínculos e o que você assis
 backup-private = Incluir dados privados
 backup-private-helper = Inclui logins do AniList e do MyAnimeList, histórico e preferências. Os logins ficam em texto simples, então guarde o arquivo só para você.
 backup-restore = Restaurar backup
-backup-restore-helper = Lê um backup para esta biblioteca. O que está no disco prevalece; o arquivo completa o resto.
+backup-restore-helper = Restaura um backup nesta biblioteca. Os vínculos e as configurações do backup prevalecem; nada neste celular é excluído.
 backup-done = Backup feito. O arquivo está onde você salvou.
 backup-not-saved = Não salvo. Nada foi gravado.
 backup-starting = O Anibeam ainda está iniciando. Tente de novo em instantes.
@@ -1055,8 +1094,8 @@ backup-sum-accounts = { $count ->
    *[other] { $count } contas de lista importadas
 }
 backup-sum-fixes = { $count ->
-    [one] { $count } arquivo usa uma correção que você fez.
-   *[other] { $count } arquivos usam uma correção que você fez.
+    [one] Correções salvas aplicadas a { $count } arquivo.
+   *[other] Correções salvas aplicadas a { $count } arquivos.
 }
 backup-sum-missing = { $count ->
     [one] { $count } pasta não foi encontrada neste celular.
@@ -1072,7 +1111,7 @@ activity-copied = Copiado
 activity-clear-every-line = Apagar tudo
 activity-fold = Recolher
 activity-no-problems = Nenhum problema. Tudo funcionou.
-activity-nothing-yet = Nada a relatar ainda. O que o Anibeam faz por você aparece aqui.
+activity-nothing-yet = Nada a relatar ainda. A atividade do Anibeam vai aparecer aqui.
 activity-time-today = %H:%M:%S
 activity-time-other = %-d %b %H:%M
 
@@ -1112,27 +1151,28 @@ fmt-bytes-tb = { $value } TB
 ## Talking to the computer (companion client.rs, sync.rs, address.rs)
 
 client-not-found = O celular não encontra { $host }. O Tailscale está conectado?
-client-timeout = { $host } não respondeu. Está ligado, e o Tailscale está conectado nos dois?
-client-connect-failed = Não foi possível acessar { $host }. Está ligado, e o Tailscale está conectado nos dois?
-client-refused = { $host } está ligado, mas o Anibeam nele está fechado ou não está compartilhando. Abra o Anibeam nele e ative Share over Tailscale em Settings, Phone app.
+client-timeout = { $host } não respondeu. Está ligado, e o Tailscale está conectado nos dois dispositivos?
+client-connect-failed = Não foi possível acessar { $host }. Está ligado, e o Tailscale está conectado nos dois dispositivos?
+client-refused = { $host } está ligado, mas o Anibeam nele está fechado ou não está compartilhando. Abra o Anibeam nele e ative Compartilhar pelo Tailscale em Configurações > Contas.
 client-no-route = Sem rota para { $host }. O Tailscale está conectado?
 client-invalid-input = Não foi possível conectar a { $host }
 client-unreachable = Não foi possível acessar { $host }: { $why }
 client-cannot-find = O celular não encontra { $host }. O Tailscale está conectado?
-client-broke-off = A resposta de { $host } foi interrompida: { $why }
-client-answered = { $host } respondeu { $status } para { $path }
-client-not-anibeam-status = Algo respondeu, mas não é o Anibeam ({ $host } respondeu { $status } para { $path })
-client-not-anibeam-hello = Algo respondeu, mas não é o Anibeam (a resposta não é o hello do Anibeam)
-client-not-anibeam-name = Algo respondeu, mas não é o Anibeam (ele se chama { $name })
-client-too-new = O host fala a API { $host_api }; este app lê a { $app_api }. Atualize o app.
-client-snapshot-unreadable = Não foi possível ler o snapshot: { $why }
+client-broke-off = A conexão com { $host } foi interrompida: { $why }
+client-answered = { $host } retornou HTTP { $status } para { $path }
+client-not-anibeam-status = Algo respondeu, mas não é o Anibeam ({ $host } retornou HTTP { $status } para { $path })
+client-not-anibeam-hello = Algo respondeu, mas não é o Anibeam (resposta inesperada)
+client-not-anibeam-name = Algo respondeu, mas não é o Anibeam (ele se identifica como { $name })
+client-too-new = O host usa a API { $host_api }, mas este app só suporta a { $app_api }. Atualize o app.
+client-snapshot-unreadable = Não foi possível ler o snapshot da biblioteca: { $why }
 client-probe-unreadable = Não foi possível ler os detalhes do arquivo: { $why }
-client-peers-unreadable = Não foi possível ler a lista de Anibeams: { $why }
+client-peers-unreadable = Não foi possível ler a lista de dispositivos: { $why }
 sync-save-failed = Não foi possível salvar o snapshot: { $why }
 address-https = O Anibeam do seu computador responde em http simples pelo Tailscale; tire o https://.
 address-empty = Digite o nome ou o endereço do host, por exemplo my-computer:8790.
 address-ipv6-close = Um endereço IPv6 precisa do ] de fechamento.
 address-ipv6-port = Coloque a porta depois do ], como [fd7a::1]:8790.
+address-ipv6-brackets = Coloque um endereço IPv6 entre colchetes, como [fd7a::1]:8790.
 address-bad-host = "{ $text }" não é um nome de host.
 address-bad-port = "{ $port }" não é uma porta.
 
@@ -1148,17 +1188,17 @@ clib-format-music = Música
 ## Search sites and repos
 
 repos-by-hand-title = Incluir à mão
-repos-by-hand-note = Para um site que nenhum repo tem. Qualquer feed com { "{query}" } onde vai a busca, inclusive um feed do Jackett ou do Prowlarr. Uma chave ou token no endereço vai para o armazenamento seguro deste celular.
+repos-by-hand-note = Para um site que nenhuma lista de fontes tem. Qualquer feed com { "{query}" } onde vai a busca, inclusive um feed do Jackett ou do Prowlarr. Uma chave ou token no endereço vai para o armazenamento seguro deste celular.
 repos-name-placeholder = Nome
 repos-url-placeholder = https://...{ "{query}" }...
 repos-index-placeholder = https://.../index.json
 repos-add-site = Incluir site
-repos-add-title = Incluir repo
-repos-add-note = Cole o endereço do índice de um repo. O Anibeam confere a assinatura e mostra a chave antes de salvar qualquer coisa.
-repos-add-repo = Incluir repo
-repos-trust-title = Confiar neste repo?
+repos-add-title = Incluir lista de fontes
+repos-add-note = Cole o endereço do índice de uma lista de fontes. O Anibeam confere a assinatura e mostra a chave antes de salvar qualquer coisa.
+repos-add-repo = Incluir lista de fontes
+repos-trust-title = Confiar nesta lista de fontes?
 repos-fingerprint = Impressão da chave
-repos-trust-warning = Os sites dele decidem para onde vão suas buscas. Confie só em repos de quem você conhece.
+repos-trust-warning = As fontes dela decidem para onde vão suas buscas. Só confie em listas de fontes de pessoas em quem você confia.
 repos-trust = Confiar
 repos-open-link = Abrir { $url }
 repos-saving = Salvando...
@@ -1167,25 +1207,25 @@ repos-update = Atualizar
 repos-edit-note = Uma chave ou token digitado no endereço vai para o armazenamento seguro deste celular.
 repos-edit-note-keys = Deixe cada { "{key}" } no endereço como está; o valor fica neste celular.
 repos-change-its = Mudar { $keys }
-repos-check-repos = Buscar novos sites nos repos
-repos-check-sites = Verificar os sites
+repos-check-repos = Verificar atualizações das listas de fontes
+repos-check-sites = Verificar fontes
 repos-add-site-label = Incluir um site à mão
 repos-needs-before-search = Precisa de { $labels } para buscar
-repos-no-longer-offered = Não é mais oferecido pelo repo
+repos-no-longer-offered = Não é mais oferecido pela lista de fontes
 repos-update-host = A atualização envia requisições para { $host }
 repos-tap-change-custom = Toque para mudar o nome ou o endereço
 repos-tap-change-keys = Toque para mudar { $labels }
-repos-line-custom = { $host }  { $kind }  incluído por você
+repos-line-custom = { $host }  { $kind }  incluído à mão
 repos-update-to = Atualizar para v{ $version }
 repos-add-its-value = Incluir o valor
 repos-asks-for = Pede { $labels }
 repos-preview-line = { $count ->
-    [one] { $count } site, assinado
-   *[other] { $count } sites, assinados
+    [one] { $count } fonte, assinada
+   *[other] { $count } fontes, assinadas
 }
 repos-preview-trusted = { $count ->
-    [one] { $count } site, assinado, já confiável
-   *[other] { $count } sites, assinados, já confiáveis
+    [one] { $count } fonte, assinada, já confiável
+   *[other] { $count } fontes, assinadas, já confiáveis
 }
 repos-ask-kept-empty = Guardado só neste celular. Um campo vazio mantém o que já está guardado.
 repos-ask-kept-never = Guardado só neste celular, nunca na biblioteca nem em exportações.
@@ -1206,6 +1246,18 @@ dl-batch-files = { $count ->
    *[other] Lote, { $count } arquivos
 }
 dl-batch-tag = Lote
+dl-roll-line = { $watched ->
+    [0] Mantendo { $ahead } prontos: episódios { $next } a { $through } de { $total }
+   *[other] Mantendo { $ahead } prontos: episódios { $next } a { $through } de { $total }, { $watched } assistidos
+}
+dl-roll-more = Baixar mais { $count }
+dl-roll-all = Baixar tudo
+dl-roll-all-ask = { $count ->
+    [one] Baixar o episódio que falta?
+   *[other] Baixar os { $count } episódios que faltam?
+}
+dl-roll-keep = Continuar contínuo
+dl-roll-ahead = { $count } à frente
 dl-downloading-count = { $count ->
     [one] { $count } baixando
    *[other] { $count } baixando
@@ -1258,9 +1310,9 @@ disk-delete-watched-title = Excluir { $count ->
     [one] { $count } episódio assistido
    *[other] { $count } episódios assistidos
 }, { $size }?
-disk-delete-finished-body = { $names }. Só séries que o provedor diz estarem concluídas, com todos os episódios assistidos; uma série ainda no ar, ou cujo fim é um palpite, fica. Todos os arquivos delas são excluídos deste celular, extras também. Os downloads delas saem junto, então podem ser baixados de novo.
-disk-delete-watched-body = Todos os episódios que você assistiu, em todas as séries. Episódios ainda não assistidos e extras ficam. Os arquivos e as legendas são excluídos deste celular em definitivo.
-disk-no-finished = Nenhuma série concluída foi assistida até o fim
+disk-delete-finished-body = { $names }. Inclui só séries marcadas como concluídas com todos os episódios assistidos; séries no ar ou sem confirmação ficam. Todos os arquivos delas (inclusive extras) serão excluídos deste celular, e os downloads serão removidos, então podem ser baixados de novo.
+disk-delete-watched-body = Todos os episódios que você assistiu, em todas as séries. Episódios não assistidos e extras ficam. Os arquivos e as legendas são excluídos deste celular em definitivo.
+disk-no-finished = Nenhuma série concluída foi assistida por completo
 disk-nothing-watched = Nada assistido neste celular
 disk-deleted = { $count ->
     [one] { $count } episódio excluído
@@ -1408,8 +1460,8 @@ dates-summary-record =
     }
 dates-summary-record-unnamed =
     { $count ->
-        [one] { $count } com data do registro
-       *[other] { $count } com data do registro
+        [one] { $count } dos metadados
+       *[other] { $count } dos metadados
     }
 dates-summary-set =
     { $count ->
@@ -1430,8 +1482,8 @@ dates-told-season-ends = A temporada { $season } termina no episódio { $episode
 dates-told-by-you = { $told }, definido por você
 dates-told-gave-way =
     { $count ->
-        [one] Você definiu { $count } episódio; isso não vale mais
-       *[other] Você definiu { $count } episódios; isso não vale mais
+        [one] Você definiu { $count } episódio, o que não vale mais
+       *[other] Você definiu { $count } episódios, o que não vale mais
     }
 
 ## A página da série
@@ -1464,6 +1516,7 @@ series-not-tracked-on-phone =
         [one] Não registrada, { $count } episódio neste celular
        *[other] Não registrada, { $count } episódios neste celular
     }
+host-progress = Progresso de { $name }
 
 ## Mais, Sobre
 
@@ -1477,7 +1530,7 @@ mark-menu-unwatched = Marcar como não assistido daqui
 mark-menu-cancel = Cancelar
 mark-watched-up-to = Assistido até o episódio { $episode }
 mark-unwatched-from = Não assistido a partir do episódio { $episode }
-mark-not-connected = { $reason } Entre em Mais, Contas.
+mark-not-connected = { $reason } Entre em Mais > Contas.
 
 ## O player
 

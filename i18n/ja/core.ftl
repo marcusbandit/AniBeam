@@ -124,62 +124,62 @@ core-error-service = { $service }: { $message }
 
 ## releases/src/repos/mod.rs
 
-core-repos-paste-address = リポジトリのアドレスを貼り付けてください
+core-repos-paste-address = ソースリストのアドレスを貼り付けてください
 core-repos-must-be-https = アドレスはhttpsにしてください
-core-repos-unreachable = リポジトリに接続できませんでした: { $message }
-core-repos-not-found = そのアドレスには何もありません（非公開のGitHubリポジトリも404を返します）
-core-repos-http-status = リポジトリがHTTP { $status }を返しました
+core-repos-unreachable = ソースリストに接続できませんでした: { $message }
+core-repos-not-found = そのアドレスには何も見つかりませんでした（非公開のGitHubリポジトリも404を返します）
+core-repos-http-status = ソースリストがHTTP { $status }を返しました
 core-repos-unreadable = { $path }を読み込めませんでした: { $error }
-core-repos-no-such-endpoint = そのIDのエンドポイントはインストールされていません
-core-repos-key-changed = リポジトリが、信頼した鍵とは別の鍵で署名されています。新しい鍵を受け入れるには、削除してからもう一度追加してください。
-core-repos-stale = リポジトリが古いインデックスを返しました（シリアル{ $kept }の後に{ $serial }）。新しい方を残します
-core-repos-key-not-shown = リポジトリの鍵が、表示された鍵と違います。もう一度追加して、フィンガープリントを比べてください。
-core-repos-repo-added = ダウンロードソースの一覧を追加しました。
-core-repos-repo-removed = ダウンロードソースの一覧を削除しました。
+core-repos-no-such-endpoint = そのIDのソースはインストールされていません
+core-repos-key-changed = このソースリストは、信頼した鍵とは別の鍵で署名されています。新しい鍵を受け入れるには、削除して追加し直してください。
+core-repos-stale = ソースリストが古いインデックスを返しました（シリアル{ $kept }の後に{ $serial }）。新しい方を残します
+core-repos-key-not-shown = 署名の鍵が、表示された鍵と一致しません。ソースリストをもう一度追加して、フィンガープリントを比べてください。
+core-repos-repo-added = ソースリストを追加しました。
+core-repos-repo-removed = ソースリストを削除しました。
 # $key is the field's key in quotes.
 core-repos-no-field = { $name }に項目{ $key }はありません
 core-repos-needs-field = { $name }には{ $label }が必要です
 core-repos-host-only = { $name }: { $label }はホストかホスト:ポートだけにしてください。例: 192.0.2.10:9696
-core-repos-not-added = そのリポジトリは追加されていません
+core-repos-not-added = そのソースリストは追加されていません
 core-repos-not-offered = { $repo }は{ $id }を提供していません
 core-repos-already-installed = { $name }はすでにインストールされています
-core-repos-taken-by-you = { $id }という名前のエンドポイントがすでにインストールされています（自分で追加したもの）。先に削除してください
-core-repos-taken-by-repo = { $id }という名前のエンドポイントがすでにインストールされています（別のリポジトリから）。先に削除してください
+core-repos-taken-by-you = { $id }という名前のソースがすでにインストールされています（手動で追加したもの）。先に削除してください
+core-repos-taken-by-repo = { $id }という名前のソースがすでにインストールされています（別のソースリストから）。先に削除してください
 core-repos-source-added = ダウンロードソースを追加しました。
 core-repos-source-updated = ダウンロードソースを更新しました。
 core-repos-source-removed = ダウンロードソースを削除しました。
-core-repos-source-changed = ダウンロードソースを変更しました。
-core-repos-give-name = 名前を付けてください
-core-repos-put-query = 検索語が入る位置のアドレスに{"{"}query{"}"}を入れてください
-core-repos-name-taken = { $id }という名前のエンドポイントがすでにインストールされています
+core-repos-source-changed = ダウンロードソースを編集しました。
+core-repos-give-name = 名前を入力してください
+core-repos-put-query = アドレスの検索語が入る位置に{"{"}query{"}"}を含めてください
+core-repos-name-taken = { $id }という名前のソースがすでにインストールされています
 core-repos-only-by-hand = 編集できるのは手動で追加したソースだけです
 # $key is a placeholder's name; it stays in braces in the address.
-core-repos-keep-key = アドレスの{"{"}{ $key }{"}"}は残し、値は「{ $label }を変更」で変えてください。または、サイトを削除してそれなしで追加し直してください
-core-repos-note-kind = anirssは{ $kind }形式を検索できないため、デスクトップでは除外します。スマホでは検索します
-core-repos-note-by-hand = anirssには手動で書かれた独自の{ $id }があり、デスクトップはそちらを検索します
-core-repos-note-theirs = このanirssはご自身で動かしているもので、デスクトップがその設定を変えることはありません。デスクトップで検索するには、そのanirssの設定に{ $id }を追加してください
-core-repos-note-sandbox = この実行ではanirssの設定に書き込まないため、デスクトップはここで{ $id }を検索しません
-core-repos-note-old = anirss { $version }は{ -app-name }からエンドポイントを受け取れません。デスクトップで検索するには{ $min }以降に更新してください
+core-repos-keep-key = アドレスの{"{"}{ $key }{"}"}は残し、値は「{ $label }を変更」で更新してください。または、サイトを削除してそれなしで追加し直してください
+core-repos-note-kind = anirssは{ $kind }のソースを検索できないため、デスクトップ版では除外します。スマホアプリでは検索できます
+core-repos-note-by-hand = anirssには手動で設定した独自の{ $id }があり、デスクトップ版はそちらを検索します
+core-repos-note-theirs = このanirssはご自身で管理しているため、{ -app-name }はその設定を編集しません。デスクトップ版で検索するには、anirssの設定に{ $id }を追加してください
+core-repos-note-sandbox = サンドボックスモードではanirssの設定に書き込まないため、デスクトップ版はここで{ $id }を検索しません
+core-repos-note-old = anirss { $version }は{ -app-name }からのソースに対応していません。デスクトップ版でこれを検索するには、{ $min }以降に更新してください
 
 ## releases/src/repos/index.rs
 
 core-repos-key-not-ed25519 = インデックスの鍵がed25519鍵ではありません
 core-repos-key-not-base64 = インデックスの鍵が32バイトのbase64ではありません
 core-repos-key-invalid = インデックスの鍵が有効なed25519鍵ではありません
-core-repos-too-large = リポジトリとしてはファイルが大きすぎます
-core-repos-not-a-repo = これは{ -app-name }のエンドポイントリポジトリではありません
-core-repos-format-version = このリポジトリの形式はバージョン{ $found }です。この{ -app-name }が読めるのはバージョン{ $reads }です。{ -app-name }を更新してください。
-core-repos-payload-not-base64 = リポジトリのペイロードがbase64ではありません
-core-repos-signature-malformed = リポジトリの署名が不正です
-core-repos-index-unreadable = リポジトリのインデックスを読めません: { $error }
-core-repos-signature-mismatch = リポジトリの署名が内容と一致しません
+core-repos-too-large = ソースリストとしてはファイルが大きすぎます
+core-repos-not-a-repo = これは有効な{ -app-name }のソースリストではありません
+core-repos-format-version = このソースリストの形式はバージョン{ $found }ですが、{ -app-name }が読めるのはバージョン{ $reads }です。{ -app-name }を更新してください。
+core-repos-payload-not-base64 = ソースリストのペイロードがbase64ではありません
+core-repos-signature-malformed = ソースリストの署名が不正です
+core-repos-index-unreadable = ソースリストのインデックスを読み込めませんでした: { $error }
+core-repos-signature-mismatch = ソースリストの署名が内容と一致しません
 # $id is the source's id; the rest of these checks name a source by its id first.
 core-repos-check-scheme = { $id }: アドレスはhttps://で始めてください
 core-repos-check-scheme-http = { $id }: アドレスはhttp://かhttps://で始めてください
 # $key is the field's key in quotes.
-core-repos-check-auth-key = { $id }: 認証キー{ $key }が不正です
-core-repos-check-host-torznab = { $id }: ホストを{"{"}{ $key }{"}"}と書けるのはtorznabのアドレスだけです
-core-repos-check-host-placeholder = { $id }: ホストにプレースホルダーがあります
+core-repos-check-auth-key = { $id }: 認証キー{ $key }が無効です
+core-repos-check-host-torznab = { $id }: ホストに{"{"}{ $key }{"}"}を使えるのはtorznabのアドレスだけです
+core-repos-check-host-placeholder = { $id }: ホストにプレースホルダーは使えません
 
 ## playback/src/tracks.rs
 
@@ -353,12 +353,12 @@ core-cast-nothing = キャスト中のものはありません
 core-cast-still-starting = デバイスはまだ起動中です
 core-cast-no-route = このデバイスからテレビへの経路がありません
 core-cast-no-control = テレビが操作用アドレスを返しませんでした
-core-cast-not-handed = 相手のパソコンがエピソードを渡しませんでした: { $error }
+core-cast-not-handed = 相手のパソコンがエピソードを送れませんでした: { $error }
 core-cast-empty-playlist = 相手のパソコンが空のプレイリストを送ってきました
 # $error is why the TV refused the converted stream, $first why it refused the file.
-core-cast-refused-both = { $error }。元のファイルも受け付けませんでした（{ $first }）
+core-cast-refused-both = { $error }。元のファイルも受け付けられませんでした（{ $first }）
 core-cast-chromecast-stopped = Chromecastが停止しました
-core-cast-hevc = { $error }。このエピソードはHEVCで、デコードできるのは新しいChromecast（Google TV搭載またはUltra）だけです
+core-cast-hevc = { $error }。このエピソードはHEVCで、対応しているのは新しいChromecast（Google TV搭載またはUltra）だけです
 
 ## playback/src/cast/castv2.rs
 
@@ -366,11 +366,11 @@ core-cast-chromecast-unreachable = Chromecastに接続できませんでした: 
 core-cast-chromecast-broke = Chromecastとの接続が切れました: { $error }
 core-cast-chromecast-no-player = Chromecastがメディアプレーヤーを起動しませんでした
 # $reason is the Chromecast's own word for it, or core-cast-no-reason.
-core-cast-chromecast-refused-player = Chromecastがメディアプレーヤーの起動を拒否しました（{ $reason }）
+core-cast-chromecast-refused-player = Chromecastがメディアプレーヤーを起動できませんでした（{ $reason }）
 core-cast-no-reason = 理由なし
 # $kind is the Chromecast's own word for the failure.
-core-cast-chromecast-cannot-play = Chromecastはこれを再生できませんでした（{ $kind }）
-core-cast-chromecast-error = Chromecastがこれの再生中にエラーで停止しました
+core-cast-chromecast-cannot-play = Chromecastはこのファイルを再生できませんでした（{ $kind }）
+core-cast-chromecast-error = Chromecastがこのファイルの再生中にエラーで停止しました
 
 ## playback/src/cast/dlna.rs
 
@@ -382,21 +382,22 @@ core-cast-tv-refused-code = テレビが{ $action }を拒否しました（{ $co
 ## playback/src/cast/media.rs
 
 core-cast-no-video = このファイルには映像がありません。
-core-cast-hi10p = このエピソードは10ビットH.264（Hi10P）で、テレビやChromecastではデコードできません。キャストするには変換が必要ですが、まだ実装されていません。
+core-cast-hi10p = このエピソードは10ビットH.264（Hi10P）で、テレビやChromecastではデコードできません。キャストするには変換が必要ですが、まだ対応していません。
 core-cast-video-codec = このエピソードの映像（{ $codec }）はキャストできません。
 core-cast-audio-codec = このエピソードの音声（{ $codec }）はキャストできません。
 
 ## downloads/src/phone/mod.rs
 
 core-phone-download-started = { $folder }のエピソード{ $count }話のダウンロードを開始しました。
+core-phone-download-partial = { $folder }のリリースの一部を追加できませんでした: { $error }
 core-phone-subscribed = { $name }を購読しました。
-core-phone-rule-stopped = { $name }の新エピソードは確認されていません: ソースがなくなったか、鍵の再入力が必要です。
+core-phone-rule-stopped = { $name }の新エピソードを確認していません: ソースが削除されたか、鍵の再入力が必要です。
 core-phone-new-episode = { $name }の新しいエピソードをダウンロード中です。
 # $name is the source's name in quotes.
 core-phone-name-taken = { $name }: 同じ名前のソースがすでにあります
 core-phone-nothing-to-download = ダウンロードするものがありません
 # $used and $cap are in GB, with one decimal.
-core-phone-over-cap = { -app-name }のストレージ上限を超えてしまいます（{ $cap } GB中{ $used } GBが使用済みまたは予定）。エピソードを削除するか、上限を上げてください
+core-phone-over-cap = { -app-name }のストレージ上限を超えてしまいます（{ $cap } GB中{ $used } GBが使用済みまたは待機中）。エピソードを削除するか、上限を上げてください
 core-phone-empty-search = 検索語が空です
 core-phone-no-results = { $query }の結果はありません
 # Ends "... is not supported yet." (core-error-unsupported).
@@ -408,14 +409,14 @@ core-phone-own-engine = 独自のトレントエンジン
 core-phone-check-connected = 接続しました
 core-phone-check-refused = 拒否されました: { $error }
 core-phone-check-dropped = 応答なし（破棄）
-core-phone-check-finding = { $label }: アドレスを検出中
+core-phone-check-finding = { $label }: アドレスを解決中
 core-phone-check-failed = 失敗しました: { $error }
 core-phone-check-no-answer = 応答なし
-core-phone-check-private = { $label }: 非公開で検出中
-core-phone-check-skipped-address = スキップ、アドレスです
-core-phone-check-skipped-home = スキップ、ホームネットワークの名前です
-core-phone-check-no-record = 公開アドレスなし、このネットワークのDNSに任せます
-core-phone-check-no-resolver = 応答したリゾルバーはありません
+core-phone-check-private = { $label }: 非公開で解決中
+core-phone-check-skipped-address = スキップ、IPアドレスです
+core-phone-check-skipped-home = スキップ、ローカルネットワークの名前です
+core-phone-check-no-record = 公開レコードなし、ネットワークのDNSを使います
+core-phone-check-no-resolver = 応答したDNSリゾルバーはありません
 core-phone-check-reaching = { $label }: { $ip }に接続中
 core-phone-check-http = HTTP { $status }、{ $bytes }バイト
 core-phone-check-setup = 準備
@@ -449,17 +450,17 @@ core-agent-too-long = { $name }の処理に時間がかかりすぎました
 ## core/src/core.rs
 
 # A guest device on another computer's library asks for something that is the owner's.
-core-core-guest-trackers = そのパソコンのトラッカーアカウントは持ち主のものなので、このデバイスからは何も記録しません
-core-core-guest-not-interested = そのパソコンの「興味なし」は持ち主のリストなので、このデバイスからは変更しません
-core-core-guest-recommended = そのパソコンのおすすめは、持ち主のリストから作られています
-core-core-nothing-picked = 何も選ばれていません
+core-core-guest-trackers = そのパソコンのトラッカーアカウントは持ち主のものなので、このデバイスからは更新できません
+core-core-guest-not-interested = そのパソコンの「興味なし」は持ち主のものなので、このデバイスからは変更できません
+core-core-guest-recommended = そのパソコンのおすすめは、持ち主のリストから学習しています
+core-core-nothing-picked = 何も選択されていません
 
 ## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider }は照合元ではありません
 core-prefs-provider-count = { $provider }が{ $count }回出てきます。各照合元は1回だけにしてください
 # A setting out of its bounds: $value is outside $low to $high.
-core-prefs-outside = { $value }は{ $low }〜{ $high }の範囲外です
+core-prefs-outside = { $value }は{ $low }〜{ $high }の範囲にしてください
 core-prefs-empty = 空
 
 ## metadata/src/recommended/mod.rs
@@ -491,7 +492,7 @@ core-host-cannot-listen-on = { $address }で待ち受けできませんでした
 
 ## host/src/addr.rs
 
-core-host-not-an-address = { $text }はアドレスとポートではありません
+core-host-not-an-address = { $text }は有効なアドレスとポートではありません
 
 ## host/src/keys.rs
 
@@ -505,7 +506,7 @@ core-net-rate-limited = { $provider }のレート制限中です
 
 ## net/src/lib.rs
 
-core-net-waiting = { $host }: 先ほどタイムアウトしました。{ -app-name }は{ $seconds }秒待ってから再度問い合わせます
+core-net-waiting = { $host }: 先ほどタイムアウトしました。{ -app-name }は{ $seconds }秒待ってから再試行します
 
 ## net/src/anilist.rs
 
@@ -517,7 +518,7 @@ core-update-no-download = { -app-name } { $version }には、このパソコン�
 core-update-cannot-make = { $path }を作成できませんでした: { $error }
 core-update-cannot-mark = 新しいAppImageを実行可能にできませんでした: { $error }
 core-update-cannot-replace = { $path }を置き換えられませんでした: { $error }
-core-update-not-here = このコピーはここでは更新されません
+core-update-not-here = このインストールはここでは自動更新できません
 core-update-cannot-start = ダウンロードを開始できませんでした: { $error }
 core-update-did-not-start = ダウンロードが始まりませんでした: { $error }
 core-update-cannot-write = { $path }に書き込めませんでした: { $error }
@@ -527,9 +528,9 @@ core-update-cancelled = キャンセルしました
 core-update-ended-early = ダウンロードが途中で終わりました（{ $size }バイト中{ $got }バイト）
 core-update-checksum = ダウンロードがGitHubのチェックサムと一致しません
 core-update-cannot-move = ダウンロードしたファイルを配置できませんでした: { $error }
-core-update-cannot-open-dmg = dmgを開けませんでした: { $error }
-core-update-cannot-read-dmg = dmgを読み込めませんでした: { $error }
-core-update-no-app = dmgにアプリが入っていません
+core-update-cannot-open-dmg = DMGを開けませんでした: { $error }
+core-update-cannot-read-dmg = DMGを読み込めませんでした: { $error }
+core-update-no-app = DMGにアプリが入っていません
 core-update-cannot-copy = 新しいアプリをこのアプリの隣にコピーできませんでした: { $error }
 
 ## metadata/src/calendar.rs
@@ -562,10 +563,10 @@ core-presence-no-room = この Discord の招待にはまだルームがあり�
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = { $tracker }のクライアントIDが設定されていません。
 core-trackers-mal-reconnect = 設定でMyAnimeListを再連携してください。
-core-trackers-mal-wants-secret = MyAnimeListがこのアプリのクライアントシークレットを求めています。設定の「トラッカー」で追加するか、App Typeを「other」にしてアプリを登録してください。
+core-trackers-mal-wants-secret = MyAnimeListにはこのアプリのクライアントシークレットが必要です。Anibeamの設定の「アカウント」で追加するか、App Typeを「other」にしてアプリを登録してください。
 # $error is the parser's own message.
-core-trackers-token-reply-unreadable = トークンの応答を読めません: { $error }
-core-trackers-token-reply-no-token = トークンの応答にアクセストークンがありませんでした
+core-trackers-token-reply-unreadable = トークンの応答を読み取れませんでした: { $error }
+core-trackers-token-reply-no-token = トークンの応答にアクセストークンが含まれていませんでした
 
 ## trackers/src/lib.rs
 
@@ -573,16 +574,16 @@ core-trackers-no-token = アクセストークンが保存されていません�
 
 ## trackers/src/cache.rs
 
-core-trackers-no-user-id = アカウントにユーザーIDがありません
+core-trackers-no-user-id = アカウントの応答にユーザーIDが含まれていませんでした
 
 ## trackers/src/move_up.rs
 
-core-trackers-move-none-picked = 移動する作品が選ばれていません
+core-trackers-move-none-picked = 移動する作品が選択されていません
 # $site is the tracker's full name: AniList or MyAnimeList.
 core-trackers-moved-up = このパソコンから{ $site }へ{ $count }作品を移動しました。
-core-trackers-moved-up-some-refused = { $site }へ{ $moved }作品を移動しました。{ $site }は{ $failed }作品を受け付けませんでした。
+core-trackers-moved-up-some-refused = { $site }へ{ $moved }作品を移動しました。{ $failed }作品は移動できませんでした。
 # $show is the show's folder name; $error is the tracker's answer, cleaned up.
-core-trackers-move-refused = { $site }は{ $show }を受け付けませんでした: { $error }
+core-trackers-move-refused = { $site }で{ $show }を更新できませんでした: { $error }
 
 ## trackers/src/oauth.rs
 
@@ -593,7 +594,7 @@ core-trackers-oauth-no-token = コールバックにaccess_tokenがありませ�
 core-trackers-oauth-waiting = ブラウザで{ $site }にログインするのを待っています。
 # $username is the account's name on the tracker.
 core-trackers-oauth-connected = { $username }として{ $site }と連携しました。
-core-trackers-oauth-no-name = プロフィールに名前がありませんでした
+core-trackers-oauth-no-name = プロフィールの応答にユーザー名が含まれていませんでした
 # Shown before a colon and the reason.
 core-trackers-oauth-could-not-start = ログインを開始できませんでした
 # $error is the system's own message.
@@ -610,10 +611,10 @@ core-trackers-page-failed = ログインが完了しませんでした
 core-trackers-page-go-back = { $app }に戻って、もう一度お試しください。
 core-trackers-page-finishing-title = { $app }、処理中
 core-trackers-page-finishing = 処理中です
-core-trackers-page-finishing-body = { $site }から応答があり、Anibeamがログインを仕上げています。{ $app }に戻ると、完了したときに表示されます。
+core-trackers-page-finishing-body = { $site }から応答があり、Anibeamがログインを仕上げています。{ $app }に戻って続けてください。
 core-trackers-page-cancelled-title = { $app }、ログインをキャンセル
-core-trackers-page-cancelled = このログインはキャンセルされました
-core-trackers-page-cancelled-body = このタブは閉じてかまいません。必要なら{ $app }からやり直してください。
+core-trackers-page-cancelled = ログインはキャンセルされました
+core-trackers-page-cancelled-body = このタブは閉じてかまいません。ログインする場合は{ $app }からやり直してください。
 
 ## trackers/src/on_hold.rs
 
@@ -642,11 +643,11 @@ core-trackers-entry-not-found = { $tracker }にエントリーが見つかりま
 core-trackers-server-error = { $tracker }のサーバーエラーです（{ $status }）。あとでもう一度お試しください。
 core-trackers-error-see-log = { $tracker }でエラーが発生しました。動作履歴を確認してください。
 # $episode is the number asked for, as it was typed.
-core-trackers-episode-not-whole = { $episode }は1以上の整数の話数ではありません
-core-trackers-score-out-of-range = { $score }は0〜10の範囲外です
-core-trackers-rewatch-not-settable = 再視聴は手動で設定するステータスではありません
-core-trackers-notes-too-long = メモは{ $max }文字までです
-core-trackers-nothing-picked = 何も選ばれていません
+core-trackers-episode-not-whole = { $episode }は1以上の整数にしてください
+core-trackers-score-out-of-range = { $score }は0〜10の範囲にしてください
+core-trackers-rewatch-not-settable = 再視聴は手動で設定できません
+core-trackers-notes-too-long = メモは{ $max }文字以内にしてください
+core-trackers-nothing-picked = 何も選択されていません
 core-trackers-notes-not-on-list = まだ{ $tracker }のリストにありません。先にリストに追加してください。
 # Where a write landed, picked by $sites: anilist, mal or both. Used inside the lines below.
 core-trackers-sites =
@@ -867,7 +868,7 @@ core-library-fix-one-file =
 # $numbers is a run of episode numbers, as core-library-runs-span or -list writes it;
 # $episodes is how many there are.
 core-library-fix-specials = スペシャル{ $count }件は、欠けている第{ $numbers }話のようです。
-core-library-fix-numbered-on = 第{ $from }話は、前のシーズンから続く番号で、この作品の第{ $to }話のようです。
+core-library-fix-numbered-on = 第{ $from }話は、前のシーズンからの通し番号で、第{ $to }話にあたるようです。
 # Episode numbers in a row: "1 to 6".
 core-library-runs-span = { $first }〜{ $last }
 # Episode numbers apart: "2, 4 and 7". $init is every number but the last, comma-separated.
@@ -875,9 +876,9 @@ core-library-runs-list = { $init }、{ $last }
 
 ## library/src/fixes.rs
 
-core-library-fix-episode-range = 話数は0〜10000の範囲です
-core-library-fix-season-range = シーズンは200までです
-core-library-fix-extra-range = 特典映像の番号は10000までです
+core-library-fix-episode-range = 話数は0〜10000の範囲にしてください
+core-library-fix-season-range = シーズン番号は200以下にしてください
+core-library-fix-extra-range = 特典映像の番号は10000以下にしてください
 core-library-file-elsewhere-not-fixed = ファイル{ $id }は別の作品のものなので、何も修正しませんでした
 # $title is the show's title.
 core-library-fix-undone = { $title }のファイル{ $count }個を、名前からの読み取りに戻しました。
@@ -941,7 +942,7 @@ core-library-scan-done =
 core-library-agent-no-answer = { $span }以内に回答がありませんでした
 core-library-agent-stopped-code = コード{ $code }で停止しました
 core-library-agent-stopped = 停止しました
-core-library-agent-answered-nothing = 何も回答しませんでした
+core-library-agent-answered-nothing = 何も出力しませんでした
 core-library-span-minutes = { $count }分
 core-library-span-seconds = { $count }秒
 core-library-report-no-fix = 報告できる修正があるファイルはありません
@@ -959,9 +960,9 @@ core-transfer-progress-done = 完了
 ## downloads/src/anirss.rs
 
 # $message is what the connection said
-core-downloads-anirss-no-answer = anirssから応答がありません: { $message }
+core-downloads-anirss-no-answer = anirssが応答しませんでした: { $message }
 # $status is the HTTP status code, $text the body anirss sent
-core-downloads-anirss-answered = anirssが{ $status }を返しました: { $text }
+core-downloads-anirss-answered = anirssがHTTP { $status }を返しました: { $text }
 core-downloads-no-free-port = 空いているポートがありません: { $error }
 # $status is how the process ended, as the system words it
 core-downloads-anirss-exited = anirssが終了しました（{ $status }）
@@ -980,12 +981,12 @@ core-downloads-anirss-update-linux = anirssパッケージを更新するか、�
 
 ## downloads/src/contents.rs
 
-core-downloads-torrent-file-no-answer = トレントファイルが届きませんでした: { $message }
-core-downloads-torrent-file-answered = トレントファイルの取得で{ $status }が返りました
+core-downloads-torrent-file-no-answer = トレントファイルをダウンロードできませんでした: { $message }
+core-downloads-torrent-file-answered = トレントファイルの取得でHTTP { $status }が返りました
 
 ## downloads/src/feed.rs
 
-core-downloads-feed-answered = フィードが{ $status }を返しました
+core-downloads-feed-answered = フィードがHTTP { $status }を返しました
 core-downloads-not-a-feed = フィードではありません: { $error }
 
 ## downloads/src/jackett.rs
@@ -1001,14 +1002,14 @@ core-downloads-command-exited = コマンドが{ $status }で終了しました
 
 core-downloads-anirss-stopped = anirssが停止しました
 # $install is core-downloads-anirss-install-mac or -linux
-core-downloads-anirss-missing = { $install }。または、設定で起動中のサーバーを指定してください。
+core-downloads-anirss-missing = { $install }。設定で起動中のサーバーを指定することもできます。
 # $command is the anirss command set in Settings
-core-downloads-anirss-command-missing = { $command }が見つかりませんでした。{ $install }。または、設定で起動中のサーバーを指定してください。
+core-downloads-anirss-command-missing = { $command }が見つかりませんでした。{ $install }。設定で起動中のサーバーを指定することもできます。
 core-downloads-anirss-start-failed = { $command }を起動できませんでした: { $error }
 # $tooOld is core-downloads-anirss-too-old; $message is what anirss said
 core-downloads-anirss-too-old-said = { $tooOld }応答: { $message }
-core-downloads-no-torrent-client = { $address }で応答するqBittorrentがなく、Anibeam自身が起動できるものもありません。qBittorrentをインストールしてWeb UIをオンにするか、qbittorrent-noxをインストールしてください。Anibeamが代わりに起動します
-core-downloads-own-client-gone = AnibeamのqBittorrentがありません: qbittorrent-noxがインストールされていません。Anibeamを再インストールするか、設定で自分のqBittorrentを指定してください
+core-downloads-no-torrent-client = { $address }でqBittorrentが応答せず、Anibeamで使える内蔵クライアントもありません。qBittorrentをインストールしてWeb UIを有効にするか、qbittorrent-noxをインストールしてください。Anibeamが自動で起動します
+core-downloads-own-client-gone = Anibeam内蔵のqBittorrentが見つかりません（qbittorrent-noxがインストールされていません）。Anibeamを再インストールするか、設定で自分のqBittorrentを指定してください
 core-downloads-no-port = { $address }にポートがありません
 core-downloads-own-client-settings = qBittorrentの設定を書き込めません: { $error }
 core-downloads-own-client-start-failed = { $command }を起動できませんでした: { $error }
@@ -1018,15 +1019,15 @@ core-downloads-own-client-slow-start-said = AnibeamのqBittorrentが起動しま
 core-downloads-not-ready = ダウンロードの準備ができていません。設定の「ダウンロード」を確認してください。
 core-downloads-ready = ダウンロードの準備ができました。
 # $count is how many sources anirss's own config names
-core-downloads-helper-sources = ダウンロードの検索はAnibeam自身で行うようになりました。検索ヘルパーの設定にある{ $count }件のソースは読み込みません。設定の「ダウンロード」で追加するか、そこで検索ヘルパーを選んでください。
+core-downloads-helper-sources = ダウンロードの検索はAnibeamで直接行うようになりました。検索ヘルパーの設定にある{ $count }件のソースは読み込みません。設定の「ダウンロード」で追加するか、そこで検索ヘルパーに戻してください。
 core-downloads-client-connected = ダウンロードアプリに接続しました。
 core-downloads-client-not-connected = ダウンロードアプリに接続していません。設定でアドレスを確認してください。
-core-downloads-not-on-demand = { $name }はオンデマンドのエンドポイントではありません
+core-downloads-not-on-demand = { $name }はオンデマンドのソースではありません
 core-downloads-source-running = ダウンロードソースが動作中です。
 core-downloads-source-not-running = { $name }が動作していません。ソースの一覧でオンにし、確認して起動してください。
 core-downloads-empty-query = 検索語を入力してください
 # What a search's progress line names when it was given no source
-core-downloads-first-endpoint = 最初のエンドポイント
+core-downloads-first-endpoint = 最初のソース
 # A search's progress line. The desktop's search card compares the line with these, so
 # keep the name in core-downloads-search-starting-endpoint a whole placeable.
 core-downloads-search-starting = 検索を開始中
@@ -1043,7 +1044,7 @@ core-downloads-added = ダウンロードに{ $count }件追加しました。
 core-downloads-movie-link = 映画のリンクはmagnetかhttp(s)のURLにしてください
 core-downloads-added-movie = ダウンロードに映画を追加しました。
 # $folder is a path, $name the library show that lives there
-core-downloads-library-folder = { $folder }は{ $name }のライブラリフォルダで、この購読がダウンロードしていないエピソードがあります。ファイルを残して購読を削除するか、作品ページから{ $name }を削除してください
+core-downloads-library-folder = { $folder }は{ $name }のライブラリフォルダで、この購読がダウンロードしていないエピソードが含まれています。ファイルを削除せずに購読を削除するか、作品ページから{ $name }を削除してください
 core-downloads-no-torrents-named = トレントが指定されていません
 core-downloads-paused = ダウンロード{ $count }件を一時停止しました。
 core-downloads-resumed = ダウンロード{ $count }件を再開しました。
@@ -1054,14 +1055,14 @@ core-downloads-nothing-to-remove = 削除するものはありません
 core-downloads-removed-show = { $title }をダウンロードから削除しました。
 core-downloads-removed-the-show = 作品をダウンロードから削除しました。
 core-downloads-deleted-still-listed = 削除したファイルが、まだダウンロードアプリに表示されています。
-core-downloads-feed-url = フィードはhttp(s)のURLにしてください
-core-downloads-rule-needs-name = ルールには名前が必要です
+core-downloads-feed-url = フィードのURLはhttp://またはhttps://で始めてください
+core-downloads-rule-needs-name = ルール名を空にはできません
 core-downloads-no-rule = { $name }という名前のルールはありません
-core-downloads-feed-no-search = フィードに短くできる検索語がありません
+core-downloads-feed-no-search = このフィードには短くできる検索語がありません
 core-downloads-no-repair = { $name }は修復の必要がありません。
 core-downloads-repaired = { $name }の購読を修復しました。
 # $search is the shortest search tried
-core-downloads-repair-failed = 検索語を短くしても何も見つかりません。「{ $search }」でも結果は空です
+core-downloads-repair-failed = 検索語を短くしても結果がありませんでした。「{ $search }」でも結果は空でした
 # $id is the client's id, in quotes
 core-downloads-no-saved-client = 保存されたトレントクライアント{ $id }はありません
 core-downloads-client-switched = ダウンロードに別のダウンロードアプリを使うようにしました。
@@ -1075,7 +1076,7 @@ core-downloads-native-empty-query = 検索語が空です
 # $query is the search, in quotes
 core-downloads-native-no-results = { $query }の結果はありません
 # $name is the feed's name, in quotes
-core-downloads-native-feed-taken = { $name }という名前のフィードは、すでに別のアドレスを読み込んでいます
+core-downloads-native-feed-taken = { $name }という名前のフィードは、すでに別のアドレスを指しています
 core-downloads-native-no-items = 項目が指定されていません
 # $link is the link given, in quotes
 core-downloads-native-bad-link = リンクはmagnet:かhttp(s)のURLにしてください。指定されたのは{ $link }です
@@ -1092,11 +1093,11 @@ core-downloads-refuse-library-folder = { $path }はライブラリフォルダ�
 
 ## downloads/src/paths.rs
 
-core-downloads-no-default-folder = qBittorrentに既定の保存フォルダがありません。qBittorrentで設定してください
+core-downloads-no-default-folder = qBittorrentに既定の保存フォルダが設定されていません。qBittorrentで設定してください
 # $folder is the folder given
 core-downloads-save-folder-not-absolute = { $folder } はフォルダへの完全なパスではありません
 # $folder is the folder given
-core-downloads-save-folder-unusable = { $folder } にはダウンロードを保存できません。存在するフォルダで、ホームフォルダ以外を選んでください
+core-downloads-save-folder-unusable = { $folder }はダウンロードに使えません。存在するフォルダで、ホームフォルダ以外を選んでください
 core-downloads-name-empty = 名前を空にはできません
 core-downloads-name-slash = 名前に/や\は使えません
 # $name is the name given, in quotes
@@ -1105,7 +1106,7 @@ core-downloads-name-not-folder = { $name }はフォルダ名ではありませ�
 ## downloads/src/prune.rs
 
 # $title is the show's title
-core-downloads-pruned = 放送が終了したため、{ $title }の購読を解除しました。
+core-downloads-pruned = { $title }の購読を解除しました（放送終了）。
 core-downloads-prune-failed = { $title }の購読を解除できませんでした。設定の「ダウンロード」を確認してください。
 
 ## library/src/trash.rs
@@ -1113,12 +1114,12 @@ core-downloads-prune-failed = { $title }の購読を解除できませんでし�
 core-downloads-refuse-not-absolute = { $path }は通常の絶対パスではないので、何も削除しませんでした
 core-downloads-refuse-root = { $path }はファイルシステムのルートなので、何も削除しませんでした
 core-downloads-refuse-outside-library = { $path }はライブラリフォルダ内にないので、何も削除しませんでした
-core-downloads-refuse-save-folder = { $path }はトレントの保存先フォルダで、ダウンロードしたものではないので、何も削除しませんでした
+core-downloads-refuse-save-folder = { $path }はトレントの保存先フォルダで、ダウンロードしたファイルではないので、何も削除しませんでした
 
 ## downloads/src/watch.rs
 
 # $episode is the episode's number, $title the show's
-core-downloads-episode-missed = { $title }の第{ $episode }話が、放送から3日たっても見つかりません。フィードで探し続けます。
+core-downloads-episode-missed = { $title }の第{ $episode }話が、放送から3日たってもまだ見つかりません。フィードで確認を続けます。
 
 ## downloads/src/settings.rs
 
@@ -1136,18 +1137,18 @@ core-downloads-settings-same-name = 2つのクライアントの名前が{ $name
 ## downloads/src/qbt.rs
 
 # $address is where qBittorrent was asked, $message what the connection said
-core-downloads-qbt-no-answer = { $address }のqBittorrentから応答がありません: { $message }
+core-downloads-qbt-no-answer = { $address }のqBittorrentが応答しませんでした: { $message }
 core-downloads-qbt-password-rejected = qBittorrentがパスワードを拒否しました。設定で修正してください
 core-downloads-qbt-banned = ログインの失敗が続いたため、qBittorrentがこのアドレスをブロックしました。しばらく待つか、qBittorrentを再起動してください
 core-downloads-qbt-login-rejected = qBittorrentがユーザー名またはパスワードを拒否しました
 # $status is the HTTP status code
-core-downloads-qbt-login-failed = { $address }のqBittorrentへのログインで{ $status }が返りました。次の呼び出しで再試行します
-core-downloads-qbt-not-web-ui = { $address }は{ $status }を返しましたが、qBittorrentのWeb UIではありません。設定のアドレスと、qBittorrentでWeb UIがオンになっているか確認してください
+core-downloads-qbt-login-failed = { $address }のqBittorrentへのログインでHTTP { $status }が返りました。次のリクエストで再試行します
+core-downloads-qbt-not-web-ui = { $address }はHTTP { $status }を返しましたが、qBittorrentのWeb UIではないようです。設定のアドレスと、qBittorrentでWeb UIが有効になっているか確認してください
 # $said is what qBittorrent answered, in quotes
 core-downloads-qbt-not-added = qBittorrentはトレントを追加しませんでした: { $said }
 core-downloads-qbt-some-not-added = qBittorrentは{ $count }件のトレントを追加できませんでした: { $said }
 # $line is the first line of what qBittorrent answered
-core-downloads-qbt-answered = qBittorrentが{ $status }を返しました: { $line }
+core-downloads-qbt-answered = qBittorrentがHTTP { $status }を返しました: { $line }
 
 ## downloads/src/replace.rs
 
@@ -1162,7 +1163,7 @@ core-downloads-no-video = { $name }には動画が含まれていないため、
 ## downloads/src/rolling.rs
 
 # $id is the rolling download's number
-core-downloads-no-roll = 順次ダウンロード{ $id }はありません
+core-downloads-no-roll = 先読みダウンロード{ $id }はありません
 # $title is the show, $from and $to the episodes kept on disk out of $total
 core-downloads-rolled = { $title }: 全{ $total }話中、第{ $from }〜{ $to }話を保持しています。
 core-downloads-roll-ahead = 少なくとも1話は先まで保持してください
@@ -1170,7 +1171,7 @@ core-downloads-roll-nothing = 取得するものはありません
 
 ## releases/src/endpoints.rs
 
-core-releases-json-needs-repo = JSON検索のソースは、項目の対応を定義したエンドポイントリポジトリから追加してください
+core-releases-json-needs-repo = JSON検索のソースは、項目の対応を定義したソースリストから追加してください
 core-releases-endpoint-no-name = `name`がありません
 # $name is the endpoint's name, in quotes
 core-releases-endpoint-bad-name = { $name }: 英字、数字、「.」「_」「-」だけを使ってください
@@ -1181,8 +1182,8 @@ core-releases-endpoint-unknown-kind = { $name }: 不明な種類{ $kind }（有�
 core-releases-endpoint-no-url = { $name }: `url`がありません
 core-releases-endpoint-not-http = { $name }: アドレスはhttp://かhttps://で始めてください
 # $kind is the endpoint's kind; {query} is written as it is in the address
-core-releases-endpoint-needs-query = { $name }: { $kind }のurlには{"{"}query{"}"}プレースホルダーが必要です
-core-releases-endpoint-no-query = { $name }: { $kind }のurlは検索語を自動で付けるため、{"{"}query{"}"}は使いません
+core-releases-endpoint-needs-query = { $name }: { $kind }のURLには{"{"}query{"}"}プレースホルダーが必要です
+core-releases-endpoint-no-query = { $name }: { $kind }のURLは検索語を自動で付けるため、{"{"}query{"}"}を含めないでください
 
 ## releases/src/fetch.rs
 
@@ -1190,7 +1191,7 @@ core-releases-endpoint-no-query = { $name }: { $kind }のurlは検索語を自�
 core-releases-indexer-error = インデクサーがエラー{ $code }を返しました
 core-releases-bad-feed = 不正なフィード: { $error }
 # $status is the HTTP status code
-core-releases-feed-answered = フィードが{ $status }を返しました
+core-releases-feed-answered = フィードがHTTP { $status }を返しました
 
 ## releases/src/json_feed.rs
 
@@ -1205,14 +1206,14 @@ core-releases-search-error = 検索がエラーを返しました
 # $path is where the results were looked for, in quotes
 core-releases-no-results-field = 応答の{ $path }に結果がありません
 core-releases-results-not-list = 応答の結果がリストではありません
-core-releases-search-answered = 検索が{ $status }を返しました
+core-releases-search-answered = 検索がHTTP { $status }を返しました
 
 ## releases/src/native.rs
 
-core-releases-no-endpoints = エンドポイントがまだありません: 「その他」の「エンドポイント」で、リポジトリか手動のエンドポイントを追加してください
+core-releases-no-endpoints = ダウンロードソースがまだありません: 先にソースリストかカスタムソースを追加してください
 core-releases-no-source-named = { $name }という名前のソースはありません
 core-releases-empty-query = 検索語を入力してください
-core-releases-cannot-follow = { $name }はフォローできません: 検索には応答しますが、新エピソードを確認するフィードがありません
+core-releases-cannot-follow = { $name }はフォローできません: 検索には対応していますが、新エピソードのフィードがありません
 core-releases-endpoint-gone = { $name }はもう利用できません: 削除されたか、オフになっているか、鍵がありません
 
 ## releases/src/quirks.rs
@@ -1256,27 +1257,27 @@ core-prefs-room-relay = リレーのアドレスはhttps://またはhttp://で�
 core-room-service = 一緒に見る
 core-room-not-found = そのコードのルームはありません。終了した可能性があります。
 core-room-full = そのルームは満員です。
-core-room-proto = そのリレーは別のバージョンのルームを使っています。参加するには{ -app-name }を更新してください。
-core-room-needs-episode = そのリレーはルームを作るのにエピソードが必要です。プレーヤーから作るか、リレーを更新してください。
-core-room-unreachable = リレーに接続できませんでした: { $message }
-core-room-refused = リレーに拒否されました: { $message }
+core-room-proto = そのサーバーは別のバージョンの「一緒に見る」を使っています。参加するには{ -app-name }を更新してください。
+core-room-needs-episode = そのサーバーでは、ルームを作る前にエピソードが必要です。プレーヤーからエピソードを始めるか、サーバーを更新してください。
+core-room-unreachable = ルームサーバーに接続できませんでした: { $message }
+core-room-refused = ルームサーバーがリクエストを拒否しました: { $message }
 core-room-not-in = ルームに参加していません。
-core-room-no-name = ルームで表示される名前を決めてください
+core-room-no-name = ルームでほかの人に表示される名前を入力してください
 core-room-bad-code = ルームコードは英数字6文字です
-core-room-created = 一緒に見るルームを作りました。コードは{ $code }です。
-core-room-joined = 一緒に見るルーム{ $code }に参加しました。
-core-room-left = 一緒に見るルームから退出しました。
+core-room-created = 「一緒に見る」のルームを作りました。コード: { $code }。
+core-room-joined = 「一緒に見る」のルーム{ $code }に参加しました。
+core-room-left = 「一緒に見る」のルームから退出しました。
 core-room-member-joined = { $name }がルームに参加しました。
 core-room-member-left = { $name }がルームから退出しました。
-core-room-closed = 一緒に見るルームが終了しました。
-core-room-lost = 一緒に見るルームとの接続が切れました。再接続しています。
-core-room-back = 一緒に見るルームに戻りました。
+core-room-closed = 「一緒に見る」のルームが終了しました。
+core-room-lost = 「一緒に見る」のルームとの接続が切れました。再接続しています。
+core-room-back = 「一緒に見る」のルームに再接続しました。
 core-room-media-asked = ホストにエピソードをリクエストしました。
 core-room-media-cannot = ホストは今このエピソードを共有できません。
 core-room-media-sent = { $name } にエピソードのトレントを送りました。
 core-room-media-sent-name = { $name } にエピソードのリリース名を送りました。
 core-room-media-nothing = ホストには共有できるエピソードのコピーがありません。
-core-room-media-no-answer = ホストのアプリから応答がありませんでした。少ししてからもう一度お試しください。
+core-room-media-no-answer = ホストのアプリが応答しませんでした。少ししてからもう一度お試しください。
 core-room-media-torrent = ホストのトレントからエピソードをダウンロードしています。
 core-room-media-searching = あなたのソースでホストのリリースを検索しています。
 core-room-media-not-found = あなたのソースにホストのリリースはありませんでした。
@@ -1284,7 +1285,7 @@ core-room-media-no-sources = すべてのソースがオフです。検索する
 core-room-media-no-start = ダウンロードを開始できませんでした: { $message }
 core-room-media-client = トレントクライアントが受け付けませんでした
 core-room-media-lost = トレントクライアントがエピソードのダウンロードを見失いました。
-core-room-media-stalled = ダウンロードが10分間進んでいません。後でもう一度お試しください。
-core-room-media-not-in-library = エピソードはダウンロードされましたが、ライブラリにありません。ダウンロードの保存先がライブラリのフォルダか確認してください。
+core-room-media-stalled = ダウンロードが10分間止まっています。後でもう一度お試しください。
+core-room-media-not-in-library = エピソードのダウンロードは完了しましたが、ライブラリに表示されませんでした。ダウンロードの保存先がライブラリのフォルダか確認してください。
 core-room-media-here = エピソードがライブラリに入りました。
 core-room-media-rest-missing = シリーズの残りを取得できませんでした。このエピソードだけをダウンロードしています。

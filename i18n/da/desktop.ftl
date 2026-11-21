@@ -33,7 +33,7 @@ scan-summary-found = Fandt { $count ->
 scan-summary-found-need = Fandt { $count ->
     [one] { $count } serie
    *[other] { $count } serier
-}, { $recognised } genkendt, { $need } kræver dig
+}, { $recognised } genkendt, { $need } skal matches
 scan-summary-episodes = { $count ->
     [one] { $count } afsnit
    *[other] { $count } afsnit
@@ -42,13 +42,13 @@ scan-summary-episodes-watched = { $count ->
     [one] { $count } afsnit
    *[other] { $count } afsnit
 } på disken, { $watched } allerede set på { $tracker }.
-scan-summary-title = Din mappe er tilføjet
+scan-summary-title = Mappe tilføjet
 scan-summary-count-found = fundet
 scan-summary-count-recognised = genkendt
-scan-summary-count-need = kræver dig
+scan-summary-count-need = skal matches
 scan-summary-later = Senere
-scan-summary-match = Match de { $count }
-scan-summary-open-library = Åbn biblioteket
+scan-summary-match = Match { $count }
+scan-summary-open-library = Åbn bibliotek
 
 ## UpdateNotice
 
@@ -59,13 +59,13 @@ update-notice-ready = Anibeam { $version } er klar
 update-notice-failed = Opdateringen mislykkedes
 update-notice-on-aur = Anibeam { $version } er på AUR
 update-notice-in-repo = Anibeam { $version } er i { $manager }-arkivet
-update-notice-out = Anibeam { $version } er udkommet
-update-notice-out-titled = Anibeam { $version } “{ $title }” er udkommet
+update-notice-out = Anibeam { $version } er tilgængelig
+update-notice-out-titled = Anibeam { $version } “{ $title }” er tilgængelig
 update-notice-progress = { $percent } %  ·  { $got } af { $total } MB
-update-notice-restart-hint = Genstart nu, eller den åbner næste gang
+update-notice-restart-hint = Genstart nu, eller den opdateres, næste gang du åbner Anibeam
 update-notice-from-source = Denne kopi er bygget fra kildekoden: pull og byg igen
-update-notice-no-download = Ingen download her til denne computer
-update-notice-install-hint = Opdater installerer den og genstarter Anibeam
+update-notice-no-download = Ingen download tilgængelig til denne computer
+update-notice-install-hint = Installerer opdateringen og genstarter Anibeam
 update-notice-retry = Prøv igen
 update-notice-update = Opdater
 update-notice-restart = Genstart
@@ -78,6 +78,7 @@ update-notice-later = Senere
 
 whats-new-title = Nyheder
 whats-new-got-it = Forstået
+whats-new-github = Fuld ændringslog på GitHub
 
 ## ActivityDrawer
 
@@ -105,7 +106,7 @@ activity-drawer-copy-tip = Klik for at kopiere linjen
 activity-drawer-fold = Luk
 activity-drawer-empty-technical = Intet logget endnu.
 activity-drawer-empty-problems = Ingen problemer. Alt virkede.
-activity-drawer-empty = Intet at rapportere endnu. Det, Anibeam gør for dig, vises her.
+activity-drawer-empty = Intet at rapportere endnu. Anibeams aktivitet vises her.
 
 ## ActivityColumn
 
@@ -122,7 +123,7 @@ activity-column-name-episode = { $title }, afsnit { $number }
 activity-column-title = Aktivitet
 activity-column-down = ned
 activity-column-up = op
-activity-column-not-connected = { $client } er ikke forbundet, så intet bevæger sig her.
+activity-column-not-connected = { $client } er ikke forbundet, så Anibeam kan ikke vise dens downloads.
 activity-column-connect-again = Forbind igen
 activity-column-downloading = Downloader nu
 activity-column-fewer = Færre
@@ -134,7 +135,7 @@ activity-column-today-empty = Søgninger, downloads og nye abonnementer vises he
 activity-column-stopping = Stopper
 activity-column-starting = Starter
 activity-column-start-tip = Start download
-activity-column-stop-tip = Stop download; det hentede bliver
+activity-column-stop-tip = Stop download; det hentede beholdes
 activity-column-cancelling = Annullerer
 activity-column-cancel-all-tip = Annuller disse downloads
 activity-column-cancel-tip = Annuller dette download
@@ -163,18 +164,18 @@ frame-did-not-work = Det virkede ikke.
 frame-could-not-open = Anibeam kunne ikke åbne det. Kopier det og åbn det selv.
 frame-copy = Kopier
 frame-copied = Kopieret
-frame-status-refused = { $tracker } tog ikke imod det
-frame-status-refused-why = { $tracker } tog ikke imod det: { $why }
-frame-lists-refused = { $tracker } tog ikke imod { $count ->
+frame-status-refused = { $tracker } afviste opdateringen
+frame-status-refused-why = { $tracker } afviste opdateringen: { $why }
+frame-lists-refused = Kunne ikke flytte { $count ->
     [one] 1 serie
    *[other] { $count } serier
-}; se aktivitetsloggen
+} til { $tracker }; se aktivitetsloggen
 frame-lists-moved = Flyttede { $count ->
     [one] 1 serie
    *[other] { $count } serier
 } til { $tracker }
-frame-notes-refused = { $tracker } tog ikke imod dine noter
-frame-notes-refused-why = { $tracker } tog ikke imod dine noter: { $why }
+frame-notes-refused = { $tracker } kunne ikke gemme dine noter
+frame-notes-refused-why = { $tracker } kunne ikke gemme dine noter: { $why }
 frame-notes-saved = Noter gemt
 frame-connected = Forbundet med { $tracker } som { $user }
 frame-sign-in-stopped = Login på { $tracker } stoppede, før det blev færdigt.
@@ -200,7 +201,7 @@ frame-list-home-not-carried = Gemt på denne enhed: din tracker har ikke denne s
 frame-list-home-offline = Gemt på denne enhed, indtil du forbinder AniList eller MyAnimeList
 frame-moving-to = Flytter til { $list }
 frame-moved-to = Flyttet til { $list }
-frame-plan-added = { $title } sættes på din Planlagt-liste
+frame-plan-added = Sætter { $title } på din Planlagt-liste
 frame-plan-listed = { $title } er allerede på din liste
 frame-delete-watched = { $kind ->
     [film] Slet sete film
@@ -247,7 +248,7 @@ frame-delete-extras = { $count ->
 }
 frame-delete-and = { $first } og { $second }
 frame-delete-heading = Slet { $what } af { $title }?
-frame-delete-base = Filerne og deres undertekster flyttes til papirkurven, så du kan hente dem tilbage derfra. Deres torrents fjernes fra torrentprogrammet, så de kan downloades igen.
+frame-delete-base = Filerne og deres undertekster flyttes til papirkurven, så du kan gendanne dem derfra. Deres torrents fjernes fra torrentprogrammet, så de kan downloades igen.
 frame-delete-confirm = Flyt til papirkurven
 frame-delete-done = { $what } af { $title } flyttet til papirkurven
 frame-delete-watched-done = { $count ->
@@ -255,20 +256,20 @@ frame-delete-watched-done = { $count ->
    *[other] { $count } afsnit
 }, { $size }, flyttet til papirkurven
 frame-delete-nothing = Intet at slette
-frame-fix-not-drafted = Rettet. Fejlrapporten kunne ikke skrives
+frame-fix-not-drafted = Rettet, men fejlrapporten kunne ikke skrives
 frame-fix-agent = Rettet. { $agent } kigger på det, og fejlrapporten åbner, når den er færdig
 frame-fix-opening = Rettet. Åbner fejlrapporten
-frame-fix-not-saved = Rettelsen blev ikke gemt: { $error }
+frame-fix-not-saved = Kunne ikke gemme rettelsen: { $error }
 frame-fix-undone = { $count ->
     [one] { $count } fil
    *[other] { $count } filer
 } læses ud fra navnet igen
 frame-fix-done = Rettede, hvordan { $count ->
-    [one] { $count } fil
-   *[other] { $count } filer
-} læses
+    [one] { $count } fil læses
+   *[other] { $count } filer læses
+}
 frame-report-failed = Fejlrapporten kunne ikke skrives: { $error }
-frame-report-untriaged = Fejlrapporten er åben i din browser, uden triage. { $error }
+frame-report-untriaged = Fejlrapporten er åben i din browser uden triage. { $error }
 frame-report-open = Fejlrapporten er åben i din browser, klar til at sende
 frame-downloads-not-read = Ikke læst.
 
@@ -330,7 +331,7 @@ home-tile-to-watch = { $count } at se
 home-day-nothing = Intet
 home-now = Nu { $time }
 home-continue = Se videre
-home-continue-fact = { $count } serier at se videre i
+home-continue-fact = { $count } serier i gang
 home-on-hold = På pause
 home-on-hold-fact = { $count } serier at vende tilbage til
 home-hero-open = Åbn { $title }
@@ -347,7 +348,7 @@ home-hero-play = Afspil afsnit { $number }
 home-hero-resume-unnumbered = Fortsæt afsnit
 home-hero-play-unnumbered = Afspil afsnit
 home-downloaded = Downloadet for nylig
-home-downloaded-fact = { $count } serier med nye filer de sidste 14 dage
+home-downloaded-fact = { $count } serier med nye filer de sidste 2 uger
 home-week = Denne uge
 home-week-show-empty = Vis tomme dage
 home-week-hide-empty = Skjul tomme dage
@@ -361,8 +362,8 @@ home-recommended-scope = Anbefalet fra
 home-recommended-all = Alle
 home-recommended-in-library = I biblioteket
 home-recommended-on-list = På listen
-home-recommended-none-library = Der er intet tilbage at anbefale i dit bibliotek. Alle finder serier, du ikke har endnu.
-home-recommended-none-list = Der er intet tilbage at anbefale på dine lister. Alle finder serier, du ikke har på en liste.
+home-recommended-none-library = Intet tilbage at anbefale i dit bibliotek. Skift til Alle for at se serier, du ikke har endnu.
+home-recommended-none-list = Intet tilbage at anbefale fra dine lister. Skift til Alle for at se serier, der ikke er på dine lister.
 home-catch-up = Indhent
 home-catch-up-fact = { $count } serier med afsnit, der venter
 home-fresh = Start noget nyt
@@ -386,9 +387,9 @@ onboarding-step-lists = Din liste
 onboarding-step-downloads = Downloads
 onboarding-step-ready = Klar
 onboarding-scan-reading = Læser mappen
-onboarding-scan-found = Fandt { $count } serier. Fortsæt, når du vil; resten udfyldes af sig selv.
-onboarding-scan-starter-empty = Din nye mappe er tom indtil videre. Serier, du lægger i den, dukker op her af sig selv.
-onboarding-scan-no-video = Der dukkede ingen videofiler op. Tjek, at det er den rigtige mappe.
+onboarding-scan-found = Fandt { $count } serier. Du kan fortsætte, når du vil; resten udfyldes automatisk.
+onboarding-scan-starter-empty = Din nye mappe er tom indtil videre. Serier, du lægger i den, vises automatisk her.
+onboarding-scan-no-video = Ingen videofiler fundet. Tjek, at du valgte den rigtige mappe.
 onboarding-scan-your-shows = dine serier
 onboarding-scan-looking-up = Slår { $what } op
 onboarding-scan-looking-up-tally = Slår { $what } op, { $posters } af { $count } fundet
@@ -397,7 +398,7 @@ onboarding-scan-posters-tally = Henter plakater, { $posters } af { $count } fund
 onboarding-scan-seasons = Finder relaterede sæsoner
 onboarding-scan-seasons-tally = Finder relaterede sæsoner, { $posters } af { $count } fundet
 onboarding-choose-folder = Vælg din animemappe
-onboarding-about = Et minuts opsætning. Dit bibliotek bliver færdigt af sig selv.
+onboarding-about = Tager et minut. Dit bibliotek bliver scannet færdigt i baggrunden.
 onboarding-step-later = Senere
 onboarding-skip-setup = Spring opsætning over
 onboarding-title-welcome = Velkommen til Anibeam
@@ -406,53 +407,53 @@ onboarding-title-lists = Forbind din animeliste
 onboarding-title-downloads = Sådan virker downloads
 onboarding-title-ready = Du er klar
 onboarding-title-later = { $count ->
-    [1] Klar, én ting til senere
-    [2] Klar, to ting til senere
-    [3] Klar, tre ting til senere
-   *[other] Klar, { $count } ting til senere
+    [1] Klar, 1 ting tilbage til senere
+    [2] Klar, 2 ting tilbage til senere
+    [3] Klar, 3 ting tilbage til senere
+   *[other] Klar, { $count } ting tilbage til senere
 }
 onboarding-body-welcome = Anibeam samler din anime ét sted. Den finder serierne på din disk, afspiller dem lige her og holder AniList eller MyAnimeList opdateret, mens du ser.
-onboarding-body-library = Vælg den mappe, du har dine serier i. Hver mappe inden i den bliver en serie med plakat, afsnit og stedet, hvor du slap. Anibeam læser kun mappen. Den flytter eller omdøber aldrig en fil.
-onboarding-body-lists = Log ind én gang, så bliver hvert afsnit, du ser færdigt her, markeret på din liste, uden at du skal skrive noget. Login sker i din browser, så Anibeam ser aldrig din adgangskode.
-onboarding-body-downloads = Følg en serie på siden Downloads, så lander hvert nyt afsnit i dit bibliotek, når det bliver sendt. Det kræver to ting: et sted at søge og et torrentprogram til at hente.
-onboarding-body-ready = Alt her kan ændres senere i Indstillinger, og Indstillinger, Om kører denne opsætning igen.
+onboarding-body-library = Vælg den mappe, hvor du har dine serier. Hver undermappe bliver en serie med plakat, afsnit og fremgang. Anibeam læser kun din mappe og flytter eller omdøber aldrig filer.
+onboarding-body-lists = Log ind én gang, så bliver hvert afsnit, du ser færdigt, automatisk markeret på din liste. Login sker i din browser, så Anibeam ser aldrig din adgangskode.
+onboarding-body-downloads = Følg en serie på siden Downloads, så downloades nye afsnit til dit bibliotek, når de bliver sendt. Det kræver to ting: en kilde at søge i og et torrentprogram at downloade med.
+onboarding-body-ready = Du kan ændre alt dette senere i Indstillinger eller køre opsætningen igen fra Indstillinger > Om.
 onboarding-skip-step = Spring over for nu
 onboarding-get-started = Kom i gang
 onboarding-open-app = Åbn Anibeam
 onboarding-continue = Fortsæt
 onboarding-payoff-library = Dit bibliotek
-onboarding-payoff-library-line = Plakater, afsnit og hvad der kommer næste gang, for hver serie i dine mapper.
-onboarding-payoff-plays = Afspiller lige her
-onboarding-payoff-plays-line = Undertekster, spring intro over, og den husker, hvor du stoppede.
+onboarding-payoff-library-line = Plakater, afsnit og hvad der kommer næste gang for hver serie i dine mapper.
+onboarding-payoff-plays = Indbygget afspiller
+onboarding-payoff-plays-line = Undertekster, spring intro over, og fortsæt lige hvor du slap.
 onboarding-payoff-list = Din liste, synkroniseret
 onboarding-payoff-list-line = Se et afsnit færdigt, så tæller det på AniList eller MyAnimeList.
-onboarding-payoff-episodes = Afsnit kommer af sig selv
-onboarding-payoff-episodes-line = Følg en serie, så lander hvert nyt afsnit i dit bibliotek.
+onboarding-payoff-episodes = Automatiske downloads
+onboarding-payoff-episodes-line = Følg en serie, så downloades nye afsnit til dit bibliotek, når de bliver sendt.
 onboarding-films-too = En mappe med film virker også: kald den Movies.
 onboarding-choose-folder-button = Vælg mappe
 onboarding-no-folder = Jeg har ikke en mappe endnu
-onboarding-starter-where = Det opretter en Anime-mappe i { $dir } og bruger den.
+onboarding-starter-where = Opretter en Anime-mappe i { $dir } og tilføjer den.
 onboarding-add-another = Tilføj en mappe mere
 onboarding-shelf-more = mere
 onboarding-preview-show = Din serie
 onboarding-preview-finished = Afsnit 3 set færdigt her
 onboarding-preview-on-list = På din liste: 3 set
-onboarding-preview-set-by = Sat af Anibeam, så snart rulleteksterne starter
+onboarding-preview-set-by = Opdateres automatisk, når du ser et afsnit færdigt
 onboarding-lists-connected = Forbundet. Det, du ser her, tæller nu på din liste.
-onboarding-lists-no-account = Ingen konto endnu? Begge er gratis, og én er rigeligt. Du kan afbryde forbindelsen når som helst i Indstillinger, Konti.
-onboarding-search-title = Et sted at søge
+onboarding-lists-no-account = Ingen konto endnu? Begge er gratis, og du behøver kun én. Du kan afbryde forbindelsen når som helst i Indstillinger > Konti.
+onboarding-search-title = Downloadkilder
 onboarding-search-ready = { $count ->
     [one] { $count } kilde klar til søgning.
    *[other] { $count } kilder klar til søgning.
 }
-onboarding-fetch-title = Hvem henter
+onboarding-fetch-title = Torrentprogram
 onboarding-fetch-auto = Lad Anibeam klare det
 onboarding-fetch-recommended = Anbefalet
-onboarding-fetch-auto-line = Anibeam har sin egen qBittorrent med og kører den stille i baggrunden. Intet at installere, intet at udfylde.
+onboarding-fetch-auto-line = Anibeam har en indbygget qBittorrent og kører den stille i baggrunden. Ingen ekstra opsætning.
 onboarding-fetch-existing = Jeg bruger allerede qBittorrent
-onboarding-fetch-existing-line = Anibeam forbinder til den qBittorrent, du allerede kører. Du skriver dens adresse og login i Indstillinger bagefter.
+onboarding-fetch-existing-line = Anibeam forbinder til den qBittorrent, du allerede kører. Du skriver dens adresse og login i Indstillinger efter opsætningen.
 onboarding-ready-library = Bibliotek
-onboarding-ready-library-none = Ingen mappe endnu. Den findes i Indstillinger, Bibliotek, når du vil.
+onboarding-ready-library-none = Ingen mappe endnu. Du kan tilføje en når som helst i Indstillinger > Bibliotek.
 onboarding-ready-library-series = { $count ->
     [one] { $count } mappe
    *[other] { $count } mapper
@@ -467,7 +468,7 @@ onboarding-ready-library-scanning = { $count ->
 }, scanner
 onboarding-ready-lists = Din liste
 onboarding-ready-lists-as = { $tracker }, som { $user }
-onboarding-ready-lists-none = Ikke forbundet endnu. Det findes i Indstillinger, Konti, når du vil.
+onboarding-ready-lists-none = Ikke forbundet endnu. Du kan forbinde når som helst i Indstillinger > Konti.
 onboarding-ready-downloads = Downloads
 onboarding-ready-downloads-state = { $sources ->
     [0] Ingen kilder endnu
@@ -475,11 +476,11 @@ onboarding-ready-downloads-state = { $sources ->
    *[other] { $sources } kilder
 }, { $client ->
     [own] din egen qBittorrent.
-   *[bundled] Anibeams egen qBittorrent.
+   *[bundled] Anibeams indbyggede qBittorrent.
 } { $next ->
     [ready] Alt er klar.
-    [opens] Indstillinger, Downloads åbner bagefter.
-   *[sources] Tilføj en kildeliste for at søge.
+    [opens] Indstillinger > Downloads åbner bagefter.
+   *[sources] Tilføj en kildeliste for at begynde at søge.
 }
 onboarding-ready-set-up = Opsæt nu
 
@@ -524,8 +525,8 @@ fix-keep = Behold rettelsen
 fix-leave-as-read = Lad filen blive læst, som den er
 fix-read-by-name = Læs filen ud fra navnet igen
 fix-report = Opret en fejlrapport på GitHub
-fix-report-body = Åbner en udfyldt fejlrapport, som du kan sende. Den er offentlig og nævner disse filer.
-fix-report-body-agent = Åbner en udfyldt fejlrapport, som du kan sende. Den er offentlig og nævner disse filer. { $agent } kigger på den først.
+fix-report-body = Åbner en udfyldt fejlrapport, som du kan gennemse og sende. Den er offentlig og indeholder disse filnavne.
+fix-report-body-agent = Åbner en udfyldt fejlrapport, som du kan gennemse og sende. Den er offentlig og indeholder disse filnavne. { $agent } kigger på den først.
 fix-close-unapplied =
     { $count ->
         [one] Luk uden at anvende { $count } rettelse?
@@ -611,14 +612,14 @@ watching-connect-body = Forbind den, så viser denne side de serier, du ser elle
 watching-connect-waiting = Venter på browseren
 watching-connect-anilist = Forbind AniList
 watching-load-failed-title = Ser nu-listen kunne ikke indlæses
-watching-load-failed-body = AniList kunne ikke nås. Listen kommer igen ved næste opdatering.
+watching-load-failed-body = Kunne ikke nå AniList. Listen indlæses igen ved næste opdatering.
 watching-planning-failed-title = Planlagt-listen kunne ikke indlæses
-watching-planning-failed-body = Dens cache kunne ikke læses. Prøv igen, ellers kommer den igen ved næste opdatering.
+watching-planning-failed-body = Kunne ikke læse den gemte liste. Prøv igen, eller vent på næste opdatering.
 watching-planning-empty-title = Intet på din Planlagt-liste
-watching-planning-empty-body = Planlæg under Sendes nu, eller Planlagt i en series listemenu, sætter en serie her.
+watching-planning-empty-body = Klik på Planlæg under Sendes nu, eller vælg Planlagt i en series listemenu, for at tilføje en serie her.
 watching-airing-now = Sendes nu
 watching-empty-title = Intet på din Ser nu-liste
-watching-empty-body = Markér en serie som Ser nu på AniList, så lander den her.
+watching-empty-body = Markér en serie som Ser nu på AniList, så vises den her.
 watching-open-anilist = Åbn AniList
 
 ## LibraryPage.qml
@@ -630,8 +631,8 @@ library-hidden =
     }
 library-hidden-sync-stops =
     { $count ->
-        [one] { $count } serie skjult, og dens synkronisering med trackeren stopper
-       *[other] { $count } serier skjult, og deres synkronisering med trackeren stopper
+        [one] { $count } serie skjult, og dens synkronisering med trackeren er sat på pause
+       *[other] { $count } serier skjult, og deres synkronisering med trackeren er sat på pause
     }
 library-unhidden =
     { $count ->
@@ -763,13 +764,13 @@ library-pick-all-tip = Vælg alle viste kort (Ctrl+A)
 library-unhide = Vis igen
 library-hide = Skjul
 library-rate = Bedøm
-library-rate-tip = Én karakter til alle valgte, på hver forbundet tracker
+library-rate-tip = Giv alle valgte serier samme karakter på alle forbundne trackere
 library-needs-tracker = Kræver en forbundet tracker og en matchet serie
 library-move-to-list = Flyt til liste
 library-rescan = Genscan
 library-find-match = Find et match
-library-find-match-tip = Søg efter hver valgt serie uden et match
-library-all-matched = Alle valgte har et match
+library-find-match-tip = Søg efter et match til hver valgt serie uden match
+library-all-matched = Alle valgte serier har allerede et match
 
 ## MetadataPage.qml
 
@@ -801,8 +802,8 @@ metadata-walk-position = { $at } af { $total }
 metadata-walk-done = Det var den sidste
 metadata-walk-left =
     { $count ->
-        [one] Én tilbage under Mangler match
-       *[other] { $count } tilbage under Mangler match
+        [one] 1 tilbage under Ikke genkendt
+       *[other] { $count } tilbage under Ikke genkendt
     }
 metadata-countdown-days = { $days } d { $hours } t
 metadata-countdown-hours = { $hours } t { $minutes } m
@@ -837,10 +838,10 @@ metadata-count =
 metadata-search-placeholder = Filtrer titler
 metadata-find-rest = Find resten
 metadata-find-rest-started = Slår de mapper op, Anibeam endnu ikke kender
-metadata-find-rest-tip = Slår hver mappe op, som Anibeam endnu ikke kender, på hver infokilde i den rækkefølge, Indstillinger angiver
+metadata-find-rest-tip = Slår hver mappe uden match op på metadatakilderne i den rækkefølge, der er sat i Indstillinger
 metadata-refresh-all = Opdater alle
 metadata-refresh-all-started = Opdaterer info om alle serier
-metadata-refresh-all-tip = Henter info om hver genkendt serie igen
+metadata-refresh-all-tip = Henter metadata for hver genkendt serie igen
 metadata-crawling = Finder franchiselinks
 metadata-crawl-progress = { $done } af { $total }
 metadata-load-failed-title = Serieinfo kunne ikke indlæses
@@ -926,13 +927,13 @@ airing-planned-already-one = { $title } er allerede på din liste
 airing-planned-already-all = De er allerede alle på din liste
 airing-planned =
     { $count ->
-        [one] { $count } serie sættes på din Planlagt-liste
-       *[other] { $count } serier sættes på din Planlagt-liste
+        [one] Sætter { $count } serie på din Planlagt-liste
+       *[other] Sætter { $count } serier på din Planlagt-liste
     }
 airing-planned-some-already =
     { $count ->
-        [one] { $count } serie sættes på din Planlagt-liste, { $already } var der allerede
-       *[other] { $count } serier sættes på din Planlagt-liste, { $already } var der allerede
+        [one] Sætter { $count } serie på din Planlagt-liste ({ $already } er der allerede)
+       *[other] Sætter { $count } serier på din Planlagt-liste ({ $already } er der allerede)
     }
 airing-play-next = Afspil næste
 airing-plan-to-watch = Planlæg
@@ -961,20 +962,20 @@ airing-out-fewer = Færre
 airing-out-all = Alle { $count }
 airing-sort = Sortér
 airing-load-failed-title = AniList kunne ikke nås
-airing-load-failed-body = Serierne, der sendes, kommer fra AniList. De kommer igen ved næste opdatering.
-airing-reading-title = Læser, hvad der sendes
+airing-load-failed-body = Serier, der sendes, kommer fra AniList. De vises igen ved næste opdatering.
+airing-reading-title = Indlæser serier, der sendes
 airing-nothing-now = Intet sendes lige nu
 airing-nothing-for = Intet sendes i { $season }
-airing-nothing-read = Intet læst endnu
-airing-reading-body = Alle serier, der sendes, fra AniList. Det tager et par sekunder første gang.
-airing-nothing-body = AniList har ingen serier for denne sæson endnu. Opdater læser den igen, eller vælg en anden sæson.
-airing-nothing-read-body = Opdater læser alle serier, der sendes, fra AniList.
-airing-hides-empty-title = Dine filtre efterlader intet her
+airing-nothing-read = Intet indlæst endnu
+airing-reading-body = Alle serier, der sendes denne sæson, fra AniList. Det tager et par sekunder første gang.
+airing-nothing-body = AniList har ingen serier for denne sæson endnu. Klik på Opdater for at tjekke igen, eller vælg en anden sæson.
+airing-nothing-read-body = Klik på Opdater for at indlæse serier, der sendes, fra AniList.
+airing-hides-empty-title = Alt her er skjult af dine filtre
 airing-lists-empty-title = Intet her er på dine lister
 airing-library-empty-title = Intet her er i dit bibliotek
-airing-hides-empty-body = Alle serier her er på dine lister eller i dit bibliotek, og dem har du skjult.
-airing-lists-empty-body = Planlæg på et kort sætter serien på din liste.
-airing-library-empty-body = Hent afsnit på et kort downloader serien til dit bibliotek.
+airing-hides-empty-body = Alle serier her er på dine lister eller i dit bibliotek, og de filtre skjuler dem.
+airing-lists-empty-body = Klik på Planlæg på et kort for at sætte serien på din liste.
+airing-library-empty-body = Klik på Hent afsnit på et kort for at downloade serien til dit bibliotek.
 airing-show-everything = Vis alt
 airing-picked = { $count } valgt
 airing-undo = Fortryd
@@ -1091,13 +1092,13 @@ show-detail-taken-adding-line = Reglen tager { $taken } af feedets { $releases -
         [one] den.
        *[other] dem.
     }
-show-detail-feed-holds-nothing = Feedet har intet endnu. Udgivelser, der passer, downloades, så snart de dukker op i det.
-show-detail-nothing-fits = Intet i feedet passer til reglen endnu. Udgivelser, der passer, downloades, så snart de dukker op.
+show-detail-feed-holds-nothing = Feedet har ingen udgivelser endnu. Udgivelser, der passer, downloades automatisk, når de dukker op.
+show-detail-nothing-fits = Intet i feedet passer til reglen endnu. Udgivelser, der passer, downloades automatisk, når de dukker op.
 show-detail-complete = Komplet
 show-detail-open-in-library = Åbn i biblioteket
 show-detail-feed-finds-nothing = Dette feed finder intet
-show-detail-feed-empty-query = Det spørger { $source } efter “{ $query }”, som kommer tomt tilbage, så intet nyt kan nå reglen. En kortere søgning giver som regel svar; de ord, den udelader, kan blive i reglen i stedet.
-show-detail-feed-empty = Det spørger { $source }, som kommer tomt tilbage, så intet nyt kan nå reglen. En kortere søgning giver som regel svar; de ord, den udelader, kan blive i reglen i stedet.
+show-detail-feed-empty-query = Det søger på { $source } efter “{ $query }”, som ikke gav resultater, så intet nyt kan passe til reglen. En kortere søgning giver som regel resultater; de udeladte ord kan blive i reglen i stedet.
+show-detail-feed-empty = Det søger på { $source }, som ikke gav resultater, så intet nyt kan passe til reglen. En kortere søgning giver som regel resultater; de udeladte ord kan blive i reglen i stedet.
 show-detail-feed-empty-earlier = qBittorrent viser stadig, hvad en tidligere version af dette feed fandt.
 show-detail-repairing = Reparerer
 show-detail-repair = Reparer
@@ -1139,9 +1140,9 @@ show-detail-torrents-moving =
         [one] { $count } downloades nu; bjælkerne fyldes undervejs.
        *[other] { $count } downloades nu; bjælkerne fyldes undervejs.
     }
-show-detail-torrents-held = Hvad programmet har for denne mappe.
+show-detail-torrents-held = Torrents i programmet for denne mappe.
 show-detail-torrents-waiting = Venter på, at qBittorrent tilføjer det, reglen tager.
-show-detail-torrents-none = Programmet har intet for denne mappe.
+show-detail-torrents-none = Ingen torrents i programmet for denne mappe.
 
 ## SeriesPage.qml
 
@@ -1206,7 +1207,7 @@ series-delete-move-picked =
         }
     }
 series-delete-click = Klik på de filer, der skal slettes.
-series-delete-where = De flyttes til papirkurven, hvor du kan hente dem tilbage. Det, du har set, forbliver registreret.
+series-delete-where = De flyttes til papirkurven, så du kan gendanne dem. Det, du har set, forbliver registreret.
 series-delete-move = Flyt til papirkurven
 series-pick-none = Vælg ingen
 series-pick-all = Vælg alle
@@ -1217,9 +1218,9 @@ series-score-not-saved = Kunne ikke gemme karakteren.
 series-still-downloading-plays = { $episode } downloades stadig. Det afspilles, når downloaden er færdig.
 series-open-downloads = Åbn Downloads
 series-format-series = Serie
-series-tracker-refused = { $tracker } tog ikke imod det
-series-tracker-refused-why = { $tracker } tog ikke imod det: { $why }
-series-tracker-check-accounts = { $list }. Tjek forbindelsen i Indstillinger under Konti.
+series-tracker-refused = { $tracker } afviste opdateringen
+series-tracker-refused-why = { $tracker } afviste opdateringen: { $why }
+series-tracker-check-accounts = { $list }. Tjek forbindelsen i Indstillinger > Konti.
 series-watched-up-to = Set til og med { $episode }
 series-unwatched-from = Uset fra { $episode }
 series-undo = Fortryd
@@ -1269,7 +1270,7 @@ series-downloading-episodes =
     }
 series-count-season-ends = Sæson { $season } slutter ved afsnit { $number }
 series-count-ends = Slutter ved afsnit { $number }
-series-count-gave-way = Du satte { $count } afsnit; det gælder ikke længere
+series-count-gave-way = Du satte { $count } afsnit, hvilket ikke længere gælder
 series-count-set-by-you = { $line }, sat af dig
 series-change = Ændr
 series-get-episodes = Hent afsnit
@@ -1373,12 +1374,12 @@ get-show-go-replace-subscribe =
 get-show-subscribe = Abonnér på nye afsnit
 get-show-nothing-new = Intet nyt at hente
 get-show-pick-episode = Vælg et afsnit
-get-show-replace-off = Fra. De valgte for { $episodes } udelades, da biblioteket har dem. Slå det til for at bytte dem.
-get-show-replace-on = Dine filer til { $episodes } flyttes til papirkurven, når de nye er færdige.
+get-show-replace-off = Fra. Valgte filer til { $episodes } springes over, da de allerede er i dit bibliotek. Slå til for at erstatte dem.
+get-show-replace-on = Eksisterende filer til { $episodes } flyttes til papirkurven, når de nye downloads er færdige.
 get-show-replace-on-the-way =
     { $count ->
-        [one] { $episodes } downloades nu: det download annulleres, og det, det skrev, flyttes til papirkurven.
-       *[other] { $episodes } downloades nu: det download annulleres, og det, det skrev, flyttes til papirkurven.
+        [one] { $episodes } downloades nu: den download annulleres, og dens halvfærdige filer flyttes til papirkurven.
+       *[other] { $episodes } downloades nu: de downloads annulleres, og deres halvfærdige filer flyttes til papirkurven.
     }
 get-show-kind-on-demand = Startes, når en søgning kræver det
 get-show-kind-rss-search = RSS-søgning
@@ -1457,10 +1458,10 @@ get-show-plan-line = { $episodes } fra { $groups } på { $source }.
 get-show-and = { $first } og { $second }
 get-show-library-has =
     { $count ->
-        [one] Biblioteket har { $episodes }. Slå Erstat nuværende afsnit til nedenfor for at bytte det.
-       *[other] Biblioteket har { $episodes }. Slå Erstat nuværende afsnit til nedenfor for at bytte dem.
+        [one] Dit bibliotek har allerede { $episodes }. Slå Erstat nuværende afsnit til nedenfor for at bytte det.
+       *[other] Dit bibliotek har allerede { $episodes }. Slå Erstat nuværende afsnit til nedenfor for at bytte dem.
     }
-get-show-together = samlet
+get-show-together = i alt
 get-show-torrents-unit =
     { $count ->
         [one] torrent
@@ -1468,21 +1469,21 @@ get-show-torrents-unit =
     }
 get-show-replace = Erstat nuværende afsnit
 get-show-sequential = Download i rækkefølge
-get-show-sequential-on = Til: hver ny torrent henter sine stykker fra starten, så de første afsnit bliver færdige først, og du kan se, mens resten kommer. Lidt langsommere i alt.
+get-show-sequential-on = Til: hver ny torrent henter stykker fra starten, så de første afsnit bliver færdige først, og du kan se, mens resten downloades. Lidt langsommere i alt.
 get-show-sequential-off = Fra: programmet henter stykker i den rækkefølge, swarmen tilbyder dem.
-get-show-rolling = Hold de næste klar
+get-show-rolling = Løbende downloads
 get-show-rolling-on = Til: { $count } afsnit downloades nu, og hvert afsnit, du ser færdigt, starter det næste.
-get-show-rolling-on-delete = Til: { $count } afsnit downloades nu, og hvert afsnit, du ser færdigt, starter det næste. Sete afsnit fjernes fra disken.
+get-show-rolling-on-delete = Til: { $count } afsnit downloades nu, og hvert afsnit, du ser færdigt, starter det næste. Sete afsnit slettes automatisk.
 get-show-rolling-off = Fra: alle valgte afsnit downloades på én gang.
-get-show-follow-off = Fra: nye afsnit vises her som huller, og intet downloades af sig selv.
-get-show-follow-no-feed = { $source } har intet feed at følge, så nye afsnit kan ikke downloades af sig selv derfra.
+get-show-follow-off = Fra: nye afsnit vises her som huller, og intet downloades automatisk.
+get-show-follow-no-feed = { $source } har intet feed at følge, så nye afsnit kan ikke downloades automatisk derfra.
 get-show-follow-pick-group = Vælg en gruppe først: et abonnement følger én gruppe og kvalitet.
-get-show-follow-batch-only = { $group } har kun pakken her, så der er intet feed med enkelte afsnit at abonnere på.
-get-show-follow-on = Til: et feed for { $feed } på { $source }. Hvert nyt afsnit downloades, når det dukker op.
+get-show-follow-batch-only = { $group } har kun en samlet pakke her, så der er intet feed med enkelte afsnit at abonnere på.
+get-show-follow-on = Til: et feed for { $feed } på { $source }. Nye afsnit downloades automatisk, når de dukker op.
 get-show-confirm =
     { $count ->
-        [one] { $episodes } downloades nu. Erstatter du det, annulleres det download, og det, det skrev, flyttes til papirkurven.
-       *[other] { $episodes } downloades nu. Erstatter du dem, annulleres det download, og det, det skrev, flyttes til papirkurven.
+        [one] { $episodes } downloades nu. Erstatter du det, annulleres den download, og dens halvfærdige filer flyttes til papirkurven.
+       *[other] { $episodes } downloades nu. Erstatter du dem, annulleres de downloads, og deres halvfærdige filer flyttes til papirkurven.
     }
 get-show-confirm-go = Annuller og erstat
 get-show-state-error = Fejl
@@ -1507,7 +1508,7 @@ get-show-stopping = Stopper
 get-show-starting = Starter
 get-show-stop = Stop
 get-show-start-tip = Start download igen
-get-show-stop-tip = Stop download; det hentede bliver
+get-show-stop-tip = Stop download; det hentede beholdes
 get-show-cancelling = Annullerer
 get-show-cancel-tip = Annuller dette download og flyt det, det skrev, til papirkurven
 get-show-episode-order = Download i afsnitsrækkefølge
@@ -1580,7 +1581,7 @@ start-source-starting = Starter
 search-progress-why-helper = Anibeam starter sin søgehjælper; det tager et sekund eller to.
 search-progress-why-starting = { $endpoint } kører gennem en hjælper, der starter, når en søgning har brug for den. Første søgning venter på den i op til { $seconds } sekunder; de næste springer det over.
 search-progress-why-reading = Deler udgivelserne op i grupper og tjekker dem mod biblioteket.
-search-progress-why-ondemand = En hjælper læser { $endpoint } forfra ved hver ny søgning, hvilket som regel tager ti til tyve sekunder.
+search-progress-why-ondemand = En hjælper spørger { $endpoint } på ny ved hver ny søgning, hvilket som regel tager 10 til 20 sekunder.
 search-progress-why-slow = { $endpoint } er langsom til at svare lige nu.
 search-progress-why-usual = Det tager som regel et sekund eller to.
 search-progress-why-and-slow = { $why } Det tager længere tid end normalt; annuller for at prøve en anden kilde.
@@ -1600,8 +1601,8 @@ release-table-col-seeders = Seedere
 release-table-col-leechers = Leechere
 release-table-col-downloads = Downloads
 release-table-col-released = Udgivet
-release-table-tick-all = Markér alle udgivelser
-release-table-untick-all = Fjern markering fra alle udgivelser
+release-table-tick-all = Vælg alle udgivelser
+release-table-untick-all = Fravælg alle udgivelser
 release-table-on-disk = På disken
 release-table-other-on-disk = Anden udgivelse på disken
 release-table-season-batch = Pakke, sæson { $season }
@@ -1634,20 +1635,20 @@ downloads-delete-finished-menu =
     }
 downloads-titles-and = { $list } og { $last }
 downloads-titles-more = { $list } og { $count } mere
-downloads-delete-finished-none = Ingen afsluttet serie er set helt til ende
+downloads-delete-finished-none = Ingen afsluttede serier er set helt til ende
 downloads-delete-watched-none = Intet set ligger på disken
 downloads-delete-finished-heading =
     { $count ->
         [one] Slet { $count } afsluttet serie, { $size }?
        *[other] Slet { $count } afsluttede serier, { $size }?
     }
-downloads-delete-finished-base = { $titles }. Kun serier, som kilden siger er afsluttet, med alle afsnit set; en serie, der stadig sendes, eller hvis slutning er et gæt, bliver. Alle deres filer flyttes til papirkurven, også ekstra. Deres torrents fjernes også fra { $client }, så de kan downloades igen.
+downloads-delete-finished-base = { $titles }. Kun serier, der er markeret som afsluttede, med alle afsnit set; serier, der stadig sendes eller ikke er bekræftet afsluttede, beholdes. Alle deres filer (også ekstraer) flyttes til papirkurven, og deres torrents fjernes fra { $client }, så de kan downloades igen.
 downloads-delete-watched-heading =
     { $count ->
         [one] Slet { $count } set afsnit, { $size }?
        *[other] Slet { $count } sete afsnit, { $size }?
     }
-downloads-delete-watched-base = Alle afsnit, du har set, i alle serier. Afsnit, du ikke har set endnu, og ekstra bliver. Filerne og deres undertekster flyttes til papirkurven, så du kan hente dem tilbage derfra. Deres torrents fjernes også fra { $client }, så de kan downloades igen.
+downloads-delete-watched-base = Hvert afsnit, du har set, i alle serier. Usete afsnit og ekstraer beholdes. Filer og undertekster flyttes til papirkurven, så du kan gendanne dem. Deres torrents fjernes fra { $client }, så de kan downloades igen.
 downloads-move-to-trash = Flyt til papirkurven
 downloads-remove-group-torrents =
     { $count ->
@@ -1672,10 +1673,10 @@ downloads-client-settings = Indstillinger for torrentprogram
 downloads-error-unknown = Noget gik galt. Prøv igen.
 downloads-search-all-off = Alle kilder er slået fra. Slå en til for at søge.
 downloads-turn-on = Slå { $name } til
-downloads-search-no-sources = Der er ingen kilder at søge i endnu. Tilføj en kildeliste i Indstillinger under Downloads.
+downloads-search-no-sources = Ingen søgekilder endnu. Tilføj en kildeliste i Indstillinger > Downloads.
 downloads-no-sources = Ingen kilder at søge i endnu
 downloads-search-none-started = Ingen kilde kunne starte søgningen. Prøv igen om lidt.
-downloads-auto-resolution = Indsnævret til { $resolution }, den skarpeste, der er
+downloads-auto-resolution = Indsnævret til { $resolution }, den højeste tilgængelige
 downloads-search-one-failed = Søgningen på { $name } virkede ikke. Prøv igen, eller søg i en anden kilde.
 downloads-search-all-failed = Ingen af kilderne kunne søge. Prøv igen om lidt.
 downloads-narrowing-on = Indsnævrer på { $name }
@@ -1683,9 +1684,9 @@ downloads-refine-zero = Det ville ikke efterlade noget, så listen bliver, som d
 downloads-refine-no-match = Ingen udgivelse passer til det ord.
 downloads-refine-empty = Skriv et ord at indsnævre med.
 downloads-refine-no-change = Det ville ikke ændre noget.
-downloads-movie-tick-one = Markér én udgivelse, og tryk så Download som film.
+downloads-movie-tick-one = Vælg én udgivelse, og klik så på Download som film.
 downloads-group-downloading = Downloader
-downloads-group-downloading-line = I gang nu; Aktivitet til højre har detaljerne.
+downloads-group-downloading-line = Aktiv nu; se Aktivitet til højre for detaljer.
 downloads-group-seeding = Seeder
 downloads-group-seeding-line = Downloadet og deles stadig.
 downloads-group-done = Færdige
@@ -1739,9 +1740,9 @@ downloads-files-torrents = det, torrents downloadede
 downloads-files-torrents-remote = det, torrents downloadede, slettet af { $client }
 downloads-files-folder-and = { $folder } og { $torrents }
 downloads-unsubscribe-heading = Afmeld { $title }?
-downloads-unsubscribe-base = Dens feed og downloadregel fjernes fra { $client }, så der kommer intet nyt.
+downloads-unsubscribe-base = Dens feed og downloadregel fjernes fra { $client }, så der downloades ingen nye afsnit.
 downloads-unsubscribe-complete-heading = Afmeld alle { $count } komplette serier?
-downloads-unsubscribe-complete-base = Deres feeds og downloadregler fjernes fra { $client }. Alle deres afsnit er i biblioteket.
+downloads-unsubscribe-complete-base = Deres feeds og downloadregler fjernes fra { $client }. Alle deres afsnit er allerede i dit bibliotek.
 downloads-files-folders-and-torrents = deres mapper og det, deres torrents downloadede
 downloads-one-at-a-time = De fjernes én ad gangen; siden viser hver, efterhånden som det sker.
 downloads-subscription-stays = { $base } Abonnementet bliver.
@@ -1758,16 +1759,16 @@ downloads-keep-downloading = Bliv ved med at downloade
 downloads-remove-heading = Fjern { $title }?
 downloads-remove-group-base =
     { $count ->
-        [one] Dens torrent fjernes fra { $client }; filerne bliver, medmindre du markerer nedenfor.
-       *[other] Dens { $count } torrents fjernes fra { $client }; filerne bliver, medmindre du markerer nedenfor.
+        [one] Dens torrent fjernes fra { $client }; filerne bliver, medmindre du sætter flueben nedenfor.
+       *[other] Dens { $count } torrents fjernes fra { $client }; filerne bliver, medmindre du sætter flueben nedenfor.
     }
 downloads-remove-detail-base =
     { $count ->
-        [one] Dens { $count } torrent fjernes fra { $client }; filerne bliver, medmindre du markerer nedenfor.
-       *[other] Dens { $count } torrents fjernes fra { $client }; filerne bliver, medmindre du markerer nedenfor.
+        [one] Dens { $count } torrent fjernes fra { $client }; filerne bliver, medmindre du sætter flueben nedenfor.
+       *[other] Dens { $count } torrents fjernes fra { $client }; filerne bliver, medmindre du sætter flueben nedenfor.
     }
 downloads-remove-broken-heading = Fjern torrents for alle { $count } serier med manglende filer?
-downloads-remove-broken-base = Deres { $count } torrents fjernes fra { $client }. De peger på mapper, der ikke findes, så ingen fil røres; abonnementer bliver.
+downloads-remove-broken-base = Deres { $count } torrents fjernes fra { $client }. Deres mapper mangler, så ingen filer røres; abonnementer bliver.
 downloads-remove-torrent-heading = Fjern denne torrent?
 downloads-files-it-downloaded = det, den downloadede
 downloads-cancel-torrent-heading = Annuller dette download?
@@ -1780,7 +1781,7 @@ downloads-cancel-many-base = Alle downloads af denne serie stopper og fjernes fr
 downloads-cancel-all = Annuller dem alle
 downloads-summary-connecting = Forbinder.
 downloads-summary-client-on = { $client } { $version } er forbundet.
-downloads-summary-client-off = { $client } er ikke forbundet. Tjek adressen og adgangskoden i Indstillinger under Downloads.
+downloads-summary-client-off = { $client } er ikke forbundet. Tjek adressen og adgangskoden i Indstillinger > Downloads.
 downloads-summary-native = Anibeam søger selv i dine kilder.
 downloads-summary-native-with = Anibeam søger selv i dine kilder. { $client }
 downloads-summary-starting = Starter downloads.
@@ -1818,16 +1819,16 @@ downloads-activity-hide = Skjul aktivitet
 downloads-activity = Aktivitet
 downloads-moving =
     { $count ->
-        [one] { $count } download i gang
-       *[other] { $count } downloads i gang
+        [one] { $count } aktiv download
+       *[other] { $count } aktive downloads
     }
 downloads-back = Tilbage til Downloads
 downloads-chip-search-ready = Søgning klar
 downloads-chip-search-starting = Søgning starter
 downloads-chip-search-off = Søgning fra
-downloads-chip-answers-at = { $summary } Den svarer på { $url }.
-downloads-chip-helper-missing = Søgehjælperen er ikke installeret. Klik for indstillingerne for Downloads, som forklarer, hvordan du tilføjer den
-downloads-chip-helper-failed = Søgehjælperen stoppede. Forbind igen starter den; indstillingerne for Downloads siger, hvad der gik galt
+downloads-chip-answers-at = { $summary } Lytter på { $url }.
+downloads-chip-helper-missing = Søgehjælperen er ikke installeret. Klik for at åbne Indstillinger > Downloads og se, hvordan den sættes op
+downloads-chip-helper-failed = Søgehjælperen stoppede. Klik på Forbind igen for at genstarte den, eller se detaljer i Indstillinger > Downloads
 downloads-chip-open-settings = Åbn indstillingerne for Downloads
 downloads-chip-client-on = { $client } { $version }
 downloads-chip-client-off = { $client } fra
@@ -1857,7 +1858,7 @@ downloads-plan-to-watch = Planlæg
 downloads-suggest-release-search = Søg i udgivelsesnavne efter “{ $query }” på { $names } i stedet
 downloads-key-return = Retur
 downloads-magnet-invalid = Dette magnetlink peger ikke på en torrent
-downloads-magnet-film = Hent som film
+downloads-magnet-film = Download som film
 downloads-sources = Kilder
 downloads-source-hint-starting = starter
 downloads-source-hint-down = kører ikke
@@ -1929,10 +1930,10 @@ downloads-strip-other-on-disk =
 downloads-strip-both = { $first }; { $second }.
 downloads-tick-missing =
     { $count ->
-        [one] Markér det { $count } manglende afsnit
-       *[other] Markér de { $count } manglende afsnit
+        [one] Vælg det { $count } manglende afsnit
+       *[other] Vælg de { $count } manglende afsnit
     }
-    .tip = For hvert afsnit her, som biblioteket ikke har, udgivelsen med flest seedere
+    .tip = Vælger udgivelsen med flest seedere for hvert manglende afsnit
 downloads-open-in-library = Åbn i biblioteket
 downloads-not-this-show = Ikke denne serie
 downloads-no-releases = Ingen udgivelser
@@ -1940,13 +1941,13 @@ downloads-no-releases-body = Intet på { $name } passer til “{ $query }”. En
 downloads-try-source = Prøv { $name }
 downloads-ticked =
     { $count ->
-        [one] { $count } udgivelse markeret
-       *[other] { $count } udgivelser markeret
+        [one] { $count } udgivelse valgt
+       *[other] { $count } udgivelser valgt
     }
-downloads-nothing-ticked = Intet markeret
+downloads-nothing-ticked = Intet valgt
 downloads-ticked-size = { $size } i alt.
-downloads-tick-hint = Markér udgivelser i tabellen, eller download dem alle.
-downloads-tick-all = Markér alle
+downloads-tick-hint = Vælg udgivelser i tabellen, eller download dem alle.
+downloads-tick-all = Vælg alle
 downloads-working = Arbejder
 downloads-download-ticked =
     { $count ->
@@ -1956,9 +1957,9 @@ downloads-download-ticked =
 downloads-download-shown = Download de { $count } viste
 downloads-download-all = Download alle { $count }
 downloads-download-movie = Download som film
-    .tip = Én markeret udgivelse, direkte i filmmappen
+    .tip = Én valgt udgivelse, gemt direkte i filmmappen
 downloads-subscribe = Abonnér
-downloads-subscribe-body = Nye udgivelser, der passer til denne søgning, downloades, når de dukker op, til mappen, der står her.
+downloads-subscribe-body = Nye udgivelser, der passer til denne søgning, downloades automatisk til mappen, der står her.
 downloads-name-placeholder = Taget fra den første udgivelse
 downloads-subscribe-search = Abonnér på denne søgning
 downloads-subscribe-no-feed = Intet feed at abonnere på her
@@ -1968,12 +1969,12 @@ downloads-preview-from = Fra { $host }
 downloads-preview-from-named = Fra { $host } ({ $name })
 downloads-preview-must = Skal indeholde { $terms }
 downloads-preview-must-not = Må ikke indeholde { $terms }
-downloads-helper-changed = Downloads er sat til en hjælper, der ikke svarer
+downloads-helper-changed = Downloads er sat op til en søgehjælper, der ikke svarer
 downloads-helper-missing = Denne kopi af Anibeam kom uden downloads
 downloads-helper-failed = Downloads kunne ikke starte
-downloads-helper-changed-body = Søgninger og downloads kører gennem et lille hjælpeprogram. Indstillinger peger på et andet end Anibeams eget, og det svarer ikke. Skift tilbage, så starter det af sig selv.
-downloads-helper-missing-body = Den er bygget uden hjælpeprogrammet, som søgninger og downloads kører gennem. Installationsfilerne på udgivelsessiden har det. Indstillinger, Downloads forklarer, hvordan du tilføjer det til denne kopi.
-downloads-helper-failed-body = Hjælpeprogrammet, som søgninger og downloads kører gennem, stoppede, før det var klar. Som regel hjælper det at starte det igen.
+downloads-helper-changed-body = Søgninger og downloads kører gennem et lille hjælpeprogram. Indstillinger peger lige nu på en anden hjælper end Anibeams indbyggede, og den svarer ikke. Skift tilbage for at starte Anibeams hjælper automatisk.
+downloads-helper-missing-body = Denne version indeholder ikke hjælpeprogrammet til søgning og download. De officielle installationsfiler på udgivelsessiden har det, eller se Indstillinger > Downloads for at sætte det op.
+downloads-helper-failed-body = Hjælpeprogrammet til søgninger og downloads stoppede, før det var klar. Som regel hjælper det at starte det igen.
 downloads-helper-use-own = Brug Anibeams eget
 downloads-helper-start-again = Start igen
 downloads-helper-show-how = Vis mig hvordan
@@ -1983,11 +1984,11 @@ downloads-lens-airing-count = Sendes  { $count }
 downloads-lens-following-count = Følger  { $count }
 downloads-lens-downloaded-count = Downloadet  { $count }
 downloads-lens-gaps = Huller i dit bibliotek
-downloads-lens-gaps-line = Sendte afsnit, der ikke er på disken. Åbn en serie for at se, hvem der har dem.
+downloads-lens-gaps-line = Sendte afsnit, der mangler på din disk. Åbn en serie for at søge efter dem.
 downloads-lens-gaps-none = Intet mangler: alle sendte afsnit af alle serier er på disken.
 downloads-lens-airing-line = Serier i dit bibliotek med afsnit på vej. Åbn en for at følge den.
 downloads-lens-airing-none = Intet i dit bibliotek sendes
-downloads-lens-airing-none-body = En serie havner her, når den er i dit bibliotek og har afsnit på vej. Sendes nu viser alt, der sendes.
+downloads-lens-airing-none-body = Serier vises her, når de er i dit bibliotek og stadig har kommende afsnit. Se Sendes nu for at gennemse alt, der sendes lige nu.
 downloads-airing-now = Sendes nu
 downloads-lens-following = Følger
 downloads-card-next =
@@ -2030,7 +2031,7 @@ downloads-on-disk-line = I dit bibliotek uden en torrent i { $client }, de stør
 downloads-nothing-downloaded = Intet downloadet
 downloads-nothing-downloaded-body = Det, du downloader eller abonnerer på, vises her, en serie ad gangen.
 downloads-client-off-title = { $client } er ikke forbundet
-downloads-client-off-body = Tjek, at den kører, og forbind igen. Dens adresse og adgangskode står i Indstillinger under Downloads.
+downloads-client-off-body = Sørg for, at den kører, og forbind igen. Du kan tjekke dens adresse og adgangskode i Indstillinger > Downloads.
 downloads-connect-again = Forbind igen
 downloads-view-grid = Gitter
 downloads-view-list = Liste
@@ -2060,7 +2061,7 @@ track-picker-off = Fra
 roll-controls-window = Holder { $ahead } klar: afsnit { $next } til { $through } af { $total }
 roll-controls-window-watched = Holder { $ahead } klar: afsnit { $next } til { $through } af { $total }, { $watched } set
 roll-controls-more = Hent { $count } mere
-roll-controls-more-tip = Download de næste afsnit nu. Anibeam holder de næste klar igen, når du har indhentet dem.
+roll-controls-more-tip = Download de næste afsnit nu. Løbende downloads fortsætter, når du har indhentet dem.
 roll-controls-fewer-tip = Hold ét færre klar
 roll-controls-ahead = { $count } foran
 roll-controls-further-tip = Hold ét mere klar
@@ -2163,7 +2164,7 @@ endpoint-repos-panel-fields-changed = Dens felter er ændret.
 endpoint-repos-panel-needs-fields = Skal have sin { $fields }, før den søger.
 endpoint-repos-panel-no-longer-offered = Tilbydes ikke længere af sin kildeliste.
 endpoint-repos-panel-update-requests-to = Opdateringen sender forespørgsler til { $host }.
-endpoint-repos-panel-unreadable = Denne liste kunne ikke læses. Opdater lister prøver igen.
+endpoint-repos-panel-unreadable = Kunne ikke læse denne kildeliste. Klik på Opdater lister for at prøve igen.
 endpoint-repos-panel-checking = Tjekker
 endpoint-repos-panel-add = Tilføj
 endpoint-repos-panel-fingerprint = Nøglens fingeraftryk  { $fingerprint }
@@ -2212,7 +2213,7 @@ schedule-tile-last = Sidste
 schedule-tile-out = Udkom
 schedule-ends-at = Slutter ved afsnit { $number }
 schedule-dated-by-site = { $count } dateret af { $site }
-schedule-dated-by-record = { $count } dateret af posten
+schedule-dated-by-record = { $count } fra metadata
 schedule-set-by-you = { $count } sat af dig
 schedule-guessed-weekly = { $count } gættet ugentligt
 schedule-nothing-set = Intet sat endnu
@@ -2262,8 +2263,8 @@ show-anilist-score = AniList { $score }
 show-forecast = { $percent } % for dig
 show-because-you-watched = Fordi du så
 show-hidden-loved = { $count ->
-    [one] Et skjult tag, du elsker, står bag
-   *[other] { $count } skjulte tags, du elsker, står bag
+    [one] Passer til et skjult tag, du plejer at kunne lide
+   *[other] Passer til { $count } skjulte tags, du plejer at kunne lide
 }
 show-you-gave-it = Du gav den { $score }
 show-story = Handling
@@ -2283,7 +2284,7 @@ connect-finish-in-browser = Gør det færdigt i din browser
 connect-signed-in-anilist = Logget ind som { $account }. Din liste er på siden Ser nu.
 connect-signed-in-mal = Logget ind som { $account }. Afsnit markeres dér, mens du ser.
 connect-setup-lead = { $name } logger Anibeam ind via din egen app. Det tager cirka et minut, én gang.
-connect-page-open = { $name }s loginside er åben i din browser. Godkend Anibeam dér, så lukker dette sig selv.
+connect-page-open = { $name }s loginside er åben i din browser. Godkend Anibeam dér, så lukker denne dialog automatisk.
 connect-page-opening = Åbner { $name }s loginside i din browser.
 connect-open-watching = Åbn Ser nu
 connect-done = Færdig
@@ -2303,7 +2304,7 @@ connect-step-paste-id-anilist = AniList kalder det Client ID: tallet på din nye
 connect-step-paste-id-mal = MyAnimeList kalder det Client ID: den lange streng på din nye apps side.
 connect-client-id = Client ID
 connect-client-secret-web = Klienthemmelighed (kun til Web-apps)
-connect-step-connect-body = Browseren åbner, { $name } beder dig logge ind og godkende Anibeam, og Anibeam fanger svaret.
+connect-step-connect-body = Din browser åbner, så du kan logge ind på { $name } og godkende Anibeam.
 
 ## SettingsPage
 
@@ -2349,7 +2350,7 @@ settings-find-title-language =
 settings-find-mode =
     .words = mørk lys system tema nat
 settings-find-colours-from =
-    .words = terminal skrivebord system tema kilde kitty
+    .words = farve farver terminal skrivebord system tema kilde kitty colour color
 settings-find-dark-theme =
     .words = farve farveskema base16
 settings-find-light-theme =
@@ -2395,7 +2396,7 @@ settings-find-styled =
 settings-find-font =
     .words = skrift skrifttype
 settings-find-text-colour =
-    .words = farve tekstfarve
+    .words = farve tekstfarve colour color
 settings-find-outline =
     .words = kant kontur streg
 settings-find-background =
@@ -2459,10 +2460,10 @@ settings-downloads-title = Downloads
 settings-downloads-anirss-ready = Kører, version { $version } på { $url }.
 settings-downloads-anirss-starting = Starter søgehjælperen.
 settings-downloads-anirss-missing = Søgehjælperen er ikke installeret. Geninstaller Anibeam, eller angiv din egen anirss under Kommando.
-settings-downloads-anirss-failed = Søgehjælperen stoppede. Prøv igen starter den; Detaljer viser, hvad den sagde.
+settings-downloads-anirss-failed = Søgehjælperen stoppede. Klik på Prøv igen for at genstarte den, eller åbn Detaljer for at se fejlen.
 settings-downloads-anirss-idle = Ikke startet endnu. Den starter første gang, du søger på siden Downloads.
 settings-downloads-torrent-trying = Prøver { $client }.
-settings-downloads-torrent-answered = { $client } { $version } svarede.
+settings-downloads-torrent-answered = Forbundet til { $client } { $version }.
 settings-downloads-torrent-failed = { $client } blev ikke forbundet. Tjek adressen og adgangskoden ovenfor, og test igen.
 settings-downloads-torrent-untried = Ikke prøvet endnu.
 settings-downloads-password-saved = Der er gemt en adgangskode her til dette program.
@@ -2471,7 +2472,7 @@ settings-downloads-password-none = Ingen adgangskode gemt. Et program, der sprin
 settings-downloads-mismatch = Søgehjælperen taler med { $helperUrl }, mens Anibeam taler med { $url }. En søgehjælper, du selv kører, læser adressen fra sin egen config.toml, så et skift af program her flytter den ikke.
 settings-downloads-torrent-title = Torrentprogram
 settings-downloads-which-client = Hvilket program
-settings-downloads-pick-for-me = Vælg for mig
+settings-downloads-pick-for-me = Auto
 settings-downloads-my-own = Mit eget
 settings-downloads-built-in = Indbygget
 settings-downloads-saved-clients = Gemte programmer
@@ -2491,7 +2492,7 @@ settings-downloads-save-to-pick = Gem downloads i
 settings-downloads-connection = Forbindelse
 settings-downloads-open-config = Åbn dens konfiguration
 settings-downloads-details = Detaljer
-settings-downloads-details-torrent = { $client } sagde dette, da Anibeam prøvede den.
+settings-downloads-details-torrent = Fejl fra { $client }.
 settings-downloads-test-trying = Prøver
 settings-downloads-test-save = Gem og test
 settings-downloads-test = Test
@@ -2504,18 +2505,18 @@ settings-downloads-runs-sidecar = Anibeam kører den
 settings-downloads-runs-remote = Jeg kører den
 settings-downloads-command = Kommando
 settings-downloads-key = Nøgle
-settings-downloads-details-anirss = Søgehjælperen sagde dette, da den stoppede.
+settings-downloads-details-anirss = Detaljer om søgehjælperen.
 settings-downloads-starting = Starter
 settings-downloads-reconnect = Forbind igen
 settings-downloads-save-first = Gem dine ændringer først
-settings-downloads-roll-title = Hold de næste klar
-settings-downloads-roll-big = Til lange serier
+settings-downloads-roll-title = Løbende downloads
+settings-downloads-roll-big = Slå til for lange serier
 settings-downloads-roll-ahead = Afsnit foran
 settings-downloads-unit-episodes = afsnit
-settings-downloads-roll-over = Lang betyder over
+settings-downloads-roll-over = Løbende for serier over
 settings-downloads-roll-watched = Sete afsnit
 settings-downloads-keep-all = Behold alle
-settings-downloads-keep-behind = Behold bagud
+settings-downloads-keep-behind = Sete afsnit at beholde
 settings-downloads-subscriptions-title = Abonnementer og søgninger
 settings-downloads-last-search = Husk den sidste søgning
 settings-downloads-prune = Afmeld afsluttede serier
@@ -2572,8 +2573,8 @@ settings-developer-load-no-images = { $page }, ingen billeder
 settings-developer-offscreen-of = { $offscreen } af { $total }
 settings-developer-loads-empty = Åbn en side, så vises den her.
 settings-developer-load-images-off = { $page }, billeder fra
-settings-developer-load-frames = { $frames } billeder tegnet under indlæsningen, det længste mellemrum mellem to { $gap }.
-settings-developer-load-frames-timed-out = { $frames } billeder tegnet under indlæsningen, det længste mellemrum mellem to { $gap }. Opgav at vente på dens billeder efter 15 s.
+settings-developer-load-frames = { $frames } billeder tegnet under indlæsningen; længste mellemrum var { $gap }.
+settings-developer-load-frames-timed-out = { $frames } billeder tegnet under indlæsningen; længste mellemrum var { $gap }. Gav op at vente på billeder efter 15 s.
 settings-developer-built = Bygget
 settings-developer-settled = Faldet til
 settings-developer-core-data = Data fra kernen
@@ -2642,22 +2643,22 @@ key-help-key-ctrl-q = Ctrl+Q
 key-help-play-pause = Afspil eller pause
 key-help-seek-5 = Spol 5 s
 key-help-seek-10 = Spol 10 s
-key-help-skip = Spring intro eller outro over, ellers 90 s
+key-help-skip = Spring intro eller outro over, eller spring 90 s frem
 key-help-frame-step = Ét billede tilbage eller frem
 key-help-speed = Langsommere eller hurtigere, i trin på 0,25
 key-help-normal-speed = Normal hastighed
 key-help-volume = Lydstyrke op eller ned med 5
 key-help-mute = Slå lyden fra
-key-help-subtitles-toggle = Undertekster fra og til igen
+key-help-subtitles-toggle = Slå undertekster til eller fra
 key-help-subtitle-delay = Undertekstforsinkelse 100 ms tidligere eller senere
 key-help-audio-delay = Lydforsinkelse 100 ms tidligere eller senere
 key-help-hold-speed = 2× hastighed, mens du holder
 key-help-screenshot = Gem et skærmbillede i Billeder
 key-help-episode = Næste eller forrige afsnit
 key-help-chapter = Forrige eller næste kapitel
-key-help-start-end = Starten, eller outroen
+key-help-start-end = Gå til starten eller outroen
 key-help-fullscreen = Fuld skærm
-key-help-escape-player = Luk det åbne, ellers forlad fuld skærm, ellers forlad afspilleren
+key-help-escape-player = Luk det åbne, eller forlad fuld skærm, eller forlad afspilleren
 key-help-toggle-list = Vis eller skjul denne liste
 key-help-library-search = Bibliotek og søgning
 key-help-search-page = Søg på denne side
@@ -2665,9 +2666,9 @@ key-help-activity = Aktivitet
 key-help-settings = Indstillinger
 key-help-quit = Afslut
 key-help-forward = Frem
-key-help-escape-app = Luk det åbne, ellers tilbage
+key-help-escape-app = Luk det åbne, eller gå tilbage
 key-help-context-menu = Højrekliksmenuen
-key-help-pick-card = Vælg et kort, for at handle på flere
+key-help-pick-card = Vælg et kort for at handle på flere
 key-help-pick-range = Vælg alle kort op til dette
 key-help-pick-all = Vælg alle viste kort
 
@@ -2676,10 +2677,10 @@ key-help-pick-all = Vælg alle viste kort
 settings-about-title = Om
 settings-about-update-failed = Opdateringen blev ikke færdig. Prøv igen, eller hent den fra udgivelsessiden.
 settings-about-update-ready = { $version } er klar til at blive installeret.
-settings-about-update-command = { $version } er udkommet. Opdater den med { $command }
+settings-about-update-command = { $version } er tilgængelig. Opdater med { $command }
 settings-about-update-progress = { $headline }  ·  { $detail }
-settings-about-update-source = { $version } er udkommet. Denne kopi er bygget fra kildekoden: pull og byg igen.
-settings-about-update-elsewhere = { $version } er udkommet, uden en download her til denne computer.
+settings-about-update-source = { $version } er tilgængelig. Denne kopi er bygget fra kildekoden: pull og byg igen.
+settings-about-update-elsewhere = { $version } er tilgængelig, men der er ingen installationsfil til denne computer.
 settings-about-version = Version
 settings-about-build = Anibeam { $build }
 settings-about-whats-new = Nyheder
@@ -2704,7 +2705,7 @@ settings-playback-skipping = Spring over
 settings-playback-skip-intros = Spring intro over
 settings-playback-skip-outros = Spring outro over
 settings-playback-next-episode = Næste afsnit
-settings-playback-name-next = Vis næste afsnits navn
+settings-playback-name-next = Vis næste afsnits titel
 settings-playback-languages = Sprog
 settings-playback-subtitle-languages = Undertekstsprog
 settings-playback-audio-languages = Lydsprog
@@ -2719,7 +2720,7 @@ discord-ask-wants = { $name } vil gerne være med
 discord-ask-start-room = Start rum
 discord-ask-let-in = Lad komme ind
 discord-ask-no = Nej
-settings-playback-discord-blocked = Sagt nej til på Discord
+settings-playback-discord-blocked = Blokeret på Discord
 room-panel-discord = På Discord
 room-panel-discord-open = Åbent
 room-panel-discord-invite = Kun inviterede
@@ -2774,7 +2775,7 @@ settings-accounts-days-unit = dage
 settings-phone-title = Telefon-app
 settings-phone-online = Online
 settings-phone-offline = Offline
-settings-phone-untrusted = Får intet fra denne computer
+settings-phone-untrusted = Ingen adgang til denne computer
 settings-phone-share = Del via Tailscale
 settings-phone-stream = Stream afsnit
 settings-phone-host-service = Værtstjeneste
@@ -2782,7 +2783,7 @@ settings-phone-not-running = Kører ikke
 settings-phone-running = Kører
 settings-phone-copy-command = Kopier kommando
 settings-phone-command-copied = Kommando kopieret
-settings-phone-nobody = Får intet: Tailscale angiver ingen person for den
+settings-phone-nobody = Ingen adgang: Tailscale angav ingen bruger for denne enhed
 settings-phone-people = Personer
 settings-phone-own-profile = Denne computers profil
 settings-phone-person-own-devices =
@@ -2814,7 +2815,7 @@ settings-help-report = Meld en fejl
 ## SettingsPlaybackTab: subtitles
 
 settings-subtitles-title = Undertekster
-settings-subtitles-reset-done = Underteksterne ser ud, som de gjorde fra start
+settings-subtitles-reset-done = Undertekststil nulstillet til standard
 settings-subtitles-size-place = Størrelse og placering
 settings-subtitles-size = Størrelse
 settings-subtitles-position = Placering
@@ -2822,7 +2823,7 @@ settings-subtitles-style = Stil
 settings-subtitles-styled = Stilede undertekster
 settings-subtitles-as-made = Original
 settings-subtitles-size-only = Kun størrelse
-settings-subtitles-mine = Mine
+settings-subtitles-mine = Overstyr
 settings-subtitles-font = Skrift
 settings-subtitles-font-invalid = Skriv et skriftnavn, fx Noto Sans.
 settings-subtitles-bold = Fed
@@ -2830,11 +2831,11 @@ settings-subtitles-text-colour = Tekstfarve
 settings-subtitles-colour-invalid = Skriv en farve som #ffcc00.
 settings-subtitles-outline = Kontur
 settings-subtitles-outline-invalid = Bredden er et tal, 0 eller mere.
-settings-subtitles-outline-colour-invalid = Skriv farven som #000000.
+settings-subtitles-outline-colour-invalid = Skriv en farve som #000000.
 settings-subtitles-shadow = Skygge
 settings-subtitles-shadow-invalid = Et tal, 0 eller mere. 0 betyder ingen skygge.
 settings-subtitles-box = Baggrundsboks
-settings-subtitles-start-over = Fra start
+settings-subtitles-start-over = Nulstil undertekststil
 settings-subtitles-reset = Nulstil
 
 ## SettingsAboutTab: storage and backup
@@ -2873,13 +2874,13 @@ settings-data-summary-resume-points =
     }
 settings-data-summary-accounts =
     { $count ->
-        [one] { $count } listekonto hentet ind
-       *[other] { $count } listekonti hentet ind
+        [one] { $count } listekonto importeret
+       *[other] { $count } listekonti importeret
     }
 settings-data-summary-fixes =
     { $count ->
-        [one] { $count } fil bruger en rettelse, du har lavet.
-       *[other] { $count } filer bruger en rettelse, du har lavet.
+        [one] Anvendte gemte rettelser på { $count } fil.
+       *[other] Anvendte gemte rettelser på { $count } filer.
     }
 settings-data-summary-unavailable =
     { $count ->
@@ -2984,7 +2985,7 @@ settings-appearance-mode = Tilstand
 settings-appearance-mode-dark = Mørk
 settings-appearance-mode-light = Lys
 settings-appearance-mode-system = System
-settings-appearance-colours-from = Farver fra
+settings-appearance-colours-from = Farvekilde
 settings-appearance-from-desktop = Skrivebord
 settings-appearance-from-theme = Tema
 settings-appearance-dark-theme = Mørkt tema
@@ -3006,10 +3007,10 @@ settings-appearance-poster-size = Plakatstørrelse
 settings-appearance-poster-small = Lille
 settings-appearance-poster-medium = Mellem
 settings-appearance-poster-large = Stor
-settings-appearance-out-now = Udkommet nu under Sendes
+settings-appearance-out-now = Stil for "Udkommet nu" under Sendes
 settings-appearance-out-now-cards = Kort
 settings-appearance-out-now-list = Liste
-settings-appearance-out-now-grid = Kort under Udkommet nu
+settings-appearance-out-now-grid = Gitterstørrelse for "Udkommet nu"
 settings-appearance-grid = { $columns } × { $rows }
 settings-appearance-reduce-motion = Reducer bevægelse
 
@@ -3102,7 +3103,7 @@ recommended-no-list-title = Intet at lære af endnu
 recommended-never-fitted-title = Rangerer dine serier
 recommended-nothing-left-title = Intet tilbage her
 recommended-no-scores-body = Anbefalinger lærer af karaktererne på din liste. Giv et par serier karakter på AniList, så vises de her.
-recommended-no-list-body = Forbind AniList i Indstillinger, eller hold en liste på denne enhed, så lærer siden af de serier, du bedømmer.
+recommended-no-list-body = Forbind AniList i Indstillinger, eller hold en lokal liste på denne enhed, for at få anbefalinger ud fra dine bedømmelser.
 recommended-never-fitted-body = Den første rangering læser AniList i et minut eller to. Den kører i baggrunden.
 recommended-nothing-left-library-body = Alt i dit bibliotek, der passer, er set. Alle finder serier, du ikke har endnu.
 recommended-nothing-left-body = Alt på dine lister, der passer, er set. Alle finder serier, du ikke har på en liste.
@@ -3126,7 +3127,7 @@ move-lists-head-here = På denne computer
 move-lists-head-tracker = På { $site } nu
 move-lists-nothing = Intet
 move-lists-not-on-list = Ikke på din liste
-move-lists-later-hint = Senere: Indstillinger, Konti
+move-lists-later-hint = Senere: Indstillinger > Konti
 move-lists-not-now = Ikke nu
 move-lists-move =
     { $count ->
@@ -3218,8 +3219,8 @@ remove-also-torrents =
         [one] Fjern også dens torrent
        *[other] Fjern også dens { $count } torrents
     }
-remove-torrents-go-with-files = Når filerne slettes, fjernes torrents også.
-remove-torrents-files-stay = De fjernes fra programmet; filerne bliver.
+remove-torrents-go-with-files = Når filerne slettes, fjernes deres torrents også.
+remove-torrents-files-stay = Fjerner dem fra programmet, men beholder filerne.
 remove-also-files = Slet også filerne
 remove-files-default-where = det, torrents downloadede
 remove-files-detail-rule = Flytter { $where } til papirkurven og fjerner torrents.
@@ -3251,8 +3252,8 @@ recommended-hover-anilist-score = AniList { $score }
 recommended-hover-forecast = { $percent } %
 recommended-hover-hidden-tags =
     { $count ->
-        [one] Et skjult tag, du elsker
-       *[other] { $count } skjulte tags, du elsker
+        [one] Passer til et skjult tag, du kan lide
+       *[other] Passer til { $count } skjulte tags, du kan lide
     }
 recommended-hover-because = Fordi du så
 
@@ -3386,29 +3387,29 @@ problem-helper-not-running = Søgehjælperen kører ikke.
 problem-helper-missing = Søgehjælperen er ikke installeret.
 problem-helper-failed = Søgehjælperen kunne ikke gøre det.
 problem-helper-no-login = Søgehjælperen kan ikke logge ind i torrentprogrammet.
-problem-helper-no-login-next = Gem torrentprogrammets adgangskode i Indstillinger under Downloads.
+problem-helper-no-login-next = Gem torrentprogrammets adgangskode i Indstillinger > Downloads.
 problem-torrent-unreachable = Torrentprogrammet svarede ikke.
 problem-torrent-unauthorized = Torrentprogrammet afviste login.
 problem-torrent-not-running = Torrentprogrammet kører ikke.
 problem-torrent-missing = Torrentprogrammet er ikke installeret.
 problem-torrent-failed = Torrentprogrammet kunne ikke gøre det.
-problem-downloads-unreachable-next = Tjek, at det kører, og at adressen er rigtig i Indstillinger under Downloads.
-problem-downloads-unauthorized-next = Tjek brugernavn og adgangskode i Indstillinger under Downloads.
-problem-downloads-not-running-next = Start det fra Indstillinger under Downloads.
-problem-downloads-missing-next = Indstillinger under Downloads forklarer, hvordan det sættes op.
+problem-downloads-unreachable-next = Sørg for, at det kører, og at adressen er rigtig i Indstillinger > Downloads.
+problem-downloads-unauthorized-next = Tjek brugernavn og adgangskode i Indstillinger > Downloads.
+problem-downloads-not-running-next = Start det fra Indstillinger > Downloads.
+problem-downloads-missing-next = Åbn Indstillinger > Downloads for at sætte det op.
 problem-trash = { -app-name } kunne ikke flytte filerne til papirkurven.
 problem-trash-next = Tjek, at filerne er dine, og at disken ikke er skrivebeskyttet.
 problem-source-list = Den kildeliste virkede ikke.
-problem-source-list-next = Tjek dens adresse i Indstillinger under Downloads, Kildelister.
+problem-source-list-next = Tjek dens adresse i Indstillinger > Downloads > Kildelister.
 problem-remote-unreachable = { $name } svarede ikke.
 problem-remote-unreachable-next = Siden er måske nede. Prøv igen senere, eller søg i en anden kilde.
-problem-remote-unauthorized = { $name } afviste den nøgle, den fik.
-problem-remote-unauthorized-next = Skift dens nøgle i Indstillinger under Downloads, Kildelister.
+problem-remote-unauthorized = { $name } afviste nøglen.
+problem-remote-unauthorized-next = Opdater dens nøgle i Indstillinger > Downloads > Kildelister.
 problem-remote-failed = { $name } kunne ikke gøre det.
 problem-remote-failed-next = Prøv igen senere, eller søg i en anden kilde.
 problem-provider-sign-in = { $name } afviste { -app-name }s login.
-problem-provider-sign-in-next = Forbind den igen i Indstillinger under Konti.
-problem-provider-turned-away = { $name } afviste { -app-name }.
+problem-provider-sign-in-next = Forbind den igen i Indstillinger > Konti.
+problem-provider-turned-away = { $name } nægtede { -app-name } adgang.
 problem-provider-busy = { $name } har travlt lige nu.
 problem-provider-busy-next = Vent et minut, og prøv igen.
 problem-provider-no-answer = { $name } svarede ikke.
@@ -3417,12 +3418,12 @@ problem-provider-trouble = { $name } har problemer lige nu.
 problem-provider-trouble-next = Prøv igen om et par minutter.
 problem-provider-rejected = { $name } accepterede det ikke.
 problem-not-found = { -app-name } kunne ikke finde det længere.
-problem-not-found-next = Det er måske blevet fjernet. Prøv igen for at indlæse siden forfra.
+problem-not-found-next = Det er måske blevet fjernet. Prøv at genindlæse siden.
 problem-invalid-next = Tjek det, og prøv igen.
 problem-unavailable = Den mappe kan ikke nås lige nu.
-problem-unavailable-next = Tilslut drevet, eller tjek mappen i Indstillinger under Bibliotek.
+problem-unavailable-next = Tilslut drevet, eller tjek mappen i Indstillinger > Bibliotek.
 problem-not-connected = { $tracker } er ikke forbundet.
-problem-not-connected-next = Forbind den i Indstillinger under Konti.
+problem-not-connected-next = Forbind den i Indstillinger > Konti.
 problem-io = { -app-name } kunne ikke læse eller skrive en fil.
 problem-io-next = Tjek, at der er plads på disken, og at mappen er din, og prøv igen.
 problem-storage = { -app-name } kunne ikke gemme dit bibliotek.
@@ -3431,7 +3432,7 @@ problem-keyring = Systemets adgangskodelager svarede ikke.
 problem-keyring-next = Lås dit skrivebords nøglering op, og prøv igen.
 problem-unsupported = { -app-name } kan ikke gøre det her endnu.
 problem-version = Denne backup kommer fra en nyere { -app-name }.
-problem-version-next = Opdater { -app-name } i Indstillinger under Om, og importer den igen.
+problem-version-next = Opdater { -app-name } i Indstillinger > Om, og importer den igen.
 problem-internal = Noget gik galt inde i { -app-name }.
 problem-downloading-next = Det afspilles, når downloaden er færdig.
 problem-refused-hidden = Den serie er skjult.
@@ -3502,16 +3503,16 @@ door-not-a-torrent-action = { $value } er ikke en torrenthandling
 ## apps/linux/src/bridge/shell.rs: the first-run starter folder and the update notice
 
 shell-starter-folder-failed = Kunne ikke oprette { $folder }: { $error }
-shell-update-gone = { -app-name } { $version } tilbydes ikke længere
+shell-update-gone = { -app-name } { $version } er ikke længere tilgængelig
 
 ## Watch together (#846)
 
 onboarding-step-together = Se sammen
 onboarding-title-together = Se med venner
-onboarding-body-together = Start et rum fra afspilleren, og send koden. Alle afspiller deres egen kopi af afsnittet, og afspil, pause og spol følges ad for jer alle.
+onboarding-body-together = Start et rum fra afspilleren, og del koden. Alle afspiller deres egen kopi af afsnittet, mens afspil, pause og spol holdes synkroniseret.
 onboarding-ready-together = Se sammen
-onboarding-ready-together-as = Rum viser dig som { $name }.
-onboarding-ready-together-none = Intet navn endnu. Rumpanelet spørger første gang.
+onboarding-ready-together-as = Du vises som { $name }.
+onboarding-ready-together-none = Intet navn endnu. Du bliver spurgt, første gang du går ind i eller starter et rum.
 onboarding-together-you = Dig
 onboarding-together-code = Rumkode
 onboarding-together-episode = Frieren · Afsnit 3
@@ -3532,11 +3533,11 @@ room-name-bad = Det navn virker ikke. Brug 1 til 32 tegn.
 room-error-not-found = Intet rum har den kode. Tjek den med den, der sendte den; rummet er måske lukket.
 room-error-full = Det rum er fuldt. Et rum har plads til 10 personer.
 room-error-unreachable = Kunne ikke nå rumserveren. Tjek din forbindelse, og prøv igen.
-room-error-refused = Rumserveren afviste det. Prøv igen om et minut.
-room-error-proto = Det rum kører på en nyere version af rum. Opdater { -app-name } for at gå ind i det.
+room-error-refused = Rumserveren afviste anmodningen. Prøv igen om et minut.
+room-error-proto = Det rum bruger en nyere version af Se sammen. Opdater { -app-name } for at deltage.
 room-error-not-in-room = Du er ikke længere i det rum. Start eller gå ind i et igen.
 room-error-bad-code = En rumkode er 6 bogstaver og tal, fx K7QM2X.
-room-error-bad-relay = Rumserveren i Indstillinger, Afspilning er ikke en webadresse. Ret den der, og prøv igen.
+room-error-bad-relay = Rumserveren i Indstillinger > Afspilning er ikke en gyldig webadresse. Ret den der, og prøv igen.
 room-error-cannot-fetch = Værten kan ikke dele dette afsnit lige nu. Prøv igen, når de er tilbage i rummet.
 room-error-needs-episode = Den rumserver skal have et afsnit for at starte et rum. Start det fra afspilleren i stedet.
 room-panel-title = Se sammen
@@ -3551,7 +3552,7 @@ room-panel-start = Start et rum
 room-panel-or-join = Eller gå ind i et med dets kode
 room-panel-join-label = Rumkode
 room-panel-join = Gå ind
-room-panel-you-are = Du vises som { $name }
+room-panel-you-are = Vises som { $name }
 room-panel-change-name = Skift
 room-panel-code-label = Rumkode
 room-panel-copy = Kopier link

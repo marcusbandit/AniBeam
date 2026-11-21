@@ -33,7 +33,7 @@ scan-summary-found = { $count ->
 scan-summary-found-need = { $count ->
     [one] Trovata { $count } serie
    *[other] Trovate { $count } serie
-}, { $recognised } riconosciute, { $need } richiedono te
+}, { $recognised } riconosciute, { $need } da abbinare
 scan-summary-episodes = { $count ->
     [one] { $count } episodio
    *[other] { $count } episodi
@@ -42,12 +42,12 @@ scan-summary-episodes-watched = { $count ->
     [one] { $count } episodio
    *[other] { $count } episodi
 } su disco, { $watched } già visti su { $tracker }.
-scan-summary-title = La tua cartella è dentro
+scan-summary-title = Cartella aggiunta
 scan-summary-count-found = trovate
 scan-summary-count-recognised = riconosciute
-scan-summary-count-need = richiedono te
+scan-summary-count-need = da abbinare
 scan-summary-later = Più tardi
-scan-summary-match = Abbina le { $count }
+scan-summary-match = Abbina { $count }
 scan-summary-open-library = Apri la libreria
 
 ## UpdateNotice
@@ -59,13 +59,13 @@ update-notice-ready = Anibeam { $version } è pronto
 update-notice-failed = L'aggiornamento non è riuscito
 update-notice-on-aur = Anibeam { $version } è su AUR
 update-notice-in-repo = Anibeam { $version } è nel repository { $manager }
-update-notice-out = È uscito Anibeam { $version }
-update-notice-out-titled = È uscito Anibeam { $version } “{ $title }”
+update-notice-out = Anibeam { $version } è disponibile
+update-notice-out-titled = Anibeam { $version } “{ $title }” è disponibile
 update-notice-progress = { $percent }%  ·  { $got } di { $total } MB
-update-notice-restart-hint = Riavvia ora, o si apre la prossima volta
+update-notice-restart-hint = Riavvia ora, o si aggiornerà la prossima volta che apri Anibeam
 update-notice-from-source = Questa copia è compilata dai sorgenti: fai pull e ricompila
-update-notice-no-download = Nessun download qui per questo computer
-update-notice-install-hint = Aggiorna lo installa e riavvia Anibeam
+update-notice-no-download = Nessun download disponibile per questo computer
+update-notice-install-hint = Installa l'aggiornamento e riavvia Anibeam
 update-notice-retry = Riprova
 update-notice-update = Aggiorna
 update-notice-restart = Riavvia
@@ -78,6 +78,7 @@ update-notice-later = Più tardi
 
 whats-new-title = Novità
 whats-new-got-it = Ho capito
+whats-new-github = Changelog completo su GitHub
 
 ## ActivityDrawer
 
@@ -105,7 +106,7 @@ activity-drawer-copy-tip = Clicca per copiare la riga
 activity-drawer-fold = Comprimi
 activity-drawer-empty-technical = Ancora niente nel registro.
 activity-drawer-empty-problems = Nessun problema. Tutto ha funzionato.
-activity-drawer-empty = Ancora niente da segnalare. Quello che Anibeam fa per te compare qui.
+activity-drawer-empty = Ancora niente da segnalare. Qui comparirà l'attività di Anibeam.
 
 ## ActivityColumn
 
@@ -122,7 +123,7 @@ activity-column-name-episode = { $title }, episodio { $number }
 activity-column-title = Attività
 activity-column-down = giù
 activity-column-up = su
-activity-column-not-connected = { $client } non è collegato, quindi qui non si muove nulla.
+activity-column-not-connected = { $client } non è collegato, quindi Anibeam non può mostrarne i download.
 activity-column-connect-again = Ricollega
 activity-column-downloading = In download ora
 activity-column-fewer = Meno
@@ -134,7 +135,7 @@ activity-column-today-empty = Ricerche, download e nuove iscrizioni compaiono qu
 activity-column-stopping = Arresto
 activity-column-starting = Avvio
 activity-column-start-tip = Avvia il download
-activity-column-stop-tip = Ferma il download; quello che ha scaricato resta
+activity-column-stop-tip = Ferma il download; i dati scaricati restano
 activity-column-cancelling = Annullamento
 activity-column-cancel-all-tip = Annulla questi download
 activity-column-cancel-tip = Annulla questo download
@@ -163,18 +164,18 @@ frame-did-not-work = Non ha funzionato.
 frame-could-not-open = Anibeam non è riuscito ad aprirlo. Copialo e aprilo tu.
 frame-copy = Copia
 frame-copied = Copiato
-frame-status-refused = { $tracker } non l'ha accettato
-frame-status-refused-why = { $tracker } non l'ha accettato: { $why }
-frame-lists-refused = { $tracker } non ha accettato { $count ->
+frame-status-refused = { $tracker } ha rifiutato l'aggiornamento
+frame-status-refused-why = { $tracker } ha rifiutato l'aggiornamento: { $why }
+frame-lists-refused = Impossibile spostare { $count ->
     [one] 1 serie
    *[other] { $count } serie
-}; vedi il registro attività
+} su { $tracker }; vedi il registro attività
 frame-lists-moved = { $count ->
     [one] 1 serie spostata
    *[other] { $count } serie spostate
 } su { $tracker }
-frame-notes-refused = { $tracker } non ha accettato le tue note
-frame-notes-refused-why = { $tracker } non ha accettato le tue note: { $why }
+frame-notes-refused = { $tracker } non è riuscito a salvare le tue note
+frame-notes-refused-why = { $tracker } non è riuscito a salvare le tue note: { $why }
 frame-notes-saved = Note salvate
 frame-connected = Collegato a { $tracker } come { $user }
 frame-sign-in-stopped = L'accesso a { $tracker } si è fermato prima di finire.
@@ -200,7 +201,7 @@ frame-list-home-not-carried = Salvato su questo dispositivo: il tuo tracker non 
 frame-list-home-offline = Salvato su questo dispositivo finché non colleghi AniList o MyAnimeList
 frame-moving-to = Spostamento in { $list }
 frame-moved-to = Spostato in { $list }
-frame-plan-added = { $title } va nella tua lista Da vedere
+frame-plan-added = Aggiunta di { $title } alla tua lista Da vedere
 frame-plan-listed = { $title } è già nella tua lista
 frame-delete-watched = { $kind ->
     [film] Elimina film visti
@@ -247,7 +248,7 @@ frame-delete-extras = { $count ->
 }
 frame-delete-and = { $first } e { $second }
 frame-delete-heading = Eliminare { $what } di { $title }?
-frame-delete-base = I file e i loro sottotitoli vanno nel cestino, quindi puoi recuperarli da lì. I loro torrent escono dal client torrent, quindi si possono scaricare di nuovo.
+frame-delete-base = I file e i loro sottotitoli verranno spostati nel cestino, da cui potrai recuperarli. I loro torrent verranno rimossi dal client torrent, così potrai scaricarli di nuovo.
 frame-delete-confirm = Sposta nel cestino
 frame-delete-done = { $what } di { $title } nel cestino
 frame-delete-watched-done = { $count ->
@@ -255,10 +256,10 @@ frame-delete-watched-done = { $count ->
    *[other] { $count } episodi
 }, { $size }, nel cestino
 frame-delete-nothing = Niente da eliminare
-frame-fix-not-drafted = Corretto. Non è stato possibile preparare la segnalazione
-frame-fix-agent = Corretto. { $agent } ci sta guardando, e la segnalazione si apre quando ha finito
+frame-fix-not-drafted = Corretto, ma non è stato possibile preparare la segnalazione
+frame-fix-agent = Corretto. { $agent } ci sta guardando, e la segnalazione si aprirà quando avrà finito
 frame-fix-opening = Corretto. Apertura della segnalazione
-frame-fix-not-saved = La correzione non è stata salvata: { $error }
+frame-fix-not-saved = Impossibile salvare la correzione: { $error }
 frame-fix-undone = { $count ->
     [one] { $count } file torna a essere letto dal nome
    *[other] { $count } file tornano a essere letti dal nome
@@ -268,7 +269,7 @@ frame-fix-done = { $count ->
    *[other] Corretto come si leggono { $count } file
 }
 frame-report-failed = Non è stato possibile preparare la segnalazione: { $error }
-frame-report-untriaged = La segnalazione è aperta nel browser, senza triage. { $error }
+frame-report-untriaged = La segnalazione è aperta nel browser senza triage. { $error }
 frame-report-open = La segnalazione è aperta nel browser, pronta da inviare
 frame-downloads-not-read = Non letto.
 
@@ -300,8 +301,8 @@ home-week-late = { $count ->
    *[other] { $count } episodi in ritardo
 }
 home-week-waiting = { $count ->
-    [one] { $count } episodio uscito da guardare
-   *[other] { $count } episodi usciti da guardare
+    [one] { $count } episodio pronto da guardare
+   *[other] { $count } episodi pronti da guardare
 }
 home-week-coming = { $count ->
     [one] { $count } episodio nei prossimi sette giorni
@@ -330,7 +331,7 @@ home-tile-to-watch = { $count } da vedere
 home-day-nothing = Niente
 home-now = Ora { $time }
 home-continue = Continua
-home-continue-fact = { $count } serie da continuare
+home-continue-fact = { $count } serie in corso
 home-on-hold = In pausa
 home-on-hold-fact = { $count } serie da riprendere
 home-hero-open = Apri { $title }
@@ -347,7 +348,7 @@ home-hero-play = Riproduci ep. { $number }
 home-hero-resume-unnumbered = Riprendi episodio
 home-hero-play-unnumbered = Riproduci episodio
 home-downloaded = Scaricati di recente
-home-downloaded-fact = { $count } serie con file nuovi nelle ultime due settimane
+home-downloaded-fact = { $count } serie con file nuovi nelle ultime 2 settimane
 home-week = Questa settimana
 home-week-show-empty = Mostra giorni vuoti
 home-week-hide-empty = Nascondi giorni vuoti
@@ -361,8 +362,8 @@ home-recommended-scope = Consigliati da
 home-recommended-all = Tutti
 home-recommended-in-library = In libreria
 home-recommended-on-list = In lista
-home-recommended-none-library = Non resta niente da consigliare nella tua libreria. Tutti trova serie che non hai ancora.
-home-recommended-none-list = Non resta niente da consigliare nelle tue liste. Tutti trova serie che non hai in lista.
+home-recommended-none-library = Non resta niente da consigliare nella tua libreria. Passa a Tutti per vedere serie che non hai ancora.
+home-recommended-none-list = Non resta niente da consigliare dalle tue liste. Passa a Tutti per vedere serie che non sono nelle tue liste.
 home-catch-up = Mettiti in pari
 home-catch-up-fact = { $count } serie con episodi in attesa
 home-fresh = Inizia qualcosa di nuovo
@@ -386,9 +387,9 @@ onboarding-step-lists = La tua lista
 onboarding-step-downloads = Download
 onboarding-step-ready = Pronto
 onboarding-scan-reading = Lettura della cartella
-onboarding-scan-found = Trovate { $count } serie. Vai avanti quando vuoi; il resto si completa da solo.
-onboarding-scan-starter-empty = La tua nuova cartella per ora è vuota. Le serie che ci metti compaiono qui da sole.
-onboarding-scan-no-video = Nessun file video trovato. Controlla che sia la cartella giusta.
+onboarding-scan-found = Trovate { $count } serie. Puoi continuare quando vuoi; il resto si completerà da solo.
+onboarding-scan-starter-empty = Per ora la tua nuova cartella è vuota. Le serie che ci aggiungi compariranno qui da sole.
+onboarding-scan-no-video = Nessun file video trovato. Controlla di aver scelto la cartella giusta.
 onboarding-scan-your-shows = le tue serie
 onboarding-scan-looking-up = Ricerca di { $what }
 onboarding-scan-looking-up-tally = Ricerca di { $what }, { $posters } di { $count } trovate
@@ -397,7 +398,7 @@ onboarding-scan-posters-tally = Download delle locandine, { $posters } di { $cou
 onboarding-scan-seasons = Ricerca delle stagioni correlate
 onboarding-scan-seasons-tally = Ricerca delle stagioni correlate, { $posters } di { $count } trovate
 onboarding-choose-folder = Scegli la cartella degli anime
-onboarding-about = Un minuto di configurazione. La libreria si completa da sola.
+onboarding-about = Ci vuole un minuto. La scansione della libreria finirà in background.
 onboarding-step-later = Più tardi
 onboarding-skip-setup = Salta configurazione
 onboarding-title-welcome = Benvenuto in Anibeam
@@ -406,53 +407,53 @@ onboarding-title-lists = Collega la tua lista di anime
 onboarding-title-downloads = Come funzionano i download
 onboarding-title-ready = È tutto pronto
 onboarding-title-later = { $count ->
-    [1] Pronto, una cosa per dopo
-    [2] Pronto, due cose per dopo
-    [3] Pronto, tre cose per dopo
+    [1] Pronto, 1 cosa per dopo
+    [2] Pronto, 2 cose per dopo
+    [3] Pronto, 3 cose per dopo
    *[other] Pronto, { $count } cose per dopo
 }
 onboarding-body-welcome = Anibeam tiene i tuoi anime in un solo posto. Trova le serie sul disco, le riproduce qui e tiene aggiornati AniList o MyAnimeList mentre guardi.
-onboarding-body-library = Scegli la cartella in cui tieni le tue serie. Ogni cartella al suo interno diventa una serie, con la sua locandina, i suoi episodi e il punto in cui eri arrivato. Anibeam legge soltanto la cartella. Non sposta né rinomina mai un file.
-onboarding-body-lists = Accedi una volta, e ogni episodio che finisci qui viene segnato nella tua lista, senza scrivere nulla. L'accesso avviene nel browser, quindi Anibeam non vede mai la tua password.
-onboarding-body-downloads = Segui una serie nella pagina Download e ogni nuovo episodio arriva nella libreria appena va in onda. Servono due cose: un posto dove cercare e un client torrent per scaricare.
-onboarding-body-ready = Tutto qui si può cambiare più tardi nelle Impostazioni, e Impostazioni, Info ripete questa configurazione.
+onboarding-body-library = Scegli la cartella in cui tieni le tue serie. Ogni sottocartella diventa una serie, con locandina, episodi e progressi di visione. Anibeam legge soltanto la cartella e non sposta né rinomina mai i file.
+onboarding-body-lists = Accedi una volta e ogni episodio che finisci verrà segnato nella tua lista in automatico. L'accesso avviene nel browser, quindi Anibeam non vede mai la tua password.
+onboarding-body-downloads = Segui una serie nella pagina Download e i nuovi episodi si scaricheranno nella tua libreria appena vanno in onda. Servono due cose: una fonte in cui cercare e un client torrent con cui scaricare.
+onboarding-body-ready = Puoi cambiare tutto questo più tardi nelle Impostazioni, o ripetere questa configurazione da Impostazioni > Info.
 onboarding-skip-step = Salta per ora
 onboarding-get-started = Iniziamo
 onboarding-open-app = Apri Anibeam
 onboarding-continue = Continua
 onboarding-payoff-library = La tua libreria
-onboarding-payoff-library-line = Locandine, episodi e cosa viene dopo, per ogni serie nelle tue cartelle.
-onboarding-payoff-plays = Riproduce qui
-onboarding-payoff-plays-line = Sottotitoli, salto delle intro, e ricorda dove ti eri fermato.
+onboarding-payoff-library-line = Locandine, episodi e cosa viene dopo per ogni serie nelle tue cartelle.
+onboarding-payoff-plays = Lettore integrato
+onboarding-payoff-plays-line = Sottotitoli, salto delle intro e ripresa da dove eri rimasto.
 onboarding-payoff-list = La tua lista, sincronizzata
 onboarding-payoff-list-line = Finisci un episodio e conta su AniList o MyAnimeList.
-onboarding-payoff-episodes = Arrivano gli episodi
-onboarding-payoff-episodes-line = Segui una serie e ogni nuovo episodio arriva nella tua libreria.
+onboarding-payoff-episodes = Download automatici
+onboarding-payoff-episodes-line = Segui una serie e i nuovi episodi si scaricano nella tua libreria appena vanno in onda.
 onboarding-films-too = Funziona anche una cartella di film: chiamala Movies.
 onboarding-choose-folder-button = Scegli cartella
 onboarding-no-folder = Non ho ancora una cartella
-onboarding-starter-where = Crea una cartella Anime in { $dir } e la usa.
+onboarding-starter-where = Crea una cartella Anime in { $dir } e la aggiunge.
 onboarding-add-another = Aggiungi un'altra cartella
 onboarding-shelf-more = altre
 onboarding-preview-show = La tua serie
 onboarding-preview-finished = Episodio 3 finito qui
 onboarding-preview-on-list = Nella tua lista: 3 visti
-onboarding-preview-set-by = Impostato da Anibeam appena partono i titoli di coda
+onboarding-preview-set-by = Aggiornato in automatico quando finisci un episodio
 onboarding-lists-connected = Collegato. Quello che guardi qui ora conta nella tua lista.
-onboarding-lists-no-account = Non hai un account? Sono entrambi gratis, e uno basta. Puoi scollegarlo quando vuoi in Impostazioni, Account.
-onboarding-search-title = Un posto dove cercare
+onboarding-lists-no-account = Non hai ancora un account? Sono entrambi gratuiti, e ne basta uno. Puoi scollegarti quando vuoi in Impostazioni > Account.
+onboarding-search-title = Fonti di download
 onboarding-search-ready = { $count ->
     [one] { $count } fonte pronta per la ricerca.
    *[other] { $count } fonti pronte per la ricerca.
 }
-onboarding-fetch-title = Chi scarica
+onboarding-fetch-title = Client torrent
 onboarding-fetch-auto = Ci pensa Anibeam
 onboarding-fetch-recommended = Consigliato
-onboarding-fetch-auto-line = Anibeam porta il suo qBittorrent e lo fa girare in silenzio in background. Niente da installare, niente da compilare.
+onboarding-fetch-auto-line = Anibeam include un qBittorrent integrato e lo fa girare in silenzio in background. Nessuna configurazione aggiuntiva.
 onboarding-fetch-existing = Uso già qBittorrent
-onboarding-fetch-existing-line = Anibeam si collega al qBittorrent che usi già. Subito dopo inserisci indirizzo e accesso nelle Impostazioni.
+onboarding-fetch-existing-line = Anibeam si collega al qBittorrent che usi già. Dopo la configurazione inserirai indirizzo e accesso nelle Impostazioni.
 onboarding-ready-library = Libreria
-onboarding-ready-library-none = Ancora nessuna cartella. La trovi in Impostazioni, Libreria quando vuoi.
+onboarding-ready-library-none = Ancora nessuna cartella. Puoi aggiungerne una quando vuoi in Impostazioni > Libreria.
 onboarding-ready-library-series = { $count ->
     [one] { $count } cartella
    *[other] { $count } cartelle
@@ -467,7 +468,7 @@ onboarding-ready-library-scanning = { $count ->
 }, scansione in corso
 onboarding-ready-lists = La tua lista
 onboarding-ready-lists-as = { $tracker }, come { $user }
-onboarding-ready-lists-none = Non ancora collegata. La trovi in Impostazioni, Account quando vuoi.
+onboarding-ready-lists-none = Non ancora collegato. Puoi collegarti quando vuoi in Impostazioni > Account.
 onboarding-ready-downloads = Download
 onboarding-ready-downloads-state = { $sources ->
     [0] Ancora nessuna fonte
@@ -475,11 +476,11 @@ onboarding-ready-downloads-state = { $sources ->
    *[other] { $sources } fonti
 }, { $client ->
     [own] il tuo qBittorrent.
-   *[bundled] il qBittorrent di Anibeam.
+   *[bundled] il qBittorrent integrato di Anibeam.
 } { $next ->
     [ready] Tutto pronto.
-    [opens] Poi si apre Impostazioni, Download.
-   *[sources] Aggiungi un elenco di fonti per cercare.
+    [opens] Poi si aprirà Impostazioni > Download.
+   *[sources] Aggiungi un elenco di fonti per iniziare a cercare.
 }
 onboarding-ready-set-up = Configura ora
 
@@ -524,8 +525,8 @@ fix-keep = Mantieni la correzione
 fix-leave-as-read = Lascia il file come viene letto
 fix-read-by-name = Leggi di nuovo il file dal nome
 fix-report = Apri una segnalazione su GitHub
-fix-report-body = Apre una segnalazione compilata da inviare. È pubblica e nomina questi file.
-fix-report-body-agent = Apre una segnalazione compilata da inviare. È pubblica e nomina questi file. Prima ci guarda { $agent }.
+fix-report-body = Apre una segnalazione precompilata da controllare e inviare. È pubblica e include questi nomi di file.
+fix-report-body-agent = Apre una segnalazione precompilata da controllare e inviare. È pubblica e include questi nomi di file. Prima la esaminerà { $agent }.
 fix-close-unapplied =
     { $count ->
         [one] Chiudere senza applicare { $count } correzione?
@@ -611,14 +612,14 @@ watching-connect-body = Collegalo e questa pagina elenca le serie che stai guard
 watching-connect-waiting = In attesa del browser
 watching-connect-anilist = Collega AniList
 watching-load-failed-title = La lista In visione non si è caricata
-watching-load-failed-body = Impossibile raggiungere AniList. La lista torna al prossimo aggiornamento.
+watching-load-failed-body = Impossibile raggiungere AniList. La lista si ricaricherà al prossimo aggiornamento.
 watching-planning-failed-title = La lista Da vedere non si è caricata
-watching-planning-failed-body = Impossibile leggere la sua cache. Riprova, o torna al prossimo aggiornamento.
+watching-planning-failed-body = Impossibile leggere la lista in cache. Riprova, o attendi il prossimo aggiornamento.
 watching-planning-empty-title = Niente nella lista Da vedere
-watching-planning-empty-body = Da vedere in In onda ora, o Da vedere nel menu lista di una serie, la mette qui.
+watching-planning-empty-body = Fai clic su Da vedere in In onda ora, o scegli Da vedere nel menu lista di una serie, per aggiungerla qui.
 watching-airing-now = In onda ora
 watching-empty-title = Niente nella lista In visione
-watching-empty-body = Segna una serie come In visione su AniList e arriva qui.
+watching-empty-body = Segna una serie come In visione su AniList e comparirà qui.
 watching-open-anilist = Apri AniList
 
 ## LibraryPage.qml
@@ -630,8 +631,8 @@ library-hidden =
     }
 library-hidden-sync-stops =
     { $count ->
-        [one] { $count } serie nascosta, e la sincronizzazione con il tracker si ferma
-       *[other] { $count } serie nascoste, e la sincronizzazione con il tracker si ferma
+        [one] { $count } serie nascosta, e la sua sincronizzazione con il tracker è in pausa
+       *[other] { $count } serie nascoste, e la loro sincronizzazione con il tracker è in pausa
     }
 library-unhidden =
     { $count ->
@@ -757,19 +758,19 @@ library-none-in-tab-body = La tua libreria non ne ha ancora. Tutto mostra ogni c
 library-all-filtered-body = Tutto nella tua libreria è escluso da questa vista.
 library-clear-search = Cancella ricerca
 library-show-all = Mostra tutto
-library-picked = { $count } scelti
+library-picked = { $count } selezionati
 library-pick-all = Tutti
-library-pick-all-tip = Scegli tutte le schede mostrate (Ctrl+A)
+library-pick-all-tip = Seleziona tutte le schede visibili (Ctrl+A)
 library-unhide = Mostra
 library-hide = Nascondi
 library-rate = Vota
-library-rate-tip = Un voto per ogni scelta, su ogni tracker collegato
+library-rate-tip = Applica un voto a ogni serie selezionata su tutti i tracker collegati
 library-needs-tracker = Serve un tracker collegato e una serie abbinata
 library-move-to-list = Sposta in lista
 library-rescan = Riscansiona
 library-find-match = Trova abbinamento
-library-find-match-tip = Cerca ogni scelta senza abbinamento
-library-all-matched = Ogni scelta è abbinata
+library-find-match-tip = Cerca un abbinamento per ogni selezione non abbinata
+library-all-matched = Ogni serie selezionata ha già un abbinamento
 
 ## MetadataPage.qml
 
@@ -801,8 +802,8 @@ metadata-walk-position = { $at } di { $total }
 metadata-walk-done = Era l'ultima
 metadata-walk-left =
     { $count ->
-        [one] Ne resta una in Da abbinare
-       *[other] Ne restano { $count } in Da abbinare
+        [one] Ne resta 1 in Non riconosciute
+       *[other] Ne restano { $count } in Non riconosciute
     }
 metadata-countdown-days = { $days } g { $hours } h
 metadata-countdown-hours = { $hours } h { $minutes } m
@@ -827,7 +828,7 @@ metadata-found-some-left =
         [one] Trovata { $count } serie, { $unmatched } ancora non riconosciute
        *[other] Trovate { $count } serie, { $unmatched } ancora non riconosciute
     }
-metadata-found-nothing = Niente di nuovo, { $unmatched } ancora non riconosciute
+metadata-found-nothing = Nessuna novità trovata, { $unmatched } ancora non riconosciute
 metadata-all-recognised = Ogni serie è riconosciuta
 metadata-count =
     { $count ->
@@ -837,10 +838,10 @@ metadata-count =
 metadata-search-placeholder = Filtra titoli
 metadata-find-rest = Trova le altre
 metadata-find-rest-started = Ricerca delle cartelle che Anibeam non conosce ancora
-metadata-find-rest-tip = Cerca ogni cartella che Anibeam non conosce ancora, su ogni sito di info nell'ordine dato dalle Impostazioni
+metadata-find-rest-tip = Cerca ogni cartella non abbinata sui siti di metadati, nell'ordine impostato nelle Impostazioni
 metadata-refresh-all = Aggiorna tutto
 metadata-refresh-all-started = Aggiornamento delle info di ogni serie
-metadata-refresh-all-tip = Scarica di nuovo le info di ogni serie riconosciuta
+metadata-refresh-all-tip = Scarica di nuovo i metadati di ogni serie riconosciuta
 metadata-crawling = Ricerca dei legami del franchise
 metadata-crawl-progress = { $done } di { $total }
 metadata-load-failed-title = Info serie non si è caricata
@@ -926,13 +927,13 @@ airing-planned-already-one = { $title } è già nella tua lista
 airing-planned-already-all = Sono già tutte nella tua lista
 airing-planned =
     { $count ->
-        [one] { $count } serie va nella tua lista Da vedere
-       *[other] { $count } serie vanno nella tua lista Da vedere
+        [one] Aggiunta di { $count } serie alla tua lista Da vedere
+       *[other] Aggiunta di { $count } serie alla tua lista Da vedere
     }
 airing-planned-some-already =
     { $count ->
-        [one] { $count } serie va nella tua lista Da vedere, { $already } c'erano già
-       *[other] { $count } serie vanno nella tua lista Da vedere, { $already } c'erano già
+        [one] Aggiunta di { $count } serie alla tua lista Da vedere ({ $already } già presenti)
+       *[other] Aggiunta di { $count } serie alla tua lista Da vedere ({ $already } già presenti)
     }
 airing-play-next = Riproduci il prossimo
 airing-plan-to-watch = Da vedere
@@ -961,22 +962,22 @@ airing-out-fewer = Meno
 airing-out-all = Tutti { $count }
 airing-sort = Ordina
 airing-load-failed-title = Impossibile raggiungere AniList
-airing-load-failed-body = Le serie in onda vengono da AniList. Tornano al prossimo aggiornamento.
-airing-reading-title = Lettura di cosa è in onda
+airing-load-failed-body = Le serie in onda vengono da AniList. Ricompariranno al prossimo aggiornamento.
+airing-reading-title = Caricamento delle serie in onda
 airing-nothing-now = Niente in onda ora
 airing-nothing-for = Niente in onda per { $season }
-airing-nothing-read = Ancora niente letto
-airing-reading-body = Ogni serie in onda, da AniList. La prima volta ci vuole qualche secondo.
-airing-nothing-body = AniList non elenca ancora serie per questa stagione. Aggiorna la rilegge, oppure scegli un'altra stagione.
-airing-nothing-read-body = Aggiorna legge da AniList ogni serie in onda.
-airing-hides-empty-title = Con quello che nascondi qui non resta niente
+airing-nothing-read = Ancora niente caricato
+airing-reading-body = Ogni serie in onda questa stagione, da AniList. La prima volta ci vuole qualche secondo.
+airing-nothing-body = AniList non elenca ancora serie per questa stagione. Fai clic su Aggiorna per ricontrollare, o scegli un'altra stagione.
+airing-nothing-read-body = Fai clic su Aggiorna per caricare le serie in onda da AniList.
+airing-hides-empty-title = Qui è tutto nascosto dai tuoi filtri
 airing-lists-empty-title = Niente qui è nelle tue liste
 airing-library-empty-title = Niente qui è nella tua libreria
-airing-hides-empty-body = Ogni serie qui è nelle tue liste o nella tua libreria, e le hai nascoste.
-airing-lists-empty-body = Da vedere su una scheda la mette nella tua lista.
-airing-library-empty-body = Scarica episodi su una scheda la scarica nella tua libreria.
+airing-hides-empty-body = Ogni serie qui è nelle tue liste o nella tua libreria, e quei filtri le nascondono.
+airing-lists-empty-body = Fai clic su Da vedere su una scheda per aggiungerla alla tua lista.
+airing-library-empty-body = Fai clic su Scarica episodi su una scheda per scaricarla nella tua libreria.
 airing-show-everything = Mostra tutto
-airing-picked = { $count } scelte
+airing-picked = { $count } selezionate
 airing-undo = Annulla
 
 ## EpisodeRow.qml
@@ -1091,13 +1092,13 @@ show-detail-taken-adding-line = La regola prende { $taken } { $releases ->
         [one] la sta aggiungendo.
        *[other] le sta aggiungendo.
     }
-show-detail-feed-holds-nothing = Il feed non contiene ancora nulla. Le release adatte si scaricano appena compaiono.
-show-detail-nothing-fits = Niente nel feed rientra ancora nella regola. Le release adatte si scaricano appena compaiono.
+show-detail-feed-holds-nothing = Il feed non ha ancora release. Quelle corrispondenti si scaricheranno da sole appena compaiono.
+show-detail-nothing-fits = Niente nel feed corrisponde ancora alla regola. Le release corrispondenti si scaricheranno da sole appena compaiono.
 show-detail-complete = Completa
 show-detail-open-in-library = Apri in libreria
 show-detail-feed-finds-nothing = Questo feed non trova nulla
-show-detail-feed-empty-query = Chiede a { $source } “{ $query }”, che torna vuoto, quindi niente di nuovo arriva alla regola. Di solito una ricerca più corta risponde; le parole che toglie possono restare nella regola.
-show-detail-feed-empty = Chiede a { $source }, che torna vuoto, quindi niente di nuovo arriva alla regola. Di solito una ricerca più corta risponde; le parole che toglie possono restare nella regola.
+show-detail-feed-empty-query = Cerca “{ $query }” su { $source }, che non ha dato risultati, quindi niente di nuovo può corrispondere alla regola. Di solito una ricerca più corta dà risultati; le parole tolte possono restare nella regola.
+show-detail-feed-empty = Cerca su { $source }, che non ha dato risultati, quindi niente di nuovo può corrispondere alla regola. Di solito una ricerca più corta dà risultati; le parole tolte possono restare nella regola.
 show-detail-feed-empty-earlier = qBittorrent mostra ancora quello che ha trovato una versione precedente di questo feed.
 show-detail-repairing = Riparazione
 show-detail-repair = Ripara
@@ -1139,9 +1140,9 @@ show-detail-torrents-moving =
         [one] { $count } in download ora; le barre si riempiono man mano.
        *[other] { $count } in download ora; le barre si riempiono man mano.
     }
-show-detail-torrents-held = Cosa ha il client per questa cartella.
+show-detail-torrents-held = Torrent nel client per questa cartella.
 show-detail-torrents-waiting = In attesa che qBittorrent aggiunga quello che prende la regola.
-show-detail-torrents-none = Il client non ha nulla per questa cartella.
+show-detail-torrents-none = Nessun torrent nel client per questa cartella.
 
 ## SeriesPage.qml
 
@@ -1178,16 +1179,16 @@ series-delete-done =
 series-delete-picked =
     { $kind ->
         [film] { $count ->
-            [one] { $count } film scelto.
-           *[other] { $count } film scelti.
+            [one] { $count } film selezionato.
+           *[other] { $count } film selezionati.
         }
         [episode] { $count ->
-            [one] { $count } episodio scelto.
-           *[other] { $count } episodi scelti.
+            [one] { $count } episodio selezionato.
+           *[other] { $count } episodi selezionati.
         }
        *[file] { $count ->
-            [one] { $count } file scelto.
-           *[other] { $count } file scelti.
+            [one] { $count } file selezionato.
+           *[other] { $count } file selezionati.
         }
     }
 series-delete-move-picked =
@@ -1206,20 +1207,20 @@ series-delete-move-picked =
         }
     }
 series-delete-click = Clicca i file da eliminare.
-series-delete-where = Vanno nel cestino, da cui puoi recuperarli. Quello che hai visto resta tracciato.
+series-delete-where = Verranno spostati nel cestino, da cui potrai recuperarli. Quello che hai visto resta tracciato.
 series-delete-move = Sposta nel cestino
-series-pick-none = Nessuno
-series-pick-all = Tutti
+series-pick-none = Deseleziona tutto
+series-pick-all = Seleziona tutto
 series-rescan-started = Scansione avviata
 series-rated = Voto { $score }
-series-rated-cleared = Voto cancellato
+series-rated-cleared = Voto rimosso
 series-score-not-saved = Impossibile salvare il voto.
-series-still-downloading-plays = { $episode } è ancora in download. Parte appena il download finisce.
+series-still-downloading-plays = { $episode } è ancora in download. Partirà appena il download sarà finito.
 series-open-downloads = Apri Download
 series-format-series = Serie
-series-tracker-refused = { $tracker } non l'ha accettato
-series-tracker-refused-why = { $tracker } non l'ha accettato: { $why }
-series-tracker-check-accounts = { $list }. Controlla la connessione nelle Impostazioni, in Account.
+series-tracker-refused = { $tracker } ha rifiutato l'aggiornamento
+series-tracker-refused-why = { $tracker } ha rifiutato l'aggiornamento: { $why }
+series-tracker-check-accounts = { $list }. Controlla la connessione in Impostazioni > Account.
 series-watched-up-to = Visti fino a { $episode }
 series-unwatched-from = Non visti da { $episode }
 series-undo = Annulla
@@ -1373,12 +1374,12 @@ get-show-go-replace-subscribe =
 get-show-subscribe = Iscriviti ai nuovi episodi
 get-show-nothing-new = Niente di nuovo da scaricare
 get-show-pick-episode = Scegli un episodio
-get-show-replace-off = Off. Le scelte per { $episodes } sono escluse, perché la libreria le ha già. Attivalo per sostituirle.
-get-show-replace-on = I file che hai per { $episodes } vanno nel cestino quando i nuovi sono finiti.
+get-show-replace-off = Off. I file selezionati per { $episodes } vengono saltati perché sono già nella tua libreria. Attivalo per sostituirli.
+get-show-replace-on = I file esistenti per { $episodes } verranno spostati nel cestino quando i nuovi download saranno finiti.
 get-show-replace-on-the-way =
     { $count ->
-        [one] { $episodes } è in download ora: quel download viene annullato e quello che ha scritto va nel cestino.
-       *[other] { $episodes } sono in download ora: quel download viene annullato e quello che ha scritto va nel cestino.
+        [one] { $episodes } è in download ora: quel download verrà annullato e i suoi file parziali spostati nel cestino.
+       *[other] { $episodes } sono in download ora: quei download verranno annullati e i loro file parziali spostati nel cestino.
     }
 get-show-kind-on-demand = Si avvia quando serve a una ricerca
 get-show-kind-rss-search = Ricerca RSS
@@ -1450,17 +1451,17 @@ get-show-batch-episodes =
         [one] { $count } episodio, un torrent
        *[other] { $count } episodi, un torrent
     }
-get-show-nothing-new-picked = Niente di nuovo scelto
-get-show-nothing-picked = Niente di scelto
+get-show-nothing-new-picked = Niente di nuovo selezionato
+get-show-nothing-picked = Niente selezionato
 get-show-pick-provider = Scegli un provider
 get-show-plan-line = { $episodes } da { $groups } su { $source }.
 get-show-and = { $first } e { $second }
 get-show-library-has =
     { $count ->
-        [one] La libreria ha { $episodes }. Attiva Sostituisci episodi attuali qui sotto per sostituirlo.
-       *[other] La libreria ha { $episodes }. Attiva Sostituisci episodi attuali qui sotto per sostituirli.
+        [one] La tua libreria ha già { $episodes }. Attiva Sostituisci episodi attuali qui sotto per sostituirlo.
+       *[other] La tua libreria ha già { $episodes }. Attiva Sostituisci episodi attuali qui sotto per sostituirli.
     }
-get-show-together = insieme
+get-show-together = in tutto
 get-show-torrents-unit =
     { $count ->
         [one] torrent
@@ -1470,19 +1471,19 @@ get-show-replace = Sostituisci episodi attuali
 get-show-sequential = Scarica in ordine
 get-show-sequential-on = On: ogni nuovo torrent scarica i pezzi dall'inizio, così i primi episodi finiscono prima e puoi guardare mentre arriva il resto. Nel complesso un po' più lento.
 get-show-sequential-off = Off: il client scarica i pezzi nell'ordine in cui li offre lo swarm.
-get-show-rolling = Tieni pronti i prossimi
-get-show-rolling-on = On: { $count } episodi si scaricano ora, e ognuno che finisci avvia il successivo.
-get-show-rolling-on-delete = On: { $count } episodi si scaricano ora, e ognuno che finisci avvia il successivo. Gli episodi visti lasciano il disco.
-get-show-rolling-off = Off: ogni episodio scelto si scarica subito.
-get-show-follow-off = Off: i nuovi episodi compaiono qui come mancanti, e niente si scarica da solo.
-get-show-follow-no-feed = { $source } non ha un feed da seguire, quindi da lì i nuovi episodi non possono scaricarsi da soli.
+get-show-rolling = Download progressivi
+get-show-rolling-on = On: { $count } episodi si scaricano ora, e finirne uno avvia il successivo.
+get-show-rolling-on-delete = On: { $count } episodi si scaricano ora, e finirne uno avvia il successivo. Gli episodi visti vengono eliminati in automatico.
+get-show-rolling-off = Off: ogni episodio selezionato si scarica subito.
+get-show-follow-off = Off: i nuovi episodi compaiono qui come mancanti, e niente si scarica in automatico.
+get-show-follow-no-feed = { $source } non ha un feed da seguire, quindi i nuovi episodi non possono scaricarsi da lì in automatico.
 get-show-follow-pick-group = Prima scegli un gruppo: un'iscrizione segue un gruppo e una qualità.
-get-show-follow-batch-only = Qui { $group } ha solo il batch, quindi non c'è un feed di singoli episodi a cui iscriversi.
-get-show-follow-on = On: un feed per { $feed } su { $source }. Ogni nuovo episodio si scarica appena compare.
+get-show-follow-batch-only = Qui { $group } ha solo un batch, quindi non c'è un feed di singoli episodi a cui iscriversi.
+get-show-follow-on = On: un feed per { $feed } su { $source }. I nuovi episodi si scaricano in automatico appena compaiono.
 get-show-confirm =
     { $count ->
-        [one] { $episodes } è in download ora. Sostituirlo annulla quel download e sposta nel cestino quello che ha scritto.
-       *[other] { $episodes } sono in download ora. Sostituirli annulla quel download e sposta nel cestino quello che ha scritto.
+        [one] { $episodes } è in download ora. Sostituirlo annullerà quel download e sposterà i suoi file parziali nel cestino.
+       *[other] { $episodes } sono in download ora. Sostituirli annullerà quei download e sposterà i loro file parziali nel cestino.
     }
 get-show-confirm-go = Annulla e sostituisci
 get-show-state-error = Errore
@@ -1507,7 +1508,7 @@ get-show-stopping = Arresto
 get-show-starting = Avvio
 get-show-stop = Ferma
 get-show-start-tip = Riavvia il download
-get-show-stop-tip = Ferma il download; quello che ha scaricato resta
+get-show-stop-tip = Ferma il download; i dati scaricati restano
 get-show-cancelling = Annullamento
 get-show-cancel-tip = Annulla questo download e sposta nel cestino quello che ha scritto
 get-show-episode-order = Scarica in ordine di episodio
@@ -1552,7 +1553,7 @@ torrent-row-seeders =
         [one] { $count } seeder
        *[other] { $count } seeder
     }
-torrent-row-rolling = a rotazione, episodi da { $next } a { $through } di { $total }
+torrent-row-rolling = progressivo, episodi da { $next } a { $through } di { $total }
 torrent-row-stop = Ferma
 
 ## SourceRow
@@ -1580,7 +1581,7 @@ start-source-starting = Avvio
 search-progress-why-helper = Anibeam sta avviando il suo helper di ricerca; ci vuole un secondo o due.
 search-progress-why-starting = { $endpoint } passa da un helper che si avvia quando serve a una ricerca. La prima ricerca lo aspetta, fino a { $seconds } secondi; le successive saltano questo passaggio.
 search-progress-why-reading = Divido le release in gruppi e le confronto con la libreria.
-search-progress-why-ondemand = Un helper rilegge { $endpoint } per ogni nuova ricerca, e di solito ci vogliono da dieci a venti secondi.
+search-progress-why-ondemand = Un helper interroga { $endpoint } da capo per ogni nuova ricerca, e di solito ci vogliono da 10 a 20 secondi.
 search-progress-why-slow = { $endpoint } è lento a rispondere in questo momento.
 search-progress-why-usual = Di solito ci vuole un secondo o due.
 search-progress-why-and-slow = { $why } Ci sta mettendo più del solito; annulla per provare un'altra fonte.
@@ -1600,8 +1601,8 @@ release-table-col-seeders = Seeder
 release-table-col-leechers = Leecher
 release-table-col-downloads = Download
 release-table-col-released = Uscita
-release-table-tick-all = Spunta tutte le release
-release-table-untick-all = Togli la spunta a tutte le release
+release-table-tick-all = Seleziona tutte le release
+release-table-untick-all = Deseleziona tutte le release
 release-table-on-disk = Su disco
 release-table-other-on-disk = Altra release su disco
 release-table-season-batch = Batch stagione { $season }
@@ -1641,13 +1642,13 @@ downloads-delete-finished-heading =
         [one] Eliminare { $count } serie conclusa, { $size }?
        *[other] Eliminare { $count } serie concluse, { $size }?
     }
-downloads-delete-finished-base = { $titles }. Solo le serie che il provider dà per concluse, con ogni episodio visto; una serie ancora in onda, o con una fine solo stimata, resta. Ogni loro file va nel cestino, anche gli extra. Anche i loro torrent escono da { $client }, quindi si possono scaricare di nuovo.
+downloads-delete-finished-base = { $titles }. Include solo le serie segnate come concluse con ogni episodio visto; quelle ancora in onda o non confermate restano. Tutti i loro file (extra compresi) verranno spostati nel cestino, e i loro torrent verranno rimossi da { $client }, così potrai scaricarli di nuovo.
 downloads-delete-watched-heading =
     { $count ->
         [one] Eliminare { $count } episodio visto, { $size }?
        *[other] Eliminare { $count } episodi visti, { $size }?
     }
-downloads-delete-watched-base = Ogni episodio che hai visto, in ogni serie. Gli episodi non ancora visti e gli extra restano. I file e i loro sottotitoli vanno nel cestino, quindi puoi recuperarli da lì. Anche i loro torrent escono da { $client }, quindi si possono scaricare di nuovo.
+downloads-delete-watched-base = Ogni episodio che hai visto, in tutte le serie. Gli episodi non visti e gli extra restano. File e sottotitoli verranno spostati nel cestino, da cui potrai recuperarli. I loro torrent verranno rimossi da { $client }, così potrai scaricarli di nuovo.
 downloads-move-to-trash = Sposta nel cestino
 downloads-remove-group-torrents =
     { $count ->
@@ -1670,12 +1671,12 @@ downloads-gap-then-not-downloaded = { $runs } non scaricati
 downloads-trying-query = Provo { $query }
 downloads-client-settings = Impostazioni client torrent
 downloads-error-unknown = Qualcosa è andato storto. Riprova.
-downloads-search-all-off = Tutte le fonti sono spente. Accendine una per cercare.
+downloads-search-all-off = Tutte le fonti sono disattivate. Attivane una per cercare.
 downloads-turn-on = Accendi { $name }
-downloads-search-no-sources = Non ci sono ancora fonti in cui cercare. Aggiungi un elenco di fonti nelle Impostazioni, in Download.
+downloads-search-no-sources = Ancora nessuna fonte di ricerca. Aggiungi un elenco di fonti in Impostazioni > Download.
 downloads-no-sources = Ancora nessuna fonte in cui cercare
 downloads-search-none-started = Nessuna fonte è riuscita ad avviare la ricerca. Riprova tra un attimo.
-downloads-auto-resolution = Ristretto a { $resolution }, la più nitida disponibile
+downloads-auto-resolution = Ristretto a { $resolution }, la più alta disponibile
 downloads-search-one-failed = La ricerca su { $name } non ha funzionato. Riprova, o cerca su un'altra fonte.
 downloads-search-all-failed = Nessuna fonte è riuscita a cercare. Riprova tra un attimo.
 downloads-narrowing-on = Restringo su { $name }
@@ -1683,9 +1684,9 @@ downloads-refine-zero = Non resterebbe niente, quindi la lista resta com'è.
 downloads-refine-no-match = Nessuna release corrisponde a quel termine.
 downloads-refine-empty = Scrivi un termine per restringere.
 downloads-refine-no-change = Non cambierebbe nulla.
-downloads-movie-tick-one = Spunta una release, poi premi Scarica come film.
+downloads-movie-tick-one = Seleziona una release, poi fai clic su Scarica come film.
 downloads-group-downloading = In download
-downloads-group-downloading-line = In movimento ora; Attività sulla destra ha i dettagli.
+downloads-group-downloading-line = Attivi ora; vedi Attività sulla destra per i dettagli.
 downloads-group-seeding = In seed
 downloads-group-seeding-line = Scaricati e ancora in condivisione.
 downloads-group-done = Fatti
@@ -1739,17 +1740,17 @@ downloads-files-torrents = quello che hanno scaricato i torrent
 downloads-files-torrents-remote = quello che hanno scaricato i torrent, eliminato da { $client }
 downloads-files-folder-and = { $folder } e { $torrents }
 downloads-unsubscribe-heading = Annullare l'iscrizione a { $title }?
-downloads-unsubscribe-base = Il suo feed e la sua regola di download escono da { $client }, quindi non arriva nulla di nuovo.
+downloads-unsubscribe-base = Il suo feed e la sua regola di download verranno rimossi da { $client }, quindi non si scaricheranno nuovi episodi.
 downloads-unsubscribe-complete-heading = Annullare l'iscrizione a tutte le { $count } serie complete?
-downloads-unsubscribe-complete-base = I loro feed e le loro regole di download escono da { $client }. Ogni loro episodio è nella libreria.
+downloads-unsubscribe-complete-base = I loro feed e le loro regole di download verranno rimossi da { $client }. Tutti i loro episodi sono già nella tua libreria.
 downloads-files-folders-and-torrents = le loro cartelle e quello che hanno scaricato i loro torrent
 downloads-one-at-a-time = Vanno una alla volta; la pagina mostra ognuna man mano.
 downloads-subscription-stays = { $base } L'iscrizione resta.
 downloads-cancel-heading = Annullare { $title }?
 downloads-cancel-group-base =
     { $count ->
-        [one] Il suo download si ferma ed esce da { $client }.
-       *[other] I suoi { $count } download si fermano ed escono da { $client }.
+        [one] Il suo download si fermerà e verrà rimosso da { $client }.
+       *[other] I suoi { $count } download si fermeranno e verranno rimossi da { $client }.
     }
 downloads-files-so-far-it = quello che ha scaricato finora
 downloads-files-so-far-they = quello che hanno scaricato finora
@@ -1758,16 +1759,16 @@ downloads-keep-downloading = Continua il download
 downloads-remove-heading = Rimuovere { $title }?
 downloads-remove-group-base =
     { $count ->
-        [one] Il suo torrent esce da { $client }; i file restano a meno che tu non spunti qui sotto.
-       *[other] I suoi { $count } torrent escono da { $client }; i file restano a meno che tu non spunti qui sotto.
+        [one] Il suo torrent verrà rimosso da { $client }; i file restano, a meno che tu non spunti la casella qui sotto.
+       *[other] I suoi { $count } torrent verranno rimossi da { $client }; i file restano, a meno che tu non spunti la casella qui sotto.
     }
 downloads-remove-detail-base =
     { $count ->
-        [one] Il suo { $count } torrent esce da { $client }; i file restano a meno che tu non spunti qui sotto.
-       *[other] I suoi { $count } torrent escono da { $client }; i file restano a meno che tu non spunti qui sotto.
+        [one] Il suo { $count } torrent verrà rimosso da { $client }; i file restano, a meno che tu non spunti la casella qui sotto.
+       *[other] I suoi { $count } torrent verranno rimossi da { $client }; i file restano, a meno che tu non spunti la casella qui sotto.
     }
 downloads-remove-broken-heading = Rimuovere i torrent di tutte le { $count } serie con file mancanti?
-downloads-remove-broken-base = I loro { $count } torrent escono da { $client }. Puntano a cartelle che non ci sono, quindi nessun file viene toccato; le iscrizioni restano.
+downloads-remove-broken-base = I loro { $count } torrent verranno rimossi da { $client }. Le loro cartelle mancano, quindi nessun file verrà toccato; le iscrizioni restano.
 downloads-remove-torrent-heading = Rimuovere questo torrent?
 downloads-files-it-downloaded = quello che ha scaricato
 downloads-cancel-torrent-heading = Annullare questo download?
@@ -1776,11 +1777,11 @@ downloads-cancel-many-heading =
         [one] Annullare { $count } download?
        *[other] Annullare { $count } download?
     }
-downloads-cancel-many-base = Ogni download di questa serie si ferma ed esce da { $client }.
+downloads-cancel-many-base = Tutti i download di questa serie si fermeranno e verranno rimossi da { $client }.
 downloads-cancel-all = Annullali tutti
 downloads-summary-connecting = Connessione.
 downloads-summary-client-on = { $client } { $version } è collegato.
-downloads-summary-client-off = { $client } non è collegato. Controlla indirizzo e password nelle Impostazioni, in Download.
+downloads-summary-client-off = { $client } non è collegato. Controlla indirizzo e password in Impostazioni > Download.
 downloads-summary-native = Anibeam cerca da solo nelle tue fonti.
 downloads-summary-native-with = Anibeam cerca da solo nelle tue fonti. { $client }
 downloads-summary-starting = Avvio dei download.
@@ -1818,16 +1819,16 @@ downloads-activity-hide = Nascondi attività
 downloads-activity = Attività
 downloads-moving =
     { $count ->
-        [one] { $count } download in corso
-       *[other] { $count } download in corso
+        [one] { $count } download attivo
+       *[other] { $count } download attivi
     }
 downloads-back = Torna ai Download
 downloads-chip-search-ready = Ricerca pronta
 downloads-chip-search-starting = Avvio ricerca
 downloads-chip-search-off = Ricerca spenta
-downloads-chip-answers-at = { $summary } Risponde su { $url }.
-downloads-chip-helper-missing = L'helper di ricerca non è installato. Clicca per le impostazioni dei Download, che spiegano come aggiungerlo
-downloads-chip-helper-failed = L'helper di ricerca si è fermato. Ricollega lo riavvia; le impostazioni dei Download dicono cosa è andato storto
+downloads-chip-answers-at = { $summary } In ascolto su { $url }.
+downloads-chip-helper-missing = L'helper di ricerca non è installato. Fai clic per aprire Impostazioni > Download e vedere come configurarlo
+downloads-chip-helper-failed = L'helper di ricerca si è fermato. Fai clic su Ricollega per riavviarlo, o vedi i dettagli in Impostazioni > Download
 downloads-chip-open-settings = Apri le impostazioni dei Download
 downloads-chip-client-on = { $client } { $version }
 downloads-chip-client-off = { $client } spento
@@ -1838,7 +1839,7 @@ downloads-connecting = Connessione
 downloads-reconnect = Ricollega
 downloads-search-placeholder = Cerca una serie, o il nome di una release
 downloads-search-go-tip = Cerca nomi di release su { $names }
-downloads-search-go-off = Tutte le fonti sono spente.
+downloads-search-go-off = Tutte le fonti sono disattivate.
 downloads-suggest-airing =
     { $predicted ->
         [yes] In onda, episodio { $episode } previsto tra { $time }
@@ -1856,14 +1857,14 @@ downloads-suggest-on-anilist = Su AniList, non nella tua libreria
 downloads-plan-to-watch = Da vedere
 downloads-suggest-release-search = Cerca invece nomi di release per “{ $query }” su { $names }
 downloads-key-return = Invio
-downloads-magnet-invalid = Questo link magnet non indica alcun torrent
+downloads-magnet-invalid = Questo link magnet non indica un torrent
 downloads-magnet-film = Scarica come film
 downloads-sources = Fonti
 downloads-source-hint-starting = avvio
 downloads-source-hint-down = non attiva
 downloads-source-tip-down = { $name } richiede un servizio helper che non è attivo. Clicca per avviarlo.
-downloads-source-tip-on = Le ricerche interrogano { $name }. Clicca per spegnerla.
-downloads-source-tip-off = Spenta. Clicca per interrogare di nuovo { $name }.
+downloads-source-tip-on = Le ricerche interrogano { $name }. Clicca per disattivarla.
+downloads-source-tip-off = Disattivata. Clicca per interrogare di nuovo { $name }.
 downloads-source-tip-url = { $tip } { $url }
 downloads-check = Controlla
     .tip = Chiede se ogni fonte su richiesta è attiva. Non avvia nulla.
@@ -1929,10 +1930,10 @@ downloads-strip-other-on-disk =
 downloads-strip-both = { $first }; { $second }.
 downloads-tick-missing =
     { $count ->
-        [one] Spunta { $count } episodio mancante
-       *[other] Spunta i { $count } episodi mancanti
+        [one] Seleziona { $count } episodio mancante
+       *[other] Seleziona i { $count } episodi mancanti
     }
-    .tip = Per ogni episodio qui che la libreria non ha, la release con più seeder
+    .tip = Per ogni episodio mancante, seleziona la release con più seeder
 downloads-open-in-library = Apri in libreria
 downloads-not-this-show = Non è questa serie
 downloads-no-releases = Nessuna release
@@ -1940,13 +1941,13 @@ downloads-no-releases-body = Niente su { $name } corrisponde a “{ $query }”.
 downloads-try-source = Prova { $name }
 downloads-ticked =
     { $count ->
-        [one] { $count } release spuntata
-       *[other] { $count } release spuntate
+        [one] { $count } release selezionata
+       *[other] { $count } release selezionate
     }
-downloads-nothing-ticked = Niente di spuntato
+downloads-nothing-ticked = Niente selezionato
 downloads-ticked-size = { $size } in tutto.
-downloads-tick-hint = Spunta le release nella tabella, o scaricale tutte.
-downloads-tick-all = Spunta tutto
+downloads-tick-hint = Seleziona le release nella tabella, o scaricale tutte.
+downloads-tick-all = Seleziona tutto
 downloads-working = Attendi
 downloads-download-ticked =
     { $count ->
@@ -1956,9 +1957,9 @@ downloads-download-ticked =
 downloads-download-shown = Scarica le { $count } mostrate
 downloads-download-all = Scarica tutte e { $count }
 downloads-download-movie = Scarica come film
-    .tip = Una release spuntata, direttamente nella cartella dei film
+    .tip = Una release selezionata, salvata direttamente nella cartella dei film
 downloads-subscribe = Iscriviti
-downloads-subscribe-body = Le nuove release che corrispondono a questa ricerca si scaricano appena compaiono, nella cartella indicata qui.
+downloads-subscribe-body = Le nuove release che corrispondono a questa ricerca si scaricheranno in automatico nella cartella indicata qui.
 downloads-name-placeholder = Preso dalla prima release
 downloads-subscribe-search = Iscriviti a questa ricerca
 downloads-subscribe-no-feed = Qui non c'è un feed a cui iscriversi
@@ -1968,12 +1969,12 @@ downloads-preview-from = Da { $host }
 downloads-preview-from-named = Da { $host } ({ $name })
 downloads-preview-must = Deve contenere { $terms }
 downloads-preview-must-not = Non deve contenere { $terms }
-downloads-helper-changed = I download usano un helper che non risponde
+downloads-helper-changed = I download usano un helper di ricerca che non risponde
 downloads-helper-missing = Questa copia di Anibeam è senza download
 downloads-helper-failed = Impossibile avviare i download
-downloads-helper-changed-body = Ricerche e download passano da un piccolo programma helper. Le Impostazioni ne indicano uno diverso da quello di Anibeam, e non risponde. Torna a quello di Anibeam e si avvia da solo.
-downloads-helper-missing-body = È stata compilata senza il programma helper da cui passano ricerche e download. Gli installer nella pagina delle release lo includono. Impostazioni, Download spiega come aggiungerlo a questa copia.
-downloads-helper-failed-body = Il programma helper da cui passano ricerche e download si è fermato prima di essere pronto. Riavviarlo di solito risolve.
+downloads-helper-changed-body = Ricerche e download passano da un piccolo programma helper. Ora le Impostazioni indicano un helper diverso da quello integrato in Anibeam, e non risponde. Torna a quello di Anibeam per avviarlo in automatico.
+downloads-helper-missing-body = Questa build non include il programma helper per ricerche e download. Gli installer ufficiali nella pagina delle release lo includono, oppure vedi Impostazioni > Download per configurarlo.
+downloads-helper-failed-body = Il programma helper usato per ricerche e download si è fermato prima di essere pronto. Di solito riavviarlo risolve.
 downloads-helper-use-own = Usa quello di Anibeam
 downloads-helper-start-again = Riavvia
 downloads-helper-show-how = Mostrami come
@@ -1983,11 +1984,11 @@ downloads-lens-airing-count = In onda  { $count }
 downloads-lens-following-count = Seguite  { $count }
 downloads-lens-downloaded-count = Scaricate  { $count }
 downloads-lens-gaps = Mancanti in libreria
-downloads-lens-gaps-line = Episodi usciti che non sono su disco. Apri una serie per vedere chi li ha.
+downloads-lens-gaps-line = Episodi usciti che mancano dal tuo disco. Apri una serie per cercarli.
 downloads-lens-gaps-none = Non manca niente: ogni episodio uscito di ogni serie è su disco.
 downloads-lens-airing-line = Serie nella tua libreria con episodi ancora in arrivo. Aprine una per seguirla.
 downloads-lens-airing-none = Niente nella tua libreria è in onda
-downloads-lens-airing-none-body = Una serie arriva qui quando è nella tua libreria e ha episodi ancora in arrivo. In onda ora elenca tutto quello che va in onda.
+downloads-lens-airing-none-body = Le serie compaiono qui quando sono nella tua libreria e hanno ancora episodi in arrivo. Vedi In onda ora per sfogliare tutto quello che è in onda.
 downloads-airing-now = In onda ora
 downloads-lens-following = Seguite
 downloads-card-next =
@@ -2030,7 +2031,7 @@ downloads-on-disk-line = Nella tua libreria senza torrent in { $client }, prima 
 downloads-nothing-downloaded = Niente di scaricato
 downloads-nothing-downloaded-body = Quello che scarichi o a cui ti iscrivi compare qui, una serie alla volta.
 downloads-client-off-title = { $client } non è collegato
-downloads-client-off-body = Controlla che sia in esecuzione, poi ricollega. Indirizzo e password sono nelle Impostazioni, in Download.
+downloads-client-off-body = Controlla che sia in esecuzione, poi ricollega. Puoi controllare indirizzo e password in Impostazioni > Download.
 downloads-connect-again = Ricollega
 downloads-view-grid = Griglia
 downloads-view-list = Lista
@@ -2060,10 +2061,10 @@ track-picker-off = Off
 roll-controls-window = { $ahead } pronti: episodi da { $next } a { $through } di { $total }
 roll-controls-window-watched = { $ahead } pronti: episodi da { $next } a { $through } di { $total }, { $watched } visti
 roll-controls-more = Scarica altri { $count }
-roll-controls-more-tip = Scarica subito i prossimi episodi. Anibeam torna a tenerne pronti alcuni quando sei in pari.
-roll-controls-fewer-tip = Tienine uno in meno pronto
-roll-controls-ahead = { $count } pronti
-roll-controls-further-tip = Tienine uno in più pronto
+roll-controls-more-tip = Scarica subito i prossimi episodi. I download progressivi riprendono quando sei in pari.
+roll-controls-fewer-tip = Tienine uno in meno in anticipo
+roll-controls-ahead = { $count } in anticipo
+roll-controls-further-tip = Tienine uno in più in anticipo
 roll-controls-all = Scarica tutti
 roll-controls-all-tip = Smetti di tenerne pochi pronti e scarica ogni episodio rimasto
 roll-controls-all-question = Scaricare tutti i { $count } episodi rimasti?
@@ -2163,7 +2164,7 @@ endpoint-repos-panel-fields-changed = I suoi campi sono cambiati.
 endpoint-repos-panel-needs-fields = Richiede { $fields } prima di cercare.
 endpoint-repos-panel-no-longer-offered = Non più offerta dal suo elenco di fonti.
 endpoint-repos-panel-update-requests-to = L'aggiornamento invia richieste a { $host }.
-endpoint-repos-panel-unreadable = Impossibile leggere questo elenco. Aggiorna elenchi riprova.
+endpoint-repos-panel-unreadable = Impossibile leggere questo elenco di fonti. Fai clic su Aggiorna elenchi per riprovare.
 endpoint-repos-panel-checking = Controllo
 endpoint-repos-panel-add = Aggiungi
 endpoint-repos-panel-fingerprint = Impronta della chiave  { $fingerprint }
@@ -2212,7 +2213,7 @@ schedule-tile-last = Ultimo
 schedule-tile-out = Uscito
 schedule-ends-at = Finisce all'episodio { $number }
 schedule-dated-by-site = { $count } datati da { $site }
-schedule-dated-by-record = { $count } datati dalla voce
+schedule-dated-by-record = { $count } dai metadati
 schedule-set-by-you = { $count } impostati da te
 schedule-guessed-weekly = { $count } stimati settimanali
 schedule-nothing-set = Ancora niente impostato
@@ -2262,8 +2263,8 @@ show-anilist-score = AniList { $score }
 show-forecast = { $percent }% per te
 show-because-you-watched = Perché hai visto
 show-hidden-loved = { $count ->
-    [one] Dietro c'è un tag nascosto che ami
-   *[other] Dietro ci sono { $count } tag nascosti che ami
+    [one] Corrisponde a un tag nascosto che tendi ad apprezzare
+   *[other] Corrisponde a { $count } tag nascosti che tendi ad apprezzare
 }
 show-you-gave-it = Le hai dato { $score }
 show-story = Trama
@@ -2283,7 +2284,7 @@ connect-finish-in-browser = Completa nel browser
 connect-signed-in-anilist = Accesso come { $account }. La tua lista è nella pagina In visione.
 connect-signed-in-mal = Accesso come { $account }. Gli episodi vengono segnati lì mentre guardi.
 connect-setup-lead = { $name } fa accedere Anibeam tramite una tua app. Ci vuole circa un minuto, una volta sola.
-connect-page-open = La pagina di accesso di { $name } è aperta nel browser. Approva Anibeam lì e questa finestra si chiude da sola.
+connect-page-open = La pagina di accesso di { $name } è aperta nel browser. Approva Anibeam lì e questa finestra si chiuderà da sola.
 connect-page-opening = Apertura della pagina di accesso di { $name } nel browser.
 connect-open-watching = Apri In visione
 connect-done = Fatto
@@ -2303,7 +2304,7 @@ connect-step-paste-id-anilist = AniList lo chiama Client ID: il numero nella pag
 connect-step-paste-id-mal = MyAnimeList lo chiama Client ID: la stringa lunga nella pagina della tua nuova app.
 connect-client-id = Client ID
 connect-client-secret-web = Client secret (solo per app Web)
-connect-step-connect-body = Si apre il browser, { $name } ti chiede di accedere e approvare Anibeam, e Anibeam riceve la risposta.
+connect-step-connect-body = Si aprirà il browser per accedere a { $name } e approvare Anibeam.
 
 ## SettingsPage
 
@@ -2349,7 +2350,7 @@ settings-find-title-language =
 settings-find-mode =
     .words = scuro chiaro sistema tema notte
 settings-find-colours-from =
-    .words = terminale desktop sistema tema fonte kitty
+    .words = colore colori terminale desktop sistema tema fonte kitty
 settings-find-dark-theme =
     .words = colore schema base16
 settings-find-light-theme =
@@ -2395,7 +2396,7 @@ settings-find-styled =
 settings-find-font =
     .words = carattere font
 settings-find-text-colour =
-    .words = colore testo
+    .words = colore colori
 settings-find-outline =
     .words = bordo contorno
 settings-find-background =
@@ -2415,7 +2416,7 @@ settings-find-torrent-client =
 settings-find-search-helper =
     .words = anirss rss feed token comando server avanzate helper
 settings-find-next-few =
-    .words = rotazione episodi pronti elimina visti tieni disco spazio
+    .words = progressivi progressivo episodi anticipo elimina visti tieni disco spazio
 settings-find-unsubscribe =
     .words = annulla iscrizione feed concluse finite
 settings-find-last-search =
@@ -2459,10 +2460,10 @@ settings-downloads-title = Download
 settings-downloads-anirss-ready = Attivo, versione { $version } su { $url }.
 settings-downloads-anirss-starting = Avvio dell'helper di ricerca.
 settings-downloads-anirss-missing = L'helper di ricerca non è installato. Reinstalla Anibeam, o indica il tuo anirss in Comando.
-settings-downloads-anirss-failed = L'helper di ricerca si è fermato. Riprova lo avvia; Dettagli mostra cosa ha detto.
+settings-downloads-anirss-failed = L'helper di ricerca si è fermato. Fai clic su Riprova per riavviarlo, o apri Dettagli per vedere l'output dell'errore.
 settings-downloads-anirss-idle = Non ancora avviato. Parte la prima volta che cerchi nella pagina Download.
 settings-downloads-torrent-trying = Provo { $client }.
-settings-downloads-torrent-answered = { $client } { $version } ha risposto.
+settings-downloads-torrent-answered = Connesso a { $client } { $version }.
 settings-downloads-torrent-failed = { $client } non si è collegato. Controlla indirizzo e password qui sopra e riprova.
 settings-downloads-torrent-untried = Non ancora provato.
 settings-downloads-password-saved = Qui è salvata una password per questo client.
@@ -2471,7 +2472,7 @@ settings-downloads-password-none = Nessuna password salvata. Un client che salta
 settings-downloads-mismatch = L'helper di ricerca parla con { $helperUrl } mentre Anibeam parla con { $url }. Un helper di ricerca gestito da te legge l'indirizzo dal suo config.toml, quindi cambiare client qui non lo sposta.
 settings-downloads-torrent-title = Client torrent
 settings-downloads-which-client = Quale client
-settings-downloads-pick-for-me = Scegli tu
+settings-downloads-pick-for-me = Auto
 settings-downloads-my-own = Il mio
 settings-downloads-built-in = Integrato
 settings-downloads-saved-clients = Client salvati
@@ -2491,7 +2492,7 @@ settings-downloads-save-to-pick = Salva i download in
 settings-downloads-connection = Connessione
 settings-downloads-open-config = Apri la configurazione
 settings-downloads-details = Dettagli
-settings-downloads-details-torrent = { $client } ha detto questo quando Anibeam l'ha provato.
+settings-downloads-details-torrent = Errore restituito da { $client }.
 settings-downloads-test-trying = Prova in corso
 settings-downloads-test-save = Salva e prova
 settings-downloads-test = Prova
@@ -2504,18 +2505,18 @@ settings-downloads-runs-sidecar = Lo avvia Anibeam
 settings-downloads-runs-remote = Lo gestisco io
 settings-downloads-command = Comando
 settings-downloads-key = Chiave
-settings-downloads-details-anirss = L'helper di ricerca ha detto questo quando si è fermato.
+settings-downloads-details-anirss = Dettagli dell'helper di ricerca.
 settings-downloads-starting = Avvio
 settings-downloads-reconnect = Ricollega
 settings-downloads-save-first = Prima salva le modifiche
-settings-downloads-roll-title = Tieni pronti i prossimi
-settings-downloads-roll-big = Per serie lunghe
+settings-downloads-roll-title = Download progressivi
+settings-downloads-roll-big = Automatico per serie lunghe
 settings-downloads-roll-ahead = Episodi in anticipo
 settings-downloads-unit-episodes = episodi
-settings-downloads-roll-over = Lunga significa oltre
+settings-downloads-roll-over = Progressivi per serie oltre
 settings-downloads-roll-watched = Episodi visti
 settings-downloads-keep-all = Tieni tutti
-settings-downloads-keep-behind = Tieni indietro
+settings-downloads-keep-behind = Episodi visti da tenere
 settings-downloads-subscriptions-title = Iscrizioni e ricerche
 settings-downloads-last-search = Ricorda l'ultima ricerca
 settings-downloads-prune = Annulla l'iscrizione alle serie concluse
@@ -2550,7 +2551,7 @@ settings-developer-peak = Picco
 settings-developer-heap = Heap
 settings-developer-files-mapped = File mappati
 settings-developer-threads = Thread
-settings-developer-give-back = Restituisci memoria
+settings-developer-give-back = Libera memoria
 settings-developer-released = Da { $before } a { $after }
 settings-developer-free-now = Libera ora
 settings-developer-images-total = Immagini dall'avvio
@@ -2572,8 +2573,8 @@ settings-developer-load-no-images = { $page }, nessuna immagine
 settings-developer-offscreen-of = { $offscreen } di { $total }
 settings-developer-loads-empty = Apri una pagina qualsiasi e compare qui.
 settings-developer-load-images-off = { $page }, immagini off
-settings-developer-load-frames = { $frames } fotogrammi disegnati durante il caricamento, la pausa più lunga tra due { $gap }.
-settings-developer-load-frames-timed-out = { $frames } fotogrammi disegnati durante il caricamento, la pausa più lunga tra due { $gap }. Smesso di aspettare le immagini dopo 15 s.
+settings-developer-load-frames = { $frames } fotogrammi disegnati durante il caricamento; la pausa più lunga tra fotogrammi è stata { $gap }.
+settings-developer-load-frames-timed-out = { $frames } fotogrammi disegnati durante il caricamento; la pausa più lunga tra fotogrammi è stata { $gap }. Tempo scaduto in attesa delle immagini dopo 15 s.
 settings-developer-built = Creata
 settings-developer-settled = Completa
 settings-developer-core-data = Dati dal core
@@ -2642,22 +2643,22 @@ key-help-key-ctrl-q = Ctrl+Q
 key-help-play-pause = Riproduci o pausa
 key-help-seek-5 = Salta di 5 s
 key-help-seek-10 = Salta di 10 s
-key-help-skip = Salta intro o outro, altrimenti 90 s
+key-help-skip = Salta intro o outro, o avanza di 90 s
 key-help-frame-step = Un fotogramma indietro o avanti
 key-help-speed = Più lento o più veloce, a passi di 0,25
 key-help-normal-speed = Velocità normale
 key-help-volume = Volume su o giù di 5
 key-help-mute = Muto
-key-help-subtitles-toggle = Sottotitoli off e di nuovo on
+key-help-subtitles-toggle = Mostra o nascondi i sottotitoli
 key-help-subtitle-delay = Ritardo sottotitoli 100 ms prima o dopo
 key-help-audio-delay = Ritardo audio 100 ms prima o dopo
 key-help-hold-speed = Velocità 2× tenendo premuto
 key-help-screenshot = Salva uno screenshot in Immagini
 key-help-episode = Episodio successivo o precedente
 key-help-chapter = Capitolo precedente o successivo
-key-help-start-end = L'inizio, o l'outro
+key-help-start-end = Vai all'inizio o all'outro
 key-help-fullscreen = Schermo intero
-key-help-escape-player = Chiudi ciò che è aperto, altrimenti esci da schermo intero, altrimenti esci dal player
+key-help-escape-player = Chiudi ciò che è aperto, o esci da schermo intero, o esci dal lettore
 key-help-toggle-list = Mostra o nascondi questa lista
 key-help-library-search = Libreria e ricerca
 key-help-search-page = Cerca in questa pagina
@@ -2665,21 +2666,21 @@ key-help-activity = Attività
 key-help-settings = Impostazioni
 key-help-quit = Esci
 key-help-forward = Avanti
-key-help-escape-app = Chiudi ciò che è aperto, altrimenti indietro
+key-help-escape-app = Chiudi ciò che è aperto, o torna indietro
 key-help-context-menu = Il menu del clic destro
-key-help-pick-card = Scegli una scheda, per agire su più schede
-key-help-pick-range = Scegli tutte le schede fino a questa
-key-help-pick-all = Scegli tutte le schede mostrate
+key-help-pick-card = Seleziona una scheda per agire su più schede
+key-help-pick-range = Seleziona tutte le schede fino a questa
+key-help-pick-all = Seleziona tutte le schede visibili
 
 ## SettingsAboutTab
 
 settings-about-title = Info
 settings-about-update-failed = L'aggiornamento non è terminato. Riprova, o scaricalo dalla pagina della release.
 settings-about-update-ready = { $version } è pronto da installare.
-settings-about-update-command = È uscita la { $version }. Aggiornala con { $command }
+settings-about-update-command = È disponibile la { $version }. Aggiorna con { $command }
 settings-about-update-progress = { $headline }  ·  { $detail }
-settings-about-update-source = È uscita la { $version }. Questa copia è compilata dai sorgenti: fai pull e ricompila.
-settings-about-update-elsewhere = È uscita la { $version }, senza un download qui per questo computer.
+settings-about-update-source = È disponibile la { $version }. Questa copia è compilata dai sorgenti: fai pull e ricompila.
+settings-about-update-elsewhere = È disponibile la { $version }, senza installer per questo computer.
 settings-about-version = Versione
 settings-about-build = Anibeam { $build }
 settings-about-whats-new = Novità
@@ -2719,7 +2720,7 @@ discord-ask-wants = { $name } vuole unirsi
 discord-ask-start-room = Avvia stanza
 discord-ask-let-in = Fai entrare
 discord-ask-no = No
-settings-playback-discord-blocked = Rifiutati su Discord
+settings-playback-discord-blocked = Bloccati su Discord
 room-panel-discord = Su Discord
 room-panel-discord-open = Aperta
 room-panel-discord-invite = Solo su invito
@@ -2774,7 +2775,7 @@ settings-accounts-days-unit = giorni
 settings-phone-title = App telefono
 settings-phone-online = Online
 settings-phone-offline = Offline
-settings-phone-untrusted = Non riceve nulla da questo computer
+settings-phone-untrusted = Nessun accesso a questo computer
 settings-phone-share = Condividi via Tailscale
 settings-phone-stream = Streaming episodi
 settings-phone-host-service = Servizio host
@@ -2782,7 +2783,7 @@ settings-phone-not-running = Non attivo
 settings-phone-running = Attivo
 settings-phone-copy-command = Copia comando
 settings-phone-command-copied = Comando copiato
-settings-phone-nobody = Non riceve nulla: Tailscale non lo associa a nessuna persona
+settings-phone-nobody = Nessun accesso: Tailscale non ha indicato alcun utente per questo dispositivo
 settings-phone-people = Persone
 settings-phone-own-profile = Profilo di questo computer
 settings-phone-person-own-devices =
@@ -2814,7 +2815,7 @@ settings-help-report = Segnala un problema
 ## SettingsPlaybackTab: subtitles
 
 settings-subtitles-title = Sottotitoli
-settings-subtitles-reset-done = I sottotitoli sono tornati come all'inizio
+settings-subtitles-reset-done = Stile dei sottotitoli ripristinato ai valori predefiniti
 settings-subtitles-size-place = Dimensione e posizione
 settings-subtitles-size = Dimensione
 settings-subtitles-position = Posizione
@@ -2822,7 +2823,7 @@ settings-subtitles-style = Stile
 settings-subtitles-styled = Sottotitoli con stile
 settings-subtitles-as-made = Originale
 settings-subtitles-size-only = Solo dimensione
-settings-subtitles-mine = Il mio
+settings-subtitles-mine = Personalizzato
 settings-subtitles-font = Font
 settings-subtitles-font-invalid = Scrivi il nome di un font, come Noto Sans.
 settings-subtitles-bold = Grassetto
@@ -2830,11 +2831,11 @@ settings-subtitles-text-colour = Colore testo
 settings-subtitles-colour-invalid = Scrivi un colore come #ffcc00.
 settings-subtitles-outline = Contorno
 settings-subtitles-outline-invalid = Lo spessore è un numero, 0 o più.
-settings-subtitles-outline-colour-invalid = Scrivi il colore come #000000.
+settings-subtitles-outline-colour-invalid = Scrivi un colore come #000000.
 settings-subtitles-shadow = Ombra
 settings-subtitles-shadow-invalid = Un numero, 0 o più. 0 significa nessuna ombra.
 settings-subtitles-box = Riquadro di sfondo
-settings-subtitles-start-over = Ricomincia
+settings-subtitles-start-over = Ripristina stile sottotitoli
 settings-subtitles-reset = Ripristina
 
 ## SettingsAboutTab: storage and backup
@@ -2878,8 +2879,8 @@ settings-data-summary-accounts =
     }
 settings-data-summary-fixes =
     { $count ->
-        [one] { $count } file usa una correzione che hai fatto.
-       *[other] { $count } file usano una correzione che hai fatto.
+        [one] Correzioni salvate applicate a { $count } file.
+       *[other] Correzioni salvate applicate a { $count } file.
     }
 settings-data-summary-unavailable =
     { $count ->
@@ -2984,7 +2985,7 @@ settings-appearance-mode = Modalità
 settings-appearance-mode-dark = Scuro
 settings-appearance-mode-light = Chiaro
 settings-appearance-mode-system = Sistema
-settings-appearance-colours-from = Colori da
+settings-appearance-colours-from = Fonte dei colori
 settings-appearance-from-desktop = Desktop
 settings-appearance-from-theme = Tema
 settings-appearance-dark-theme = Tema scuro
@@ -3006,10 +3007,10 @@ settings-appearance-poster-size = Dimensione locandine
 settings-appearance-poster-small = Piccole
 settings-appearance-poster-medium = Medie
 settings-appearance-poster-large = Grandi
-settings-appearance-out-now = Usciti ora in In onda
+settings-appearance-out-now = Stile "Usciti ora" in In onda
 settings-appearance-out-now-cards = Schede
 settings-appearance-out-now-list = Lista
-settings-appearance-out-now-grid = Schede Usciti ora
+settings-appearance-out-now-grid = Dimensione griglia "Usciti ora"
 settings-appearance-grid = { $columns } × { $rows }
 settings-appearance-reduce-motion = Riduci movimento
 
@@ -3102,7 +3103,7 @@ recommended-no-list-title = Ancora niente da cui imparare
 recommended-never-fitted-title = Ordino le tue serie
 recommended-nothing-left-title = Qui non resta niente
 recommended-no-scores-body = I consigli imparano dai voti nella tua lista. Vota qualche serie su AniList e compaiono qui.
-recommended-no-list-body = Collega AniList in Impostazioni o tieni una lista qui: le serie che voti guidano questa pagina.
+recommended-no-list-body = Collega AniList nelle Impostazioni, o tieni una lista locale su questo dispositivo, per avere consigli basati sui tuoi voti.
 recommended-never-fitted-body = Il primo ordinamento legge AniList per un minuto o due. Gira in background.
 recommended-nothing-left-library-body = Tutto quello che va bene nella tua libreria è già visto. Tutti trova serie che non hai ancora.
 recommended-nothing-left-body = Tutto quello che va bene nelle tue liste è già visto. Tutti trova serie che non hai in lista.
@@ -3126,7 +3127,7 @@ move-lists-head-here = Su questo computer
 move-lists-head-tracker = Ora su { $site }
 move-lists-nothing = Niente
 move-lists-not-on-list = Non nella tua lista
-move-lists-later-hint = Dopo: Impostazioni, Account
+move-lists-later-hint = Dopo: Impostazioni > Account
 move-lists-not-now = Non ora
 move-lists-move =
     { $count ->
@@ -3218,8 +3219,8 @@ remove-also-torrents =
         [one] Rimuovi anche il suo torrent
        *[other] Rimuovi anche i suoi { $count } torrent
     }
-remove-torrents-go-with-files = Eliminare i file si porta via anche i torrent.
-remove-torrents-files-stay = Escono dal client; i file restano.
+remove-torrents-go-with-files = Eliminare i file rimuove anche i loro torrent.
+remove-torrents-files-stay = Li rimuove dal client e tiene i file.
 remove-also-files = Elimina anche i file
 remove-files-default-where = quello che hanno scaricato i torrent
 remove-files-detail-rule = Sposta { $where } nel cestino e rimuove i torrent.
@@ -3251,8 +3252,8 @@ recommended-hover-anilist-score = AniList { $score }
 recommended-hover-forecast = { $percent }%
 recommended-hover-hidden-tags =
     { $count ->
-        [one] Un tag nascosto che ami
-       *[other] { $count } tag nascosti che ami
+        [one] Corrisponde a un tag nascosto che ti piace
+       *[other] Corrisponde a { $count } tag nascosti che ti piacciono
     }
 recommended-hover-because = Perché hai visto
 
@@ -3394,29 +3395,29 @@ problem-helper-not-running = L'helper di ricerca non è attivo.
 problem-helper-missing = L'helper di ricerca non è installato.
 problem-helper-failed = L'helper di ricerca non è riuscito a farlo.
 problem-helper-no-login = L'helper di ricerca non riesce ad accedere al client torrent.
-problem-helper-no-login-next = Salva la password del client torrent nelle Impostazioni, in Download.
+problem-helper-no-login-next = Salva la password del client torrent in Impostazioni > Download.
 problem-torrent-unreachable = Il client torrent non ha risposto.
 problem-torrent-unauthorized = Il client torrent ha rifiutato l'accesso.
 problem-torrent-not-running = Il client torrent non è attivo.
 problem-torrent-missing = Il client torrent non è installato.
 problem-torrent-failed = Il client torrent non è riuscito a farlo.
-problem-downloads-unreachable-next = Controlla che sia in esecuzione e che il suo indirizzo sia giusto nelle Impostazioni, in Download.
-problem-downloads-unauthorized-next = Controlla nome utente e password nelle Impostazioni, in Download.
-problem-downloads-not-running-next = Avvialo dalle Impostazioni, in Download.
-problem-downloads-missing-next = Impostazioni, in Download, spiega come configurarlo.
+problem-downloads-unreachable-next = Controlla che sia in esecuzione e che il suo indirizzo sia corretto in Impostazioni > Download.
+problem-downloads-unauthorized-next = Controlla nome utente e password in Impostazioni > Download.
+problem-downloads-not-running-next = Avvialo da Impostazioni > Download.
+problem-downloads-missing-next = Apri Impostazioni > Download per configurarlo.
 problem-trash = { -app-name } non è riuscito a spostare i file nel cestino.
 problem-trash-next = Controlla che i file siano tuoi e che il disco non sia di sola lettura.
 problem-source-list = Quell'elenco di fonti non ha funzionato.
-problem-source-list-next = Controlla il suo indirizzo nelle Impostazioni, in Download, Elenchi di fonti.
+problem-source-list-next = Controlla il suo indirizzo in Impostazioni > Download > Elenchi di fonti.
 problem-remote-unreachable = { $name } non ha risposto.
 problem-remote-unreachable-next = Il sito potrebbe essere giù. Riprova più tardi, o cerca su un'altra fonte.
-problem-remote-unauthorized = { $name } ha rifiutato la chiave ricevuta.
-problem-remote-unauthorized-next = Cambia la sua chiave nelle Impostazioni, in Download, Elenchi di fonti.
+problem-remote-unauthorized = { $name } ha rifiutato la chiave.
+problem-remote-unauthorized-next = Aggiorna la sua chiave in Impostazioni > Download > Elenchi di fonti.
 problem-remote-failed = { $name } non è riuscito a farlo.
 problem-remote-failed-next = Riprova più tardi, o cerca su un'altra fonte.
 problem-provider-sign-in = { $name } ha rifiutato l'accesso di { -app-name }.
-problem-provider-sign-in-next = Ricollegalo nelle Impostazioni, in Account.
-problem-provider-turned-away = { $name } ha respinto { -app-name }.
+problem-provider-sign-in-next = Ricollegalo in Impostazioni > Account.
+problem-provider-turned-away = { $name } ha negato l'accesso a { -app-name }.
 problem-provider-busy = { $name } è occupato in questo momento.
 problem-provider-busy-next = Aspetta un minuto, poi riprova.
 problem-provider-no-answer = { $name } non ha risposto.
@@ -3425,12 +3426,12 @@ problem-provider-trouble = { $name } ha dei problemi in questo momento.
 problem-provider-trouble-next = Riprova tra qualche minuto.
 problem-provider-rejected = { $name } non l'ha accettato.
 problem-not-found = { -app-name } non lo trova più.
-problem-not-found-next = Potrebbe essere stato rimosso. Riprova per ricaricare la pagina.
+problem-not-found-next = Potrebbe essere stato rimosso. Prova a ricaricare la pagina.
 problem-invalid-next = Controlla e riprova.
 problem-unavailable = Quella cartella non è raggiungibile in questo momento.
-problem-unavailable-next = Collega il suo disco o controlla la cartella nelle Impostazioni, in Libreria.
+problem-unavailable-next = Collega il suo disco o controlla la cartella in Impostazioni > Libreria.
 problem-not-connected = { $tracker } non è collegato.
-problem-not-connected-next = Collegalo nelle Impostazioni, in Account.
+problem-not-connected-next = Collegalo in Impostazioni > Account.
 problem-io = { -app-name } non è riuscito a leggere o scrivere un file.
 problem-io-next = Controlla che il disco abbia spazio e che la cartella sia tua, poi riprova.
 problem-storage = { -app-name } non è riuscito a salvare la tua libreria.
@@ -3439,7 +3440,7 @@ problem-keyring = L'archivio password di sistema non ha risposto.
 problem-keyring-next = Sblocca il portachiavi del desktop, poi riprova.
 problem-unsupported = { -app-name } non può ancora farlo qui.
 problem-version = Questo backup viene da un { -app-name } più recente.
-problem-version-next = Aggiorna { -app-name } nelle Impostazioni, in Info, poi importalo di nuovo.
+problem-version-next = Aggiorna { -app-name } in Impostazioni > Info, poi importalo di nuovo.
 problem-internal = Qualcosa è andato storto dentro { -app-name }.
 problem-downloading-next = Parte appena il download finisce.
 problem-refused-hidden = Quella serie è nascosta.
@@ -3514,10 +3515,10 @@ shell-update-gone = { -app-name } { $version } non è più disponibile
 
 onboarding-step-together = Guarda insieme
 onboarding-title-together = Guarda con gli amici
-onboarding-body-together = Avvia una stanza dal player e invia il suo codice. Ognuno riproduce la propria copia dell'episodio, e play, pausa e salti restano sincronizzati per tutti.
+onboarding-body-together = Avvia una stanza dal lettore e condividi il suo codice. Ognuno riproduce la propria copia dell'episodio, mentre play, pausa e salti restano sincronizzati.
 onboarding-ready-together = Guarda insieme
-onboarding-ready-together-as = Nelle stanze appari come { $name }.
-onboarding-ready-together-none = Ancora nessun nome. Il pannello della stanza lo chiede la prima volta.
+onboarding-ready-together-as = Comparirai come { $name }.
+onboarding-ready-together-none = Ancora nessun nome. Ti verrà chiesto la prima volta che entri in una stanza o ne avvii una.
 onboarding-together-you = Tu
 onboarding-together-code = Codice stanza
 onboarding-together-episode = Frieren · Episodio 3
@@ -3538,11 +3539,11 @@ room-name-bad = Quel nome non va bene. Usa da 1 a 32 caratteri.
 room-error-not-found = Nessuna stanza ha quel codice. Controllalo con chi te l'ha mandato; la stanza potrebbe essere stata chiusa.
 room-error-full = Quella stanza è piena. Le stanze accolgono 10 persone.
 room-error-unreachable = Impossibile raggiungere il server delle stanze. Controlla la connessione e riprova.
-room-error-refused = Il server delle stanze ha rifiutato. Riprova tra un minuto.
-room-error-proto = Quella stanza usa una versione più recente delle stanze. Aggiorna { -app-name } per entrare.
+room-error-refused = Il server delle stanze ha rifiutato la richiesta. Riprova tra un minuto.
+room-error-proto = Quella stanza usa una versione più recente di Guarda insieme. Aggiorna { -app-name } per entrare.
 room-error-not-in-room = Non sei più in quella stanza. Avviane o raggiungine un'altra.
 room-error-bad-code = Un codice stanza ha 6 tra lettere e cifre, come K7QM2X.
-room-error-bad-relay = Il server delle stanze in Impostazioni, Riproduzione non è un indirizzo web. Correggilo lì e riprova.
+room-error-bad-relay = Il server delle stanze in Impostazioni > Riproduzione non è un indirizzo web valido. Correggilo lì e riprova.
 room-error-cannot-fetch = L'host non può condividere questo episodio adesso. Riprova quando torna nella stanza.
 room-error-needs-episode = Quel server delle stanze vuole un episodio per avviare una stanza. Avviala dal lettore.
 room-panel-title = Guarda insieme
@@ -3557,7 +3558,7 @@ room-panel-start = Avvia una stanza
 room-panel-or-join = Oppure entra in una con il codice
 room-panel-join-label = Codice stanza
 room-panel-join = Entra
-room-panel-you-are = Appari come { $name }
+room-panel-you-are = Compari come { $name }
 room-panel-change-name = Cambia
 room-panel-code-label = Codice stanza
 room-panel-copy = Copia link
@@ -3587,7 +3588,7 @@ room-panel-searching = Ricerca
 room-panel-failed = Non ottenuto
 room-panel-percent = { $percent }%
 room-panel-left = { $time } rimanenti
-room-panel-nothing-picked = Ancora niente di scelto
+room-panel-nothing-picked = Ancora niente selezionato
 room-panel-this-episode = Questo episodio
 room-panel-whole-show = Tutta la serie
 # The host's ready gate (#922): how many in the room have the episode open

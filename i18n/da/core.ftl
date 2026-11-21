@@ -127,58 +127,58 @@ core-error-service = { $service }: { $message }
 
 ## releases/src/repos/mod.rs
 
-core-repos-paste-address = indsæt adressen på et repo
-core-repos-must-be-https = adressen skal være https
-core-repos-unreachable = kunne ikke nå repoet: { $message }
-core-repos-not-found = intet på den adresse (et privat GitHub-repo svarer også 404)
-core-repos-http-status = repoet svarede HTTP { $status }
+core-repos-paste-address = indsæt adressen på en kildeliste
+core-repos-must-be-https = adressen skal bruge https
+core-repos-unreachable = kunne ikke nå kildelisten: { $message }
+core-repos-not-found = intet fundet på den adresse (et privat GitHub-repo giver også 404)
+core-repos-http-status = kildelisten svarede med HTTP { $status }
 core-repos-unreadable = kunne ikke læse { $path }: { $error }
-core-repos-no-such-endpoint = intet installeret endpoint med det id
-core-repos-key-changed = repoet er nu signeret med en anden nøgle end den, du stolede på. Fjern det og tilføj det igen for at godkende den nye nøgle.
-core-repos-stale = repoet sendte et ældre indeks (serienummer { $serial } efter { $kept }); beholder det nyere
-core-repos-key-not-shown = repoets nøgle er ikke den, du fik vist. Tilføj det igen og sammenlign fingeraftrykket.
-core-repos-repo-added = Tilføjede en liste over downloadkilder.
-core-repos-repo-removed = Fjernede en liste over downloadkilder.
+core-repos-no-such-endpoint = ingen installeret kilde med det ID
+core-repos-key-changed = denne kildeliste er nu signeret med en anden nøgle end den, du stolede på. Fjern den, og tilføj den igen for at godkende den nye nøgle.
+core-repos-stale = kildelisten sendte et ældre indeks (serienummer { $serial } efter { $kept }); beholder det nyere
+core-repos-key-not-shown = signeringsnøglen passer ikke med den, du fik vist. Tilføj kildelisten igen, og sammenlign fingeraftrykket.
+core-repos-repo-added = Tilføjede en kildeliste.
+core-repos-repo-removed = Fjernede en kildeliste.
 core-repos-no-field = { $name } har intet felt { $key }
-core-repos-needs-field = { $name } mangler sin { $label }
-core-repos-host-only = { $name }: { $label } er kun en vært eller vært:port, som 192.0.2.10:9696
-core-repos-not-added = det repo er ikke tilføjet
+core-repos-needs-field = { $name } kræver sin { $label }
+core-repos-host-only = { $name }: { $label } må kun være en vært eller vært:port, som 192.0.2.10:9696
+core-repos-not-added = den kildeliste er ikke tilføjet
 core-repos-not-offered = { $repo } tilbyder ikke { $id }
 core-repos-already-installed = { $name } er allerede installeret
-core-repos-taken-by-you = et endpoint ved navn { $id } er allerede installeret (tilføjet af dig); fjern det først
-core-repos-taken-by-repo = et endpoint ved navn { $id } er allerede installeret (fra et andet repo); fjern det først
+core-repos-taken-by-you = en kilde ved navn { $id } er allerede installeret (tilføjet manuelt); fjern den først
+core-repos-taken-by-repo = en kilde ved navn { $id } er allerede installeret (fra en anden kildeliste); fjern den først
 core-repos-source-added = Tilføjede en downloadkilde.
 core-repos-source-updated = Opdaterede en downloadkilde.
 core-repos-source-removed = Fjernede en downloadkilde.
-core-repos-source-changed = Ændrede en downloadkilde.
-core-repos-give-name = giv den et navn
-core-repos-put-query = sæt {"{"}query{"}"} i adressen, hvor søgningen skal stå
-core-repos-name-taken = et endpoint ved navn { $id } er allerede installeret
-core-repos-only-by-hand = kun en kilde, der er tilføjet manuelt, kan redigeres
-core-repos-keep-key = behold {"{"}{ $key }{"}"} i adressen og skift dens værdi med Skift dens { $label }, eller fjern siden og tilføj den igen uden
-core-repos-note-kind = anirss kan ikke søge i typen { $kind }, så computeren udelader den; telefonen søger i den
-core-repos-note-by-hand = anirss har sin egen { $id }, skrevet manuelt; computeren søger i den
-core-repos-note-theirs = Denne anirss kører du selv, og computeren ændrer aldrig dens konfiguration: tilføj { $id } til den anirss' egen konfiguration, så computeren søger i den
-core-repos-note-sandbox = Denne kørsel skriver aldrig i anirss' konfiguration, så computeren søger ikke i { $id } her
-core-repos-note-old = anirss { $version } kan ikke tage imod endpoints fra { -app-name }; opdater den til { $min } eller nyere, så computeren søger i dette
+core-repos-source-changed = Redigerede en downloadkilde.
+core-repos-give-name = skriv et navn
+core-repos-put-query = sæt {"{"}query{"}"} i adressen, hvor søgeordet skal stå
+core-repos-name-taken = en kilde ved navn { $id } er allerede installeret
+core-repos-only-by-hand = kun manuelt tilføjede kilder kan redigeres
+core-repos-keep-key = behold {"{"}{ $key }{"}"} i adressen, og opdater dens værdi med Skift { $label }, eller fjern siden, og tilføj den igen uden
+core-repos-note-kind = anirss kan ikke søge i { $kind }-kilder, så computeren springer den over; telefonappen kan søge i den
+core-repos-note-by-hand = anirss har sin egen manuelt opsatte { $id }; computeren søger i den
+core-repos-note-theirs = Du styrer selv denne anirss, så { -app-name } redigerer ikke dens konfiguration: tilføj { $id } til anirss' konfiguration for at søge i den på computeren
+core-repos-note-sandbox = Sandkassetilstand skriver ikke i anirss' konfiguration, så computeren søger ikke i { $id } her
+core-repos-note-old = anirss { $version } understøtter ikke kilder fra { -app-name }; opdater til { $min } eller nyere for at søge i dette på computeren
 
 ## releases/src/repos/index.rs
 
-core-repos-key-not-ed25519 = indeksets nøgle er ikke en ed25519-nøgle
-core-repos-key-not-base64 = indeksets nøgle er ikke 32 bytes base64
-core-repos-key-invalid = indeksets nøgle er ikke en gyldig ed25519-nøgle
-core-repos-too-large = filen er for stor til at være et repo
-core-repos-not-a-repo = dette er ikke et { -app-name }-endpointrepo
-core-repos-format-version = repoet er formatversion { $found }; denne { -app-name } læser version { $reads }. Opdater { -app-name }.
-core-repos-payload-not-base64 = repoets indhold er ikke base64
-core-repos-signature-malformed = repoets signatur er ugyldig
-core-repos-index-unreadable = repoets indeks kan ikke læses: { $error }
-core-repos-signature-mismatch = repoets signatur passer ikke til indholdet
+core-repos-key-not-ed25519 = indeksnøglen er ikke en ed25519-nøgle
+core-repos-key-not-base64 = indeksnøglen er ikke 32 bytes base64
+core-repos-key-invalid = indeksnøglen er ikke en gyldig ed25519-nøgle
+core-repos-too-large = filen er for stor til at være en kildeliste
+core-repos-not-a-repo = dette er ikke en gyldig { -app-name }-kildeliste
+core-repos-format-version = denne kildeliste bruger formatversion { $found }, men { -app-name } læser version { $reads }. Opdater { -app-name }.
+core-repos-payload-not-base64 = kildelistens indhold er ikke base64
+core-repos-signature-malformed = kildelistens signatur er ugyldig
+core-repos-index-unreadable = kunne ikke læse kildelistens indeks: { $error }
+core-repos-signature-mismatch = kildelistens signatur passer ikke til indholdet
 core-repos-check-scheme = { $id }: adressen skal starte med https://
 core-repos-check-scheme-http = { $id }: adressen skal starte med http:// eller https://
 core-repos-check-auth-key = { $id }: ugyldig auth-nøgle { $key }
-core-repos-check-host-torznab = { $id }: kun en torznab-adresse må angive sin vært som {"{"}{ $key }{"}"}
-core-repos-check-host-placeholder = { $id }: en pladsholder i værten
+core-repos-check-host-torznab = { $id }: kun en torznab-adresse må bruge {"{"}{ $key }{"}"} som vært
+core-repos-check-host-placeholder = { $id }: pladsholdere er ikke tilladt i værten
 
 ## playback/src/tracks.rs
 
@@ -347,21 +347,21 @@ core-cast-nothing = Intet castes
 core-cast-still-starting = Enheden starter stadig
 core-cast-no-route = denne enhed har ingen rute til tv'et
 core-cast-no-control = tv'et gav ingen kontroladresse
-core-cast-not-handed = den anden computer gav ikke afsnittet videre: { $error }
+core-cast-not-handed = den anden computer kunne ikke sende afsnittet: { $error }
 core-cast-empty-playlist = den anden computer sendte en tom playliste
-core-cast-refused-both = { $error }; den afviste også filen, som den er ({ $first })
+core-cast-refused-both = { $error }; den afviste også den originale fil ({ $first })
 core-cast-chromecast-stopped = Chromecasten stoppede
-core-cast-hevc = { $error }. Dette afsnit er HEVC, som kun nyere Chromecasts (med Google TV, eller Ultra) kan afkode
+core-cast-hevc = { $error }. Dette afsnit bruger HEVC, som kun nyere Chromecasts (med Google TV eller Ultra) understøtter
 
 ## playback/src/cast/castv2.rs
 
 core-cast-chromecast-unreachable = kunne ikke nå Chromecasten: { $error }
 core-cast-chromecast-broke = forbindelsen til Chromecasten blev afbrudt: { $error }
 core-cast-chromecast-no-player = Chromecasten startede ikke sin medieafspiller
-core-cast-chromecast-refused-player = Chromecasten ville ikke starte sin medieafspiller ({ $reason })
+core-cast-chromecast-refused-player = Chromecasten kunne ikke starte sin medieafspiller ({ $reason })
 core-cast-no-reason = ingen grund
-core-cast-chromecast-cannot-play = Chromecasten kunne ikke afspille dette ({ $kind })
-core-cast-chromecast-error = Chromecasten stoppede med en fejl under afspilningen
+core-cast-chromecast-cannot-play = Chromecasten kunne ikke afspille denne fil ({ $kind })
+core-cast-chromecast-error = Chromecasten stoppede med en fejl under afspilningen af denne fil
 
 ## playback/src/cast/dlna.rs
 
@@ -372,7 +372,7 @@ core-cast-tv-refused-code = tv'et afviste { $action } ({ $code })
 ## playback/src/cast/media.rs
 
 core-cast-no-video = Denne fil har ingen video.
-core-cast-hi10p = Dette afsnit er 10-bit H.264 (Hi10P), som intet tv eller Chromecast kan afkode. Det skal omkodes for at kunne castes, og det er ikke bygget endnu.
+core-cast-hi10p = Dette afsnit bruger 10-bit H.264 (Hi10P), som tv'er og Chromecasts ikke kan afkode. Det kræver omkodning at caste det, og det understøttes ikke endnu.
 core-cast-video-codec = Dette afsnits video ({ $codec }) kan ikke castes.
 core-cast-audio-codec = Dette afsnits lyd ({ $codec }) kan ikke castes.
 
@@ -383,12 +383,13 @@ core-phone-download-started =
         [one] Begyndte at downloade et afsnit af { $folder }.
        *[other] Begyndte at downloade { $count } afsnit af { $folder }.
     }
+core-phone-download-partial = Ikke alle udgivelser af { $folder } kunne tilføjes: { $error }
 core-phone-subscribed = Abonnerer nu på { $name }.
-core-phone-rule-stopped = { $name } tjekkes ikke for nye afsnit: dens kilde er væk eller skal have sin nøgle igen.
+core-phone-rule-stopped = { $name } tjekker ikke for nye afsnit: dens kilde er fjernet eller skal have sin nøgle igen.
 core-phone-new-episode = Et nyt afsnit af { $name } downloades.
 core-phone-name-taken = { $name }: en anden kilde har det navn
 core-phone-nothing-to-download = intet at downloade
-core-phone-over-cap = det ville tage { -app-name } over lagergrænsen ({ $used } af { $cap } GB brugt eller på vej); slet afsnit eller hæv grænsen
+core-phone-over-cap = det ville overskride { -app-name }s lagergrænse ({ $used } af { $cap } GB brugt eller i kø); slet afsnit, eller hæv grænsen
 core-phone-empty-search = søgningen er tom
 core-phone-no-results = ingen resultater for { $query }
 core-phone-own-engine = en egen torrentmotor
@@ -398,15 +399,15 @@ core-phone-own-engine = en egen torrentmotor
 core-phone-check-connected = forbundet
 core-phone-check-refused = afvist: { $error }
 core-phone-check-dropped = intet svar (droppet)
-core-phone-check-finding = { $label }: finder adressen
+core-phone-check-finding = { $label }: slår adressen op
 core-phone-check-failed = mislykkedes: { $error }
 core-phone-check-no-answer = intet svar
-core-phone-check-private = { $label }: finder den privat
-core-phone-check-skipped-address = sprunget over, en adresse
-core-phone-check-skipped-home = sprunget over, navn på hjemmenetværket
-core-phone-check-no-record = ingen offentlig adresse, overladt til dette netværks DNS
+core-phone-check-private = { $label }: slår op privat
+core-phone-check-skipped-address = sprunget over, IP-adresse
+core-phone-check-skipped-home = sprunget over, lokalt netværksnavn
+core-phone-check-no-record = ingen offentlig post, bruger netværkets DNS
 core-phone-check-no-resolver = ingen DNS-server svarede
-core-phone-check-reaching = { $label }: når { $ip }
+core-phone-check-reaching = { $label }: forbinder til { $ip }
 core-phone-check-http = HTTP { $status }, { $bytes } bytes
 core-phone-check-setup = opsætning
 
@@ -417,7 +418,7 @@ core-playback-still-downloading = afsnit { $number } downloades stadig, { $done 
 
 ## playback/src/skip.rs
 
-core-playback-bad-duration = en varighed er et positivt antal sekunder
+core-playback-bad-duration = varigheden skal være et positivt antal sekunder
 
 ## core/src/agent.rs
 
@@ -433,16 +434,16 @@ core-agent-too-long = { $name } brugte for lang tid
 
 ## core/src/core.rs
 
-core-core-guest-trackers = trackerkontiene på den computer tilhører dens ejer, så denne enhed markerer intet dér
-core-core-guest-not-interested = Ikke interesseret på den computer er dens ejers liste, så denne enhed ændrer intet dér
+core-core-guest-trackers = trackerkontiene på den computer tilhører dens ejer, så denne enhed kan ikke opdatere dem
+core-core-guest-not-interested = Ikke interesseret på den computer tilhører dens ejer, så denne enhed kan ikke ændre det
 core-core-guest-recommended = anbefalingerne på den computer er lært af dens ejers liste
 core-core-nothing-picked = intet valgt
 
 ## foundation/src/prefs.rs
 
 core-prefs-not-a-provider = { $provider } er ikke en matchkilde
-core-prefs-provider-count = { $provider } optræder { $count } gange; hver kilde optræder én gang
-core-prefs-outside = { $value } er uden for { $low } til { $high }
+core-prefs-provider-count = { $provider } optræder { $count } gange; hver kilde må kun optræde én gang
+core-prefs-outside = { $value } skal være mellem { $low } og { $high }
 core-prefs-empty = tom
 
 ## metadata/src/recommended/mod.rs
@@ -472,7 +473,7 @@ core-host-cannot-listen-on = Kunne ikke lytte på { $address }: { $error }
 
 ## host/src/addr.rs
 
-core-host-not-an-address = { $text } er ikke en adresse og port
+core-host-not-an-address = { $text } er ikke en gyldig adresse og port
 
 ## host/src/keys.rs
 
@@ -485,7 +486,7 @@ core-net-rate-limited = { $provider } begrænser antallet af forespørgsler
 
 ## net/src/lib.rs
 
-core-net-waiting = { $host }: fik timeout for et øjeblik siden; { -app-name } venter { $seconds } s, før den spørger igen
+core-net-waiting = { $host }: fik timeout for nylig; { -app-name } venter { $seconds } s, før den prøver igen
 
 ## net/src/anilist.rs
 
@@ -497,7 +498,7 @@ core-update-no-download = { -app-name } { $version } har ingen download til denn
 core-update-cannot-make = Kunne ikke oprette { $path }: { $error }
 core-update-cannot-mark = Kunne ikke gøre det nye AppImage kørbart: { $error }
 core-update-cannot-replace = Kunne ikke erstatte { $path }: { $error }
-core-update-not-here = Denne kopi opdateres ikke her
+core-update-not-here = Denne installation kan ikke opdatere sig selv her
 core-update-cannot-start = Kunne ikke starte downloadet: { $error }
 core-update-did-not-start = Downloadet startede ikke: { $error }
 core-update-cannot-write = Kunne ikke skrive { $path }: { $error }
@@ -506,9 +507,9 @@ core-update-cancelled = Annulleret
 core-update-ended-early = Downloadet sluttede for tidligt ({ $got } af { $size } bytes)
 core-update-checksum = Downloadet passer ikke med GitHubs checksum
 core-update-cannot-move = Kunne ikke flytte downloadet på plads: { $error }
-core-update-cannot-open-dmg = Kunne ikke åbne dmg-filen: { $error }
-core-update-cannot-read-dmg = Kunne ikke læse dmg-filen: { $error }
-core-update-no-app = dmg-filen indeholder ingen app
+core-update-cannot-open-dmg = Kunne ikke åbne DMG-filen: { $error }
+core-update-cannot-read-dmg = Kunne ikke læse DMG-filen: { $error }
+core-update-no-app = DMG-filen indeholder ingen app
 core-update-cannot-copy = Kunne ikke kopiere den nye app ved siden af denne: { $error }
 
 ## metadata/src/calendar.rs
@@ -535,8 +536,8 @@ core-presence-no-room = Den Discord-invitation har intet rum endnu. Bed dem star
 
 core-trackers-no-client-id = Intet klient-id sat for { $tracker }.
 core-trackers-mal-reconnect = Forbind MyAnimeList igen i Indstillinger.
-core-trackers-mal-wants-secret = MyAnimeList vil have denne apps klienthemmelighed. Tilføj den under Trackere i Indstillinger, eller registrer appen med App Type "other".
-core-trackers-token-reply-unreadable = svaret med token kunne ikke læses: { $error }
+core-trackers-mal-wants-secret = MyAnimeList kræver denne apps klienthemmelighed. Tilføj den under Konti i Anibeams indstillinger, eller registrer appen med App Type "other".
+core-trackers-token-reply-unreadable = kunne ikke læse svaret med token: { $error }
 core-trackers-token-reply-no-token = svaret indeholdt ingen adgangstoken
 
 ## trackers/src/lib.rs
@@ -545,7 +546,7 @@ core-trackers-no-token = ingen adgangstoken gemt, forbind igen i Indstillinger
 
 ## trackers/src/cache.rs
 
-core-trackers-no-user-id = kontoen har intet bruger-id
+core-trackers-no-user-id = kontosvaret indeholdt intet bruger-ID
 
 ## trackers/src/move_up.rs
 
@@ -559,11 +560,11 @@ core-trackers-moved-up-some-refused =
     Flyttede { $moved ->
         [one] { $moved } serie
        *[other] { $moved } serier
-    } til { $site }; { $site } tog ikke imod { $failed ->
+    } til { $site }; kunne ikke flytte { $failed ->
         [one] { $failed } serie
        *[other] { $failed } serier
     }.
-core-trackers-move-refused = { $site } tog ikke imod { $show }: { $error }
+core-trackers-move-refused = { $site } kunne ikke opdatere { $show }: { $error }
 
 ## trackers/src/oauth.rs
 
@@ -573,8 +574,8 @@ core-trackers-oauth-no-code = ingen kode i callback
 core-trackers-oauth-no-token = ingen access_token i callback
 core-trackers-oauth-waiting = Venter på, at du logger ind på { $site } i din browser.
 core-trackers-oauth-connected = Forbandt { $site } som { $username }.
-core-trackers-oauth-no-name = profilen kom tilbage uden et navn
-core-trackers-oauth-could-not-start = Login kunne ikke starte
+core-trackers-oauth-no-name = profilsvaret indeholdt intet brugernavn
+core-trackers-oauth-could-not-start = Kunne ikke starte login
 core-trackers-oauth-port-failed = port { $port } på denne computer kunne ikke åbnes: { $error }
 core-trackers-oauth-port-busy = port { $port } på denne computer bruges af et andet program. Vent et øjeblik og prøv igen, eller luk programmet, der bruger den, hvis den bliver ved med at være optaget.
 core-trackers-oauth-provider-error = { $site } returnerede en fejl: { $error }
@@ -585,10 +586,10 @@ core-trackers-page-failed = Login blev ikke gennemført
 core-trackers-page-go-back = Gå tilbage til { $app } og prøv igen.
 core-trackers-page-finishing-title = { $app }, gør stadig færdig
 core-trackers-page-finishing = Gør stadig færdig
-core-trackers-page-finishing-body = { $site } svarede, og Anibeam gør login færdigt. Gå tilbage til { $app }, som siger til, når det er klar.
+core-trackers-page-finishing-body = { $site } svarede, og Anibeam gør login færdigt. Gå tilbage til { $app } for at fortsætte.
 core-trackers-page-cancelled-title = { $app }, login annulleret
-core-trackers-page-cancelled = Dette login blev annulleret
-core-trackers-page-cancelled-body = Du kan lukke denne fane. Start igen fra { $app }, hvis det var meningen.
+core-trackers-page-cancelled = Login blev annulleret
+core-trackers-page-cancelled-body = Du kan lukke denne fane. Start igen fra { $app }, hvis du stadig vil logge ind.
 
 ## trackers/src/on_hold.rs
 
@@ -636,12 +637,12 @@ core-trackers-auth-expired = { $tracker }-login er udløbet, forbind igen i Inds
 core-trackers-entry-not-found = { $tracker }-posten blev ikke fundet.
 core-trackers-server-error = { $tracker }-serverfejl ({ $status }), prøv igen senere.
 core-trackers-error-see-log = { $tracker }-fejl, se aktivitetsloggen.
-core-trackers-episode-not-whole = { $episode } er ikke et helt afsnitsnummer over nul
-core-trackers-score-out-of-range = { $score } er uden for 0 til 10
-core-trackers-rewatch-not-settable = genser er ikke en status, man sætter manuelt
+core-trackers-episode-not-whole = { $episode } skal være et helt tal over 0
+core-trackers-score-out-of-range = { $score } skal være mellem 0 og 10
+core-trackers-rewatch-not-settable = genser kan ikke sættes manuelt
 core-trackers-notes-too-long = noter må højst være { $max } tegn
 core-trackers-nothing-picked = intet valgt
-core-trackers-notes-not-on-list = Ikke på din { $tracker }-liste endnu, føj den til en liste først.
+core-trackers-notes-not-on-list = Ikke på din { $tracker }-liste endnu. Føj den til en liste først.
 core-trackers-sites =
     { $sites ->
         [both] { -anilist } og { -mal }
@@ -917,15 +918,15 @@ core-library-fix-specials =
         [one] det manglende afsnit
        *[other] de manglende afsnit
     } { $numbers }.
-core-library-fix-numbered-on = Afsnit { $from } ligner denne posts { $to }, nummereret videre fra en tidligere sæson.
+core-library-fix-numbered-on = Afsnit { $from } ligner afsnit { $to }, nummereret videre fra en tidligere sæson.
 core-library-runs-span = { $first } til { $last }
 core-library-runs-list = { $init } og { $last }
 
 ## library/src/fixes.rs
 
-core-library-fix-episode-range = et afsnitsnummer går fra 0 til 10000
-core-library-fix-season-range = en sæson går op til 200
-core-library-fix-extra-range = en ekstras indeks går op til 10000
+core-library-fix-episode-range = afsnitsnummeret skal være mellem 0 og 10000
+core-library-fix-season-range = sæsonnummeret må højst være 200
+core-library-fix-extra-range = ekstraindekset må højst være 10000
 core-library-file-elsewhere-not-fixed = fil { $id } hører til en anden serie, så intet blev rettet
 core-library-fix-undone =
     { $count ->
@@ -999,7 +1000,7 @@ core-library-scan-done =
 core-library-agent-no-answer = intet svar inden for { $span }
 core-library-agent-stopped-code = den stoppede med kode { $code }
 core-library-agent-stopped = den stoppede
-core-library-agent-answered-nothing = den svarede ingenting
+core-library-agent-answered-nothing = den gav intet output
 core-library-span-minutes =
     { $count ->
         [one] { $count } minut
@@ -1022,7 +1023,7 @@ core-transfer-progress-done = færdig
 ## downloads/src/anirss.rs
 
 core-downloads-anirss-no-answer = anirss svarede ikke: { $message }
-core-downloads-anirss-answered = anirss svarede { $status }: { $text }
+core-downloads-anirss-answered = anirss svarede med HTTP { $status }: { $text }
 core-downloads-no-free-port = ingen ledig port: { $error }
 core-downloads-anirss-exited = anirss lukkede ({ $status })
 core-downloads-anirss-exited-said = anirss lukkede ({ $status }): { $said }
@@ -1031,18 +1032,18 @@ core-downloads-anirss-slow-start-said = anirss startede ikke inden for { $second
 core-downloads-anirss-install-mac = Installer anirss { $version } eller nyere med: { $command }
 core-downloads-anirss-install-linux = Installer anirss { $version } eller nyere: anirss-pakken fra AUR, eller { $command }
 core-downloads-anirss-too-old = anirss { $version } er for gammel til Anibeam, som kræver { $minimum } eller nyere. { $update }.
-core-downloads-anirss-lacks-feature = anirss { $version } kan ikke holde hvert torrentprograms login for sig, hvilket Anibeam skal bruge for at skifte program; anirss { $minimum } og nyere kan. { $update }.
+core-downloads-anirss-lacks-feature = anirss { $version } kan ikke holde hvert torrentprograms login adskilt, hvilket Anibeam skal bruge for at skifte program; anirss { $minimum } og nyere kan. { $update }.
 core-downloads-anirss-update-mac = Opdater den med: { $command }
 core-downloads-anirss-update-linux = Opdater anirss-pakken, eller kør: { $command }
 
 ## downloads/src/contents.rs
 
-core-downloads-torrent-file-no-answer = torrentfilen kom ikke: { $message }
-core-downloads-torrent-file-answered = torrentfilen svarede { $status }
+core-downloads-torrent-file-no-answer = kunne ikke hente torrentfilen: { $message }
+core-downloads-torrent-file-answered = torrentfilen svarede med HTTP { $status }
 
 ## downloads/src/feed.rs
 
-core-downloads-feed-answered = feedet svarede { $status }
+core-downloads-feed-answered = feedet svarede med HTTP { $status }
 core-downloads-not-a-feed = ikke et feed: { $error }
 
 ## downloads/src/jackett.rs
@@ -1055,12 +1056,12 @@ core-downloads-command-exited = kommandoen sluttede med { $status }
 ## downloads/src/lib.rs
 
 core-downloads-anirss-stopped = anirss stoppede
-core-downloads-anirss-missing = { $install }. Eller peg Indstillinger på en server, der kører.
-core-downloads-anirss-command-missing = { $command } blev ikke fundet. { $install }. Eller peg Indstillinger på en server, der kører.
+core-downloads-anirss-missing = { $install }. Du kan også pege Indstillinger på en server, der kører.
+core-downloads-anirss-command-missing = { $command } blev ikke fundet. { $install }. Du kan også pege Indstillinger på en server, der kører.
 core-downloads-anirss-start-failed = { $command } kunne ikke starte: { $error }
 core-downloads-anirss-too-old-said = { $tooOld } Den sagde: { $message }
-core-downloads-no-torrent-client = Ingen qBittorrent svarer på { $address }, og Anibeam har ingen egen at køre. Installer qBittorrent og slå dens Web UI til, eller installer qbittorrent-nox, som Anibeam så kører for dig
-core-downloads-own-client-gone = Anibeams qBittorrent er væk: qbittorrent-nox er ikke installeret. Geninstaller Anibeam, eller peg Indstillinger på din egen qBittorrent
+core-downloads-no-torrent-client = Ingen qBittorrent svarede på { $address }, og Anibeam har intet indbygget program til rådighed. Installer qBittorrent, og slå dens Web UI til, eller installer qbittorrent-nox, så Anibeam kører den automatisk
+core-downloads-own-client-gone = Anibeams indbyggede qBittorrent mangler (qbittorrent-nox er ikke installeret). Geninstaller Anibeam, eller peg Indstillinger på din egen qBittorrent
 core-downloads-no-port = ingen port i { $address }
 core-downloads-own-client-settings = kan ikke skrive qBittorrents indstillinger: { $error }
 core-downloads-own-client-start-failed = { $command } kunne ikke starte: { $error }
@@ -1070,16 +1071,16 @@ core-downloads-not-ready = Downloads er ikke klar. Tjek Downloads i Indstillinge
 core-downloads-ready = Downloads er klar.
 core-downloads-helper-sources =
     { $count ->
-        [one] Downloads søger nu med Anibeam selv, som ikke læser den { $count } kilde i søgehjælperens egen konfiguration. Tilføj den under Indstillinger, Downloads, eller vælg søgehjælperen dér.
-       *[other] Downloads søger nu med Anibeam selv, som ikke læser de { $count } kilder i søgehjælperens egen konfiguration. Tilføj dem under Indstillinger, Downloads, eller vælg søgehjælperen dér.
+        [one] Downloads søger nu direkte i Anibeam, som ikke læser den { $count } kilde i søgehjælperens konfiguration. Tilføj den under Indstillinger > Downloads, eller skift tilbage til søgehjælperen dér.
+       *[other] Downloads søger nu direkte i Anibeam, som ikke læser de { $count } kilder i søgehjælperens konfiguration. Tilføj dem under Indstillinger > Downloads, eller skift tilbage til søgehjælperen dér.
     }
 core-downloads-client-connected = Downloadprogrammet er forbundet.
 core-downloads-client-not-connected = Downloadprogrammet er ikke forbundet. Tjek dets adresse i Indstillinger.
-core-downloads-not-on-demand = { $name } er ikke et endpoint, der startes efter behov
+core-downloads-not-on-demand = { $name } er ikke en kilde, der startes efter behov
 core-downloads-source-running = Downloadkilden kører.
-core-downloads-source-not-running = { $name } kører ikke. Slå den til under kilderne og bekræft for at starte den.
+core-downloads-source-not-running = { $name } kører ikke. Slå den til under dine kilder, og bekræft for at starte den.
 core-downloads-empty-query = skriv noget at søge efter
-core-downloads-first-endpoint = det første endpoint
+core-downloads-first-endpoint = den første kilde
 core-downloads-search-starting = Starter søgningen
 core-downloads-search-starting-endpoint = Starter { $endpoint }
 core-downloads-search-searching-endpoint = Søger i { $endpoint }
@@ -1095,7 +1096,7 @@ core-downloads-added =
     }
 core-downloads-movie-link = et filmlink skal være et magnet- eller http(s)-link
 core-downloads-added-movie = Føjede en film til dine downloads.
-core-downloads-library-folder = { $folder } er biblioteksmappen for { $name } med afsnit, som dette abonnement ikke downloadede: fjern abonnementet uden dets filer, eller fjern { $name } fra dens side
+core-downloads-library-folder = { $folder } er biblioteksmappen for { $name } og indeholder afsnit, som dette abonnement ikke downloadede. Fjern abonnementet uden at slette dets filer, eller fjern { $name } fra dens side
 core-downloads-no-torrents-named = ingen torrents angivet
 core-downloads-paused =
     { $count ->
@@ -1121,13 +1122,13 @@ core-downloads-nothing-to-remove = intet at fjerne
 core-downloads-removed-show = Fjernede { $title } fra dine downloads.
 core-downloads-removed-the-show = Fjernede serien fra dine downloads.
 core-downloads-deleted-still-listed = Slettede filer står stadig i downloadprogrammet.
-core-downloads-feed-url = et feed er en http(s)-adresse
-core-downloads-rule-needs-name = en regel skal have et navn
+core-downloads-feed-url = feedadressen skal starte med http:// eller https://
+core-downloads-rule-needs-name = reglens navn må ikke være tomt
 core-downloads-no-rule = ingen regel ved navn { $name }
-core-downloads-feed-no-search = feedet har ingen søgning at forkorte
+core-downloads-feed-no-search = dette feed har ingen søgning at forkorte
 core-downloads-no-repair = { $name } behøver ingen reparation.
 core-downloads-repaired = Reparerede abonnementet på { $name }.
-core-downloads-repair-failed = ingen kortere søgning finder noget; selv "{ $search }" kommer tomt tilbage
+core-downloads-repair-failed = ingen kortere søgning gav resultater; selv "{ $search }" kom tomt tilbage
 core-downloads-no-saved-client = intet gemt torrentprogram { $id }
 core-downloads-client-switched = Downloads bruger nu et andet downloadprogram.
 core-downloads-host-not-running = kører ikke på værten
@@ -1137,16 +1138,16 @@ core-downloads-host-late = svarede ikke i tide
 
 core-downloads-native-empty-query = tom søgning
 core-downloads-native-no-results = ingen resultater for { $query }
-core-downloads-native-feed-taken = et feed ved navn { $name } læser allerede en anden adresse
+core-downloads-native-feed-taken = et feed ved navn { $name } peger allerede på en anden adresse
 core-downloads-native-no-items = ingen elementer angivet
 core-downloads-native-bad-link = links skal være magnet:- eller http(s)-adresser, fik { $link }
 core-downloads-native-no-links = ingen links angivet
 core-downloads-native-no-names = ingen abonnementsnavne angivet
-core-downloads-native-files-elsewhere = torrentprogrammet har sine filer på en anden maskine, så de kan kun fjernes sammen med dets torrents
+core-downloads-native-files-elsewhere = torrentprogrammet gemmer sine filer på en anden maskine, så de kan kun slettes sammen med dets torrents
 core-downloads-native-unknown-feeds = ukendte feeds: { $names }
 core-downloads-native-outside-folders = nægter at fjerne filer uden for downloadmapperne: { $paths }
-core-downloads-refuse-home-folder = { $path } er hjemmemappen eller indeholder den, så intet blev fjernet
-core-downloads-refuse-library-folder = { $path } er en biblioteksmappe eller indeholder en, så intet blev fjernet
+core-downloads-refuse-home-folder = { $path } er eller indeholder din hjemmemappe, så intet blev fjernet
+core-downloads-refuse-library-folder = { $path } er eller indeholder en biblioteksmappe, så intet blev fjernet
 
 ## downloads/src/paths.rs
 
@@ -1154,14 +1155,14 @@ core-downloads-no-default-folder = qBittorrent har ingen standardmappe at gemme 
 # $folder is the folder given
 core-downloads-save-folder-not-absolute = { $folder } er ikke en fuld sti til en mappe
 # $folder is the folder given
-core-downloads-save-folder-unusable = { $folder } kan ikke rumme downloads: vælg en mappe, der findes og ikke er din hjemmemappe
+core-downloads-save-folder-unusable = { $folder } kan ikke bruges til downloads: vælg en eksisterende mappe, der ikke er din hjemmemappe
 core-downloads-name-empty = navnet må ikke være tomt
 core-downloads-name-slash = navnet må ikke indeholde / eller \
 core-downloads-name-not-folder = { $name } er ikke et mappenavn
 
 ## downloads/src/prune.rs
 
-core-downloads-pruned = Afmeldte { $title }, den er færdig med at blive sendt.
+core-downloads-pruned = Afmeldte { $title } (færdig med at blive sendt).
 core-downloads-prune-failed = Kunne ikke afmelde { $title }. Tjek Downloads i Indstillinger.
 
 ## library/src/trash.rs
@@ -1169,21 +1170,21 @@ core-downloads-prune-failed = Kunne ikke afmelde { $title }. Tjek Downloads i In
 core-downloads-refuse-not-absolute = { $path } er ikke en almindelig absolut sti, så intet blev fjernet
 core-downloads-refuse-root = { $path } er filsystemets rod, så intet blev fjernet
 core-downloads-refuse-outside-library = { $path } ligger ikke i en biblioteksmappe, så intet blev fjernet
-core-downloads-refuse-save-folder = { $path } er mappen, torrenten blev gemt i, ikke det den downloadede, så intet blev fjernet
+core-downloads-refuse-save-folder = { $path } er torrentens gemmemappe, ikke de downloadede filer, så intet blev fjernet
 
 ## downloads/src/watch.rs
 
-core-downloads-episode-missed = Afsnit { $episode } af { $title } er ikke dukket op tre dage efter, det blev sendt. Dit feed leder stadig efter det.
+core-downloads-episode-missed = Afsnit { $episode } af { $title } er stadig ikke dukket op tre dage efter, det blev sendt. Dit feed bliver ved med at lede efter det.
 
 ## downloads/src/settings.rs
 
 core-downloads-settings-command-empty = anirss-kommandoen må ikke være tom
 core-downloads-settings-anirss-address = anirss-adressen skal starte med http:// eller https://
 core-downloads-settings-client-address = { $client }-adressen skal starte med http:// eller https://
-core-downloads-settings-bad-id = { $id } er ikke et program-id: brug bogstaver, tal, - og _
-core-downloads-settings-same-id = to programmer har id'et { $id }
+core-downloads-settings-bad-id = { $id } er ikke et program-ID: brug bogstaver, tal, - og _
+core-downloads-settings-same-id = to programmer har ID'et { $id }
 core-downloads-settings-saved-address = adressen på { $name } skal starte med http:// eller https://
-core-downloads-settings-same-name = to programmer hedder { $name }; giv hvert sit eget navn
+core-downloads-settings-same-name = to programmer hedder { $name }; giv hvert et unikt navn
 
 ## downloads/src/qbt.rs
 
@@ -1191,11 +1192,11 @@ core-downloads-qbt-no-answer = qBittorrent svarede ikke på { $address }: { $mes
 core-downloads-qbt-password-rejected = qBittorrent afviste adgangskoden; ret den i Indstillinger
 core-downloads-qbt-banned = qBittorrent har blokeret denne adresse efter mislykkede login; vent, eller genstart qBittorrent
 core-downloads-qbt-login-rejected = qBittorrent afviste brugernavnet eller adgangskoden
-core-downloads-qbt-login-failed = qBittorrents login på { $address } svarede { $status }; prøver igen ved næste kald
-core-downloads-qbt-not-web-ui = { $address } svarede { $status }, men ikke som qBittorrents Web UI. Tjek adressen i Indstillinger, og at Web UI er slået til i qBittorrent
+core-downloads-qbt-login-failed = qBittorrents login på { $address } svarede med HTTP { $status }; prøver igen ved næste anmodning
+core-downloads-qbt-not-web-ui = { $address } svarede med HTTP { $status }, hvilket ikke ligner qBittorrents Web UI. Tjek adressen i Indstillinger, og sørg for, at Web UI er slået til i qBittorrent
 core-downloads-qbt-not-added = qBittorrent tilføjede ikke torrents: { $said }
 core-downloads-qbt-some-not-added = qBittorrent kunne ikke tilføje { $count } af de torrents: { $said }
-core-downloads-qbt-answered = qBittorrent svarede { $status }: { $line }
+core-downloads-qbt-answered = qBittorrent svarede med HTTP { $status }: { $line }
 
 ## downloads/src/replace.rs
 
@@ -1207,28 +1208,28 @@ core-downloads-no-video = { $name } indeholder ingen video, så Anibeam kan ikke
 
 ## downloads/src/rolling.rs
 
-core-downloads-no-roll = intet løbende download { $id }
+core-downloads-no-roll = ingen løbende download { $id }
 core-downloads-rolled = { $title }: nu på afsnit { $from } til { $to } af { $total }.
 core-downloads-roll-ahead = hold mindst ét afsnit foran
 core-downloads-roll-nothing = intet at hente
 
 ## releases/src/endpoints.rs
 
-core-releases-json-needs-repo = en JSON-søgekilde kommer fra et endpointrepo, hvis definition kortlægger dens felter
+core-releases-json-needs-repo = en JSON-søgekilde skal komme fra en kildeliste, hvis definition kortlægger dens felter
 core-releases-endpoint-no-name = mangler `name`
 core-releases-endpoint-bad-name = { $name }: brug kun bogstaver, tal, '.', '_', '-'
 core-releases-endpoint-json = { $name }: { $why }
 core-releases-endpoint-unknown-kind = { $name }: ukendt type { $kind } (gyldige: { $valid })
 core-releases-endpoint-no-url = { $name }: mangler `url`
 core-releases-endpoint-not-http = { $name }: adressen skal starte med http:// eller https://
-core-releases-endpoint-needs-query = { $name }: en { $kind }-url skal indeholde pladsholderen {"{"}query{"}"}
-core-releases-endpoint-no-query = { $name }: en { $kind }-url tilføjer selv søgningen, så den tager ingen {"{"}query{"}"}
+core-releases-endpoint-needs-query = { $name }: en { $kind }-URL skal indeholde pladsholderen {"{"}query{"}"}
+core-releases-endpoint-no-query = { $name }: en { $kind }-URL tilføjer selv søgningen, så den må ikke indeholde {"{"}query{"}"}
 
 ## releases/src/fetch.rs
 
 core-releases-indexer-error = indekseren svarede med fejl { $code }
 core-releases-bad-feed = ugyldigt feed: { $error }
-core-releases-feed-answered = feedet svarede { $status }
+core-releases-feed-answered = feedet svarede med HTTP { $status }
 
 ## releases/src/json_feed.rs
 
@@ -1237,19 +1238,19 @@ core-releases-not-feed-json = ikke feedets JSON: { $error }
 ## releases/src/json.rs
 
 core-releases-not-json = ikke JSON: { $error }
-core-releases-search-error-said = søgningen svarede med en fejl: { $message }
-core-releases-search-error = søgningen svarede med en fejl
+core-releases-search-error-said = søgningen gav en fejl: { $message }
+core-releases-search-error = søgningen gav en fejl
 core-releases-no-results-field = svaret har ingen resultater ved { $path }
 core-releases-results-not-list = svarets resultater er ikke en liste
-core-releases-search-answered = søgningen svarede { $status }
+core-releases-search-answered = søgningen svarede med HTTP { $status }
 
 ## releases/src/native.rs
 
-core-releases-no-endpoints = ingen endpoints endnu: tilføj et repo, eller et manuelt, under Endpoints i Mere
+core-releases-no-endpoints = ingen downloadkilder endnu: tilføj først en kildeliste eller en egen kilde
 core-releases-no-source-named = ingen kilde ved navn { $name }
 core-releases-empty-query = skriv noget at søge efter
-core-releases-cannot-follow = { $name } kan ikke følges: den svarer på søgninger, men har intet feed at tjekke for nye afsnit
-core-releases-endpoint-gone = { $name } er ikke tilgængelig mere: fjernet, slået fra eller mangler sin nøgle
+core-releases-cannot-follow = { $name } kan ikke følges: den understøtter søgning, men har intet feed med nye afsnit
+core-releases-endpoint-gone = { $name } er ikke længere tilgængelig: fjernet, slået fra eller mangler sin nøgle
 
 ## releases/src/quirks.rs
 
@@ -1284,26 +1285,26 @@ core-releases-episode-range = { $from } til { $to }
 
 ## Watch together (#846)
 
-core-prefs-room-name = et navn er 1 til { $max } tegn uden kontroltegn
+core-prefs-room-name = navnet skal være 1 til { $max } tegn uden kontroltegn
 core-prefs-room-relay = relæadressen skal starte med https:// eller http://
 core-room-service = Se sammen
 core-room-not-found = Intet rum har den kode. Det er måske lukket.
 core-room-full = Det rum er fuldt.
-core-room-proto = Det relæ kører en anden version af rum. Opdater { -app-name } for at gå ind i det.
-core-room-needs-episode = Det relæ skal have et afsnit for at starte et rum. Start det fra afspilleren, eller opdater relæet.
-core-room-unreachable = Kunne ikke nå relæet: { $message }
-core-room-refused = Relæet sagde nej: { $message }
+core-room-proto = Den server bruger en anden version af Se sammen. Opdater { -app-name } for at deltage.
+core-room-needs-episode = Den server kræver et afsnit, før et rum kan startes. Start et fra afspilleren, eller opdater serveren.
+core-room-unreachable = Kunne ikke nå rumserveren: { $message }
+core-room-refused = Rumserveren afviste anmodningen: { $message }
 core-room-not-in = Du er ikke i et rum.
-core-room-no-name = vælg det navn, de andre i rummet ser dig som
-core-room-bad-code = en rumkode er 6 bogstaver og tal
-core-room-created = Startede et se sammen-rum. Koden er { $code }.
-core-room-joined = Gik ind i se sammen-rummet { $code }.
-core-room-left = Forlod se sammen-rummet.
+core-room-no-name = skriv det navn, de andre i rummet skal se
+core-room-bad-code = en rumkode skal være 6 bogstaver eller tal
+core-room-created = Startede et Se sammen-rum. Kode: { $code }.
+core-room-joined = Gik ind i Se sammen-rummet { $code }.
+core-room-left = Forlod Se sammen-rummet.
 core-room-member-joined = { $name } kom ind i rummet.
 core-room-member-left = { $name } forlod rummet.
 core-room-closed = Se sammen-rummet lukkede.
-core-room-lost = Mistede forbindelsen til se sammen-rummet. Prøver igen.
-core-room-back = Tilbage i se sammen-rummet.
+core-room-lost = Mistede forbindelsen til Se sammen-rummet. Forbinder igen.
+core-room-back = Forbundet til Se sammen-rummet igen.
 core-room-media-asked = Bad værten om afsnittet.
 core-room-media-cannot = Værten kan ikke dele dette afsnit lige nu.
 core-room-media-sent = Sendte afsnittets torrent til { $name }.
@@ -1315,9 +1316,9 @@ core-room-media-searching = Søger i dine kilder efter værtens udgivelse.
 core-room-media-not-found = Ingen af dine kilder har værtens udgivelse.
 core-room-media-no-sources = Alle kilder er slået fra. Slå en til for at søge.
 core-room-media-no-start = Kunne ikke starte hentningen: { $message }
-core-room-media-client = torrentklienten tog den ikke
+core-room-media-client = torrentklienten afviste den
 core-room-media-lost = Torrentklienten mistede afsnittets hentning.
-core-room-media-stalled = Hentningen har ikke rykket sig i ti minutter. Prøv igen senere.
-core-room-media-not-in-library = Afsnittet er hentet, men det er ikke i dit bibliotek. Tjek at hentninger gemmes i en biblioteksmappe.
+core-room-media-stalled = Hentningen har stået stille i ti minutter. Prøv igen senere.
+core-room-media-not-in-library = Afsnittet er hentet, men det dukkede ikke op i dit bibliotek. Tjek, at hentninger gemmes i en biblioteksmappe.
 core-room-media-here = Afsnittet er i dit bibliotek nu.
 core-room-media-rest-missing = Kunne ikke hente resten af serien. Kun dette afsnit hentes.

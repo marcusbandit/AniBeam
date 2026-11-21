@@ -25,14 +25,14 @@ status-strip-errors = { $count ->
 ## ScanSummary
 
 scan-summary-nothing = 아직 보여 줄 것이 없어요
-scan-summary-found = 작품 { $count }개 발견, { $recognised }개 인식
-scan-summary-found-need = 작품 { $count }개 발견, { $recognised }개 인식, { $need }개 확인 필요
+scan-summary-found = 작품 { $count }개 발견, { $recognised }개 인식됨
+scan-summary-found-need = 작품 { $count }개 발견, { $recognised }개 인식됨, { $need }개 매칭 필요
 scan-summary-episodes = 디스크에 에피소드 { $count }개.
 scan-summary-episodes-watched = 디스크에 에피소드 { $count }개, { $tracker }에서 { $watched }개 시청함.
-scan-summary-title = 폴더를 불러왔어요
+scan-summary-title = 폴더 추가됨
 scan-summary-count-found = 발견
-scan-summary-count-recognised = 인식
-scan-summary-count-need = 확인 필요
+scan-summary-count-recognised = 인식됨
+scan-summary-count-need = 매칭 필요
 scan-summary-later = 나중에
 scan-summary-match = { $count }개 매칭
 scan-summary-open-library = 라이브러리 열기
@@ -49,10 +49,10 @@ update-notice-in-repo = Anibeam { $version }이(가) { $manager } 저장소에 �
 update-notice-out = Anibeam { $version } 출시
 update-notice-out-titled = Anibeam { $version } “{ $title }” 출시
 update-notice-progress = { $percent }%  ·  { $total } MB 중 { $got } MB
-update-notice-restart-hint = 지금 다시 시작하거나 다음 실행 때 적용돼요
+update-notice-restart-hint = 지금 다시 시작하거나, 다음에 Anibeam을 열 때 업데이트돼요
 update-notice-from-source = 소스로 빌드한 사본이에요: pull 후 다시 빌드하세요
 update-notice-no-download = 이 컴퓨터용 다운로드가 없어요
-update-notice-install-hint = 업데이트를 누르면 설치하고 Anibeam을 다시 시작해요
+update-notice-install-hint = 업데이트를 설치하고 Anibeam을 다시 시작해요
 update-notice-retry = 다시 시도
 update-notice-update = 업데이트
 update-notice-restart = 다시 시작
@@ -65,6 +65,7 @@ update-notice-later = 나중에
 
 whats-new-title = 새로운 기능
 whats-new-got-it = 확인
+whats-new-github = GitHub에서 전체 변경 내역 보기
 
 ## ActivityDrawer
 
@@ -92,7 +93,7 @@ activity-drawer-copy-tip = 클릭해서 줄 복사
 activity-drawer-fold = 접기
 activity-drawer-empty-technical = 아직 기록된 내용이 없어요.
 activity-drawer-empty-problems = 문제 없음. 모두 잘 됐어요.
-activity-drawer-empty = 아직 보고할 내용이 없어요. Anibeam이 한 일이 여기에 표시돼요.
+activity-drawer-empty = 아직 보고할 내용이 없어요. Anibeam의 활동이 여기에 표시돼요.
 
 ## ActivityColumn
 
@@ -108,7 +109,7 @@ activity-column-name-episode = { $title }, { $number }화
 activity-column-title = 활동
 activity-column-down = 다운
 activity-column-up = 업
-activity-column-not-connected = { $client }이(가) 연결되지 않아서 아무것도 진행되지 않아요.
+activity-column-not-connected = { $client }이(가) 연결되지 않아서 Anibeam이 다운로드를 표시할 수 없어요.
 activity-column-connect-again = 다시 연결
 activity-column-downloading = 다운로드 중
 activity-column-fewer = 접기
@@ -120,7 +121,7 @@ activity-column-today-empty = 검색, 다운로드, 새 구독이 생길 때마�
 activity-column-stopping = 중지 중
 activity-column-starting = 시작 중
 activity-column-start-tip = 다운로드 시작
-activity-column-stop-tip = 다운로드 중지. 받은 부분은 남아요
+activity-column-stop-tip = 다운로드 중지. 받은 데이터는 남아요
 activity-column-cancelling = 취소 중
 activity-column-cancel-all-tip = 이 다운로드들 취소
 activity-column-cancel-tip = 이 다운로드 취소
@@ -148,12 +149,12 @@ frame-did-not-work = 실패했어요.
 frame-could-not-open = Anibeam이 열지 못했어요. 복사해서 직접 여세요.
 frame-copy = 복사
 frame-copied = 복사됨
-frame-status-refused = { $tracker }이(가) 받지 않았어요
-frame-status-refused-why = { $tracker }이(가) 받지 않았어요: { $why }
-frame-lists-refused = { $tracker }이(가) 작품 { $count }개를 받지 않았어요. 활동 로그를 확인하세요
+frame-status-refused = { $tracker }이(가) 업데이트를 거부했어요
+frame-status-refused-why = { $tracker }이(가) 업데이트를 거부했어요: { $why }
+frame-lists-refused = 작품 { $count }개를 { $tracker }(으)로 옮기지 못했어요. 활동 로그를 확인하세요
 frame-lists-moved = 작품 { $count }개를 { $tracker }(으)로 옮겼어요
-frame-notes-refused = { $tracker }이(가) 메모를 받지 않았어요
-frame-notes-refused-why = { $tracker }이(가) 메모를 받지 않았어요: { $why }
+frame-notes-refused = { $tracker }에 메모를 저장하지 못했어요
+frame-notes-refused-why = { $tracker }에 메모를 저장하지 못했어요: { $why }
 frame-notes-saved = 메모 저장됨
 frame-connected = { $tracker }에 { $user } 계정으로 연결됨
 frame-sign-in-stopped = { $tracker } 로그인이 끝나기 전에 멈췄어요.
@@ -179,18 +180,22 @@ frame-list-home-not-carried = 이 기기에 보관돼요: 내 트래커에 이 �
 frame-list-home-offline = AniList나 MyAnimeList를 연결할 때까지 이 기기에 보관돼요
 frame-moving-to = 이동 중: { $list }
 frame-moved-to = 이동 완료: { $list }
-frame-plan-added = { $title }을(를) 시청 예정 목록에 추가해요
+frame-plan-added = { $title }을(를) 시청 예정 목록에 추가하는 중이에요
 frame-plan-listed = { $title }은(는) 이미 목록에 있어요
 frame-delete-watched = { $kind ->
     [film] 시청한 영화 삭제
    *[episode] 시청한 에피소드 삭제
-}
+    }
 frame-delete-all = { $count ->
+    [1] { $kind ->
+        [film] 영화 삭제
+       *[episode] 에피소드 삭제
+    }
    *[other] { $kind ->
         [film] 영화 { $count }개 모두 삭제
        *[episode] 에피소드 { $count }개 모두 삭제
     }
-}
+    }
 frame-series-gone = 그 작품이 없어졌어요
 frame-delete-none-watched = 디스크에 { $title }의 시청한 에피소드가 없어요
 frame-delete-none = 디스크에 { $title } 파일이 없어요
@@ -203,29 +208,27 @@ frame-delete-files = { $watched ->
         [film] 영화 { $count }개
        *[episode] 에피소드 { $count }개
     }
-}
+    }
 frame-delete-extras = { $count ->
    *[other] 번외 { $count }개
 }
 frame-delete-and = { $first }, { $second }
 frame-delete-heading = { $title }의 { $what }을(를) 삭제할까요?
-frame-delete-base = 파일과 자막은 휴지통으로 가니 거기서 되살릴 수 있어요. 토렌트는 토렌트 클라이언트에서 빠지므로 다시 다운로드할 수 있어요.
+frame-delete-base = 파일과 자막은 휴지통으로 옮겨지니 거기서 되살릴 수 있어요. 토렌트는 토렌트 클라이언트에서 제거되므로 다시 다운로드할 수 있어요.
 frame-delete-confirm = 휴지통으로 이동
 frame-delete-done = { $title }의 { $what }을(를) 휴지통으로 옮겼어요
 frame-delete-watched-done = { $count ->
    *[other] 에피소드 { $count }개
 }, { $size }, 휴지통으로 옮겼어요
 frame-delete-nothing = 삭제할 항목이 없어요
-frame-fix-not-drafted = 수정했어요. 이슈 초안은 만들지 못했어요
+frame-fix-not-drafted = 수정했지만 이슈 초안은 만들지 못했어요
 frame-fix-agent = 수정했어요. { $agent }이(가) 살펴보는 중이고, 끝나면 이슈가 열려요
 frame-fix-opening = 수정했어요. 이슈를 여는 중
-frame-fix-not-saved = 수정 사항이 저장되지 않았어요: { $error }
+frame-fix-not-saved = 수정 사항을 저장하지 못했어요: { $error }
 frame-fix-undone = { $count ->
    *[other] 파일 { $count }개
 }를 다시 이름으로 읽어요
-frame-fix-done = { $count ->
-   *[other] 파일 { $count }개
-}를 읽는 방식을 수정했어요
+frame-fix-done = 파일 { $count }개를 읽는 방식을 수정했어요
 frame-report-failed = 이슈 초안을 만들지 못했어요: { $error }
 frame-report-untriaged = 분류 없이 브라우저에서 이슈를 열었어요. { $error }
 frame-report-open = 브라우저에서 이슈를 열었어요. 바로 보낼 수 있어요
@@ -256,9 +259,7 @@ home-unit-minutes = 분
 home-week-late = { $count ->
    *[other] 에피소드 { $count }개 지연
 }
-home-week-waiting = { $count ->
-   *[other] 볼 수 있는 에피소드 { $count }개
-}
+home-week-waiting = 볼 수 있는 에피소드 { $count }개
 home-week-coming = { $count ->
    *[other] 7일 안에 에피소드 { $count }개
 }
@@ -285,7 +286,7 @@ home-tile-to-watch = 볼 에피소드 { $count }개
 home-day-nothing = 없음
 home-now = 지금 { $time }
 home-continue = 이어 보기
-home-continue-fact = 이어 볼 작품 { $count }개
+home-continue-fact = 보는 중인 작품 { $count }개
 home-on-hold = 보류
 home-on-hold-fact = 다시 볼 작품 { $count }개
 home-hero-open = { $title } 열기
@@ -313,8 +314,8 @@ home-recommended-scope = 추천 범위
 home-recommended-all = 전체
 home-recommended-in-library = 라이브러리
 home-recommended-on-list = 내 목록
-home-recommended-none-library = 라이브러리에서 더 추천할 작품이 없어요. 전체에서 아직 없는 작품을 찾아보세요.
-home-recommended-none-list = 목록에서 더 추천할 작품이 없어요. 전체에서 목록에 없는 작품을 찾아보세요.
+home-recommended-none-library = 라이브러리에서 더 추천할 작품이 없어요. 아직 없는 작품을 보려면 전체로 바꾸세요.
+home-recommended-none-list = 목록에서 더 추천할 작품이 없어요. 목록에 없는 작품을 보려면 전체로 바꾸세요.
 home-catch-up = 밀린 에피소드
 home-catch-up-fact = 볼 에피소드가 쌓인 작품 { $count }개
 home-fresh = 새 작품 시작하기
@@ -337,9 +338,9 @@ onboarding-step-lists = 내 목록
 onboarding-step-downloads = 다운로드
 onboarding-step-ready = 준비 완료
 onboarding-scan-reading = 폴더 읽는 중
-onboarding-scan-found = 작품 { $count }개를 찾았어요. 언제든 계속하세요. 나머지는 알아서 채워져요.
-onboarding-scan-starter-empty = 새 폴더는 아직 비어 있어요. 작품을 넣으면 여기에 저절로 나타나요.
-onboarding-scan-no-video = 동영상 파일을 찾지 못했어요. 올바른 폴더인지 확인하세요.
+onboarding-scan-found = 작품 { $count }개를 찾았어요. 원할 때 계속하세요. 나머지는 자동으로 채워져요.
+onboarding-scan-starter-empty = 새 폴더는 아직 비어 있어요. 작품을 넣으면 여기에 자동으로 나타나요.
+onboarding-scan-no-video = 동영상 파일을 찾지 못했어요. 올바른 폴더를 골랐는지 확인하세요.
 onboarding-scan-your-shows = 내 작품
 onboarding-scan-looking-up = { $what } 조회 중
 onboarding-scan-looking-up-tally = { $what } 조회 중, { $count }개 중 { $posters }개 찾음
@@ -348,7 +349,7 @@ onboarding-scan-posters-tally = 포스터 가져오는 중, { $count }개 중 { 
 onboarding-scan-seasons = 관련 시즌 찾는 중
 onboarding-scan-seasons-tally = 관련 시즌 찾는 중, { $count }개 중 { $posters }개 찾음
 onboarding-choose-folder = 애니 폴더 선택
-onboarding-about = 1분이면 설정 끝. 라이브러리는 알아서 완성돼요.
+onboarding-about = 1분이면 돼요. 라이브러리 스캔은 백그라운드에서 마무리돼요.
 onboarding-step-later = 나중에
 onboarding-skip-setup = 설정 건너뛰기
 onboarding-title-welcome = Anibeam에 오신 걸 환영해요
@@ -361,48 +362,48 @@ onboarding-title-later = { $count ->
     [2] 준비 완료, 나중에 할 일 둘
     [3] 준비 완료, 나중에 할 일 셋
    *[other] 준비 완료, 나중에 할 일 { $count }개
-}
+    }
 onboarding-body-welcome = Anibeam은 애니를 한곳에 모아 줘요. 디스크에 있는 작품을 찾아 바로 여기서 재생하고, 보는 대로 AniList나 MyAnimeList를 업데이트해요.
-onboarding-body-library = 작품을 보관하는 폴더를 고르세요. 그 안의 폴더 하나하나가 포스터, 에피소드, 이어 볼 위치를 가진 작품이 돼요. Anibeam은 폴더를 읽기만 하고, 파일을 옮기거나 이름을 바꾸지 않아요.
-onboarding-body-lists = 한 번만 로그인하면 여기서 다 본 에피소드가 입력할 필요 없이 목록에 기록돼요. 로그인은 브라우저에서 하므로 Anibeam은 비밀번호를 보지 않아요.
-onboarding-body-downloads = 다운로드 페이지에서 작품을 구독하면 새 에피소드가 방영되는 대로 라이브러리에 들어와요. 이를 위해 두 가지가 필요해요: 검색할 곳과 받아 올 토렌트 클라이언트.
-onboarding-body-ready = 여기 있는 모든 것은 나중에 설정에서 바꿀 수 있고, 설정, 정보에서 이 설정을 다시 할 수 있어요.
+onboarding-body-library = 작품을 보관하는 폴더를 고르세요. 하위 폴더 하나하나가 포스터, 에피소드, 시청 진행 상황을 가진 작품이 돼요. Anibeam은 폴더를 읽기만 하고, 파일을 옮기거나 이름을 바꾸지 않아요.
+onboarding-body-lists = 한 번 로그인하면 다 본 에피소드가 목록에 자동으로 기록돼요. 로그인은 브라우저에서 하므로 Anibeam은 비밀번호를 보지 않아요.
+onboarding-body-downloads = 다운로드 페이지에서 작품을 구독하면 새 에피소드가 방영되는 대로 라이브러리로 다운로드돼요. 이를 위해 두 가지가 필요해요: 검색할 소스와 다운로드할 토렌트 클라이언트.
+onboarding-body-ready = 이 모든 것은 나중에 설정에서 바꿀 수 있고, 설정, 정보에서 이 설정을 다시 실행할 수 있어요.
 onboarding-skip-step = 지금은 건너뛰기
 onboarding-get-started = 시작하기
 onboarding-open-app = Anibeam 열기
 onboarding-continue = 계속
 onboarding-payoff-library = 내 라이브러리
 onboarding-payoff-library-line = 폴더 속 모든 작품의 포스터, 에피소드, 다음 볼 화.
-onboarding-payoff-plays = 바로 여기서 재생
-onboarding-payoff-plays-line = 자막, 오프닝 스킵, 멈춘 위치까지 기억해요.
+onboarding-payoff-plays = 내장 플레이어
+onboarding-payoff-plays-line = 자막, 오프닝 스킵, 멈춘 곳에서 이어 보기.
 onboarding-payoff-list = 목록 자동 동기화
 onboarding-payoff-list-line = 에피소드를 다 보면 AniList나 MyAnimeList에 기록돼요.
-onboarding-payoff-episodes = 에피소드가 알아서
-onboarding-payoff-episodes-line = 작품을 구독하면 새 에피소드가 라이브러리에 들어와요.
+onboarding-payoff-episodes = 자동 다운로드
+onboarding-payoff-episodes-line = 작품을 구독하면 새 에피소드가 방영되는 대로 라이브러리로 다운로드돼요.
 onboarding-films-too = 영화 폴더도 돼요: 이름을 Movies로 하세요.
 onboarding-choose-folder-button = 폴더 선택
 onboarding-no-folder = 아직 폴더가 없어요
-onboarding-starter-where = { $dir }에 Anime 폴더를 만들어 사용해요.
+onboarding-starter-where = { $dir }에 Anime 폴더를 만들어 추가해요.
 onboarding-add-another = 다른 폴더 추가
 onboarding-shelf-more = 더 보기
 onboarding-preview-show = 내 작품
 onboarding-preview-finished = 여기서 3화 시청 완료
 onboarding-preview-on-list = 내 목록: 3화 시청
-onboarding-preview-set-by = 엔딩 크레딧이 나오는 순간 Anibeam이 기록
+onboarding-preview-set-by = 에피소드를 다 보면 자동으로 업데이트
 onboarding-lists-connected = 연결됐어요. 이제 여기서 본 작품이 목록에 기록돼요.
 onboarding-lists-no-account = 아직 계정이 없나요? 둘 다 무료이고 하나면 충분해요. 설정, 계정에서 언제든 연결을 끊을 수 있어요.
-onboarding-search-title = 검색할 곳
+onboarding-search-title = 다운로드 소스
 onboarding-search-ready = { $count ->
    *[other] 검색 가능한 소스 { $count }개.
 }
-onboarding-fetch-title = 받아 오는 곳
+onboarding-fetch-title = 토렌트 클라이언트
 onboarding-fetch-auto = Anibeam에 맡기기
 onboarding-fetch-recommended = 추천
-onboarding-fetch-auto-line = Anibeam이 자체 qBittorrent를 백그라운드에서 조용히 실행해요. 설치할 것도, 입력할 것도 없어요.
+onboarding-fetch-auto-line = Anibeam에 내장된 qBittorrent를 백그라운드에서 조용히 실행해요. 따로 설정할 게 없어요.
 onboarding-fetch-existing = 이미 qBittorrent를 쓰고 있어요
-onboarding-fetch-existing-line = Anibeam이 실행 중인 qBittorrent에 연결해요. 다음으로 설정에서 주소와 로그인 정보를 입력하세요.
+onboarding-fetch-existing-line = Anibeam이 이미 실행 중인 qBittorrent에 연결해요. 설정을 마친 뒤 설정에서 주소와 로그인 정보를 입력하세요.
 onboarding-ready-library = 라이브러리
-onboarding-ready-library-none = 아직 폴더가 없어요. 원할 때 설정, 라이브러리에서 추가하세요.
+onboarding-ready-library-none = 아직 폴더가 없어요. 언제든 설정, 라이브러리에서 추가할 수 있어요.
 onboarding-ready-library-series = { $count ->
    *[other] 폴더 { $count }개
 }, 지금까지 작품 { $series }개
@@ -414,19 +415,19 @@ onboarding-ready-library-scanning = { $count ->
 }, 스캔 중
 onboarding-ready-lists = 내 목록
 onboarding-ready-lists-as = { $tracker }, { $user }
-onboarding-ready-lists-none = 아직 연결 안 됨. 원할 때 설정, 계정에서 연결하세요.
+onboarding-ready-lists-none = 아직 연결 안 됨. 언제든 설정, 계정에서 연결할 수 있어요.
 onboarding-ready-downloads = 다운로드
 onboarding-ready-downloads-state = { $sources ->
     [0] 아직 소스 없음
    *[other] 소스 { $sources }개
-}, { $client ->
-    [own] 내 qBittorrent.
-   *[bundled] Anibeam 자체 qBittorrent.
-} { $next ->
-    [ready] 모두 준비됐어요.
-    [opens] 다음으로 설정, 다운로드가 열려요.
-   *[sources] 검색하려면 소스 목록을 추가하세요.
-}
+    }, { $client ->
+        [own] 내 qBittorrent.
+       *[bundled] Anibeam 내장 qBittorrent.
+    } { $next ->
+        [ready] 모두 준비됐어요.
+        [opens] 다음으로 설정, 다운로드가 열려요.
+       *[sources] 검색하려면 소스 목록을 추가하세요.
+    }
 onboarding-ready-set-up = 지금 설정
 
 ## Rail.qml
@@ -469,8 +470,8 @@ fix-keep = 수정 유지
 fix-leave-as-read = 읽힌 그대로 두기
 fix-read-by-name = 이 파일을 다시 이름으로 읽기
 fix-report = GitHub에 이슈 등록
-fix-report-body = 내용이 채워진 이슈를 열어요. 이슈는 공개되고 이 파일 이름이 들어가요.
-fix-report-body-agent = 내용이 채워진 이슈를 열어요. 이슈는 공개되고 이 파일 이름이 들어가요. 먼저 { $agent }이(가) 살펴봐요.
+fix-report-body = 내용이 채워진 이슈를 열어요. 검토한 뒤 제출하세요. 이슈는 공개되고 이 파일 이름이 들어가요.
+fix-report-body-agent = 내용이 채워진 이슈를 열어요. 검토한 뒤 제출하세요. 이슈는 공개되고 이 파일 이름이 들어가요. 먼저 { $agent }이(가) 살펴봐요.
 fix-close-unapplied =
     { $count ->
        *[other] 수정 사항 { $count }개를 적용하지 않고 닫을까요?
@@ -493,7 +494,7 @@ match-found-anilist-season = AniList에서 찾았어요, 시즌 { $season }
 match-found-mal = MyAnimeList에서 찾았어요
 match-sites-and = { $first }, { $next }
 match-matched-on = { $sites }에서 매칭됨
-match-provider-silent = { $provider }에서 응답이 없어요
+match-provider-silent = { $provider }이(가) 응답하지 않았어요
 match-title-walk = 매칭, { $walk }
 match-title = 매칭
 match-skip = 건너뛰기
@@ -551,11 +552,11 @@ watching-connect-body = 연결하면 AniList에서 시청 중이거나 재시청
 watching-connect-waiting = 브라우저를 기다리는 중
 watching-connect-anilist = AniList 연결
 watching-load-failed-title = 시청 중 목록을 불러오지 못했어요
-watching-load-failed-body = AniList에 연결할 수 없었어요. 다음 새로고침 때 목록이 돌아와요.
+watching-load-failed-body = AniList에 연결하지 못했어요. 다음 새로고침 때 목록을 다시 불러와요.
 watching-planning-failed-title = 시청 예정 목록을 불러오지 못했어요
-watching-planning-failed-body = 캐시를 읽지 못했어요. 다시 시도하거나 다음 새로고침 때 돌아와요.
+watching-planning-failed-body = 캐시된 목록을 읽지 못했어요. 다시 시도하거나 다음 새로고침을 기다리세요.
 watching-planning-empty-title = 시청 예정 목록이 비어 있어요
-watching-planning-empty-body = 방영 중에서 시청 예정을 누르거나 작품의 목록 메뉴에서 시청 예정을 고르면 여기에 표시돼요.
+watching-planning-empty-body = 작품을 여기에 추가하려면 방영 중에서 시청 예정을 누르거나 작품의 목록 메뉴에서 시청 예정을 고르세요.
 watching-airing-now = 방영 중
 watching-empty-title = 시청 중 목록이 비어 있어요
 watching-empty-body = AniList에서 작품을 시청 중으로 표시하면 여기에 나타나요.
@@ -569,7 +570,7 @@ library-hidden =
     }
 library-hidden-sync-stops =
     { $count ->
-       *[other] 작품 { $count }개 숨김, 트래커 동기화도 멈춰요
+       *[other] 작품 { $count }개 숨김, 트래커 동기화가 일시 중지돼요
     }
 library-unhidden =
     { $count ->
@@ -689,12 +690,12 @@ library-pick-all-tip = 보이는 카드 모두 선택(Ctrl+A)
 library-unhide = 숨김 해제
 library-hide = 숨기기
 library-rate = 평가
-library-rate-tip = 선택한 모든 작품에 같은 점수를 연결된 모든 트래커에 줘요
+library-rate-tip = 선택한 모든 작품에 연결된 모든 트래커에서 같은 점수를 줘요
 library-needs-tracker = 연결된 트래커와 매칭된 작품이 필요해요
 library-move-to-list = 목록으로 이동
 library-rescan = 다시 스캔
 library-find-match = 매칭 찾기
-library-find-match-tip = 선택한 작품 중 매칭이 없는 것을 하나씩 검색해요
+library-find-match-tip = 선택한 작품 중 매칭이 없는 것마다 매칭을 검색해요
 library-all-matched = 선택한 작품이 모두 매칭돼 있어요
 
 ## MetadataPage.qml
@@ -727,7 +728,7 @@ metadata-walk-position = { $total }개 중 { $at }번째
 metadata-walk-done = 마지막 작품이었어요
 metadata-walk-left =
     { $count ->
-       *[other] 매칭 필요에 { $count }개 남음
+       *[other] 인식 안 됨에 { $count }개 남음
     }
 metadata-countdown-days = { $days }일 { $hours }시간
 metadata-countdown-hours = { $hours }시간 { $minutes }분
@@ -758,7 +759,7 @@ metadata-count =
 metadata-search-placeholder = 제목 필터
 metadata-find-rest = 나머지 찾기
 metadata-find-rest-started = Anibeam이 아직 모르는 폴더를 조회하는 중
-metadata-find-rest-tip = Anibeam이 아직 모르는 폴더를 모두 설정에 지정된 순서대로 각 작품 정보 사이트에서 조회해요
+metadata-find-rest-tip = 매칭되지 않은 모든 폴더를 설정에 지정된 순서대로 작품 정보 사이트에서 조회해요
 metadata-refresh-all = 모두 새로고침
 metadata-refresh-all-started = 모든 작품의 정보 업데이트 중
 metadata-refresh-all-tip = 인식된 모든 작품의 정보를 다시 가져와요
@@ -787,7 +788,7 @@ metadata-refreshing = { $title } 새로고침 중
 metadata-refresh-tip = 이 작품의 정보를 다시 가져오기
 metadata-forget-armed = 제거
 metadata-forget-confirm-tip = 한 번 더 클릭하면 이 작품과 시청 기록을 Anibeam에서 제거해요
-metadata-forget-tip = 폴더가 디스크에 더 이상 없어요: 이 작품과 기록을 Anibeam에서 제거해요
+metadata-forget-tip = 폴더가 더 이상 디스크에 없어요: 이 작품과 기록을 Anibeam에서 제거해요
 
 ## AiringPage.qml
 
@@ -845,11 +846,11 @@ airing-planned-already-one = { $title }은(는) 이미 목록에 있어요
 airing-planned-already-all = 모두 이미 목록에 있어요
 airing-planned =
     { $count ->
-       *[other] 작품 { $count }개를 시청 예정 목록에 추가해요
+       *[other] 작품 { $count }개를 시청 예정 목록에 추가하는 중이에요
     }
 airing-planned-some-already =
     { $count ->
-       *[other] 작품 { $count }개를 시청 예정 목록에 추가해요, { $already }개는 이미 있었어요
+       *[other] 작품 { $count }개를 시청 예정 목록에 추가하는 중이에요({ $already }개는 이미 있어요)
     }
 airing-play-next = 다음 화 재생
 airing-plan-to-watch = 시청 예정
@@ -877,18 +878,18 @@ airing-out-fewer = 접기
 airing-out-all = 전체 { $count }
 airing-sort = 정렬
 airing-load-failed-title = AniList에 연결할 수 없어요
-airing-load-failed-body = 방영 중인 작품은 AniList에서 가져와요. 다음 새로고침 때 돌아와요.
-airing-reading-title = 방영 중인 작품 읽는 중
+airing-load-failed-body = 방영 중인 작품은 AniList에서 가져와요. 다음 새로고침 때 다시 나타나요.
+airing-reading-title = 방영 중인 작품 불러오는 중
 airing-nothing-now = 지금 방영 중인 작품이 없어요
 airing-nothing-for = { $season }에 방영하는 작품이 없어요
-airing-nothing-read = 아직 읽은 게 없어요
-airing-reading-body = AniList에서 방영 중인 모든 작품을 가져와요. 처음에는 몇 초 걸려요.
-airing-nothing-body = AniList에 아직 이번 시즌 작품이 없어요. 새로고침으로 다시 읽거나 다른 시즌을 고르세요.
-airing-nothing-read-body = 새로고침하면 AniList에서 방영 중인 모든 작품을 읽어요.
-airing-hides-empty-title = 숨김 설정 때문에 남은 게 없어요
+airing-nothing-read = 아직 불러온 게 없어요
+airing-reading-body = 이번 시즌 방영하는 모든 작품을 AniList에서 가져와요. 처음에는 몇 초 걸려요.
+airing-nothing-body = AniList에 아직 이번 시즌 작품이 없어요. 새로고침을 눌러 다시 확인하거나 다른 시즌을 고르세요.
+airing-nothing-read-body = 새로고침을 누르면 AniList에서 방영 중인 작품을 불러와요.
+airing-hides-empty-title = 필터 때문에 모두 숨겨졌어요
 airing-lists-empty-title = 여기 있는 작품 중 목록에 있는 게 없어요
 airing-library-empty-title = 여기 있는 작품 중 라이브러리에 있는 게 없어요
-airing-hides-empty-body = 여기 있는 작품은 모두 목록이나 라이브러리에 있고, 그것들을 숨겼어요.
+airing-hides-empty-body = 여기 있는 작품은 모두 목록이나 라이브러리에 있고, 필터가 그것들을 숨기고 있어요.
 airing-lists-empty-body = 카드에서 시청 예정을 누르면 목록에 추가돼요.
 airing-library-empty-body = 카드에서 에피소드 받기를 누르면 라이브러리로 다운로드해요.
 airing-show-everything = 모두 보기
@@ -980,13 +981,13 @@ show-detail-subscribed-reading = 구독했어요. qBittorrent가 피드를 읽�
 show-detail-taken-moving = 규칙이 피드의 릴리스 { $releases }개 중 { $taken }개를 가져와요. { $moving }개는 아래에서 다운로드 중이에요.
 show-detail-taken-held = 규칙이 피드의 릴리스 { $releases }개 중 { $taken }개를 가져와요. 토렌트 { $torrents }개가 클라이언트에 있어요.
 show-detail-taken-adding-line = 규칙이 피드의 릴리스 { $releases }개 중 { $taken }개를 가져와요. qBittorrent가 추가하는 중이에요.
-show-detail-feed-holds-nothing = 피드가 아직 비어 있어요. 맞는 릴리스가 올라오면 바로 다운로드해요.
-show-detail-nothing-fits = 피드에 규칙에 맞는 항목이 아직 없어요. 맞는 릴리스가 올라오면 바로 다운로드해요.
+show-detail-feed-holds-nothing = 피드에 아직 릴리스가 없어요. 맞는 릴리스가 올라오면 자동으로 다운로드돼요.
+show-detail-nothing-fits = 피드에 규칙과 맞는 항목이 아직 없어요. 맞는 릴리스가 올라오면 자동으로 다운로드돼요.
 show-detail-complete = 완비
 show-detail-open-in-library = 라이브러리에서 열기
 show-detail-feed-finds-nothing = 이 피드에서 찾은 게 없어요
-show-detail-feed-empty-query = { $source }에 “{ $query }”를 검색하지만 결과가 없어서, 새 항목이 규칙에 들어올 수 없어요. 보통 검색어를 줄이면 결과가 나와요. 뺀 단어는 대신 규칙에 남겨 둘 수 있어요.
-show-detail-feed-empty = { $source }에 요청하지만 결과가 없어서, 새 항목이 규칙에 들어올 수 없어요. 보통 검색어를 줄이면 결과가 나와요. 뺀 단어는 대신 규칙에 남겨 둘 수 있어요.
+show-detail-feed-empty-query = { $source }에서 “{ $query }”를 검색하지만 결과가 없어서, 새 항목이 규칙과 맞을 수 없어요. 보통 검색어를 줄이면 결과가 나와요. 뺀 단어는 대신 규칙에 남겨 둘 수 있어요.
+show-detail-feed-empty = { $source }에서 검색하지만 결과가 없어서, 새 항목이 규칙과 맞을 수 없어요. 보통 검색어를 줄이면 결과가 나와요. 뺀 단어는 대신 규칙에 남겨 둘 수 있어요.
 show-detail-feed-empty-earlier = qBittorrent에는 이 피드의 이전 버전이 찾은 항목이 아직 보여요.
 show-detail-repairing = 복구 중
 show-detail-repair = 복구
@@ -1025,9 +1026,9 @@ show-detail-torrents-moving =
     { $count ->
        *[other] { $count }개 다운로드 중. 진행에 따라 막대가 채워져요.
     }
-show-detail-torrents-held = 이 폴더에 대해 클라이언트가 가진 항목이에요.
+show-detail-torrents-held = 클라이언트에 있는 이 폴더의 토렌트예요.
 show-detail-torrents-waiting = 규칙이 가져온 항목을 qBittorrent가 추가하기를 기다리는 중이에요.
-show-detail-torrents-none = 이 폴더에 대해 클라이언트가 가진 항목이 없어요.
+show-detail-torrents-none = 클라이언트에 이 폴더의 토렌트가 없어요.
 
 ## SeriesPage.qml
 
@@ -1065,7 +1066,7 @@ series-delete-move-picked =
        *[file] 파일 { $count }개를 휴지통으로 이동
     }
 series-delete-click = 삭제할 파일을 클릭하세요.
-series-delete-where = 휴지통으로 가니 되살릴 수 있어요. 시청 기록은 그대로 남아요.
+series-delete-where = 휴지통으로 옮겨지니 되살릴 수 있어요. 시청 기록은 그대로 남아요.
 series-delete-move = 휴지통으로 이동
 series-pick-none = 선택 해제
 series-pick-all = 모두 선택
@@ -1076,8 +1077,8 @@ series-score-not-saved = 점수를 저장하지 못했어요.
 series-still-downloading-plays = { $episode }은(는) 아직 다운로드 중이에요. 다운로드가 끝나면 재생돼요.
 series-open-downloads = 다운로드 열기
 series-format-series = 시리즈
-series-tracker-refused = { $tracker }이(가) 받지 않았어요
-series-tracker-refused-why = { $tracker }이(가) 받지 않았어요: { $why }
+series-tracker-refused = { $tracker }이(가) 업데이트를 거부했어요
+series-tracker-refused-why = { $tracker }이(가) 업데이트를 거부했어요: { $why }
 series-tracker-check-accounts = { $list }. 설정의 계정에서 연결을 확인하세요.
 series-watched-up-to = { $episode }까지 시청함
 series-unwatched-from = { $episode }부터 시청 안 함
@@ -1219,11 +1220,11 @@ get-show-go-replace-subscribe =
 get-show-subscribe = 새 에피소드 구독
 get-show-nothing-new = 새로 받을 항목 없음
 get-show-pick-episode = 에피소드 선택
-get-show-replace-off = 꺼짐. 라이브러리에 이미 있어서 { $episodes } 선택은 제외했어요. 켜면 교체해요.
-get-show-replace-on = 새 파일이 다 받아지면 { $episodes }의 기존 파일은 휴지통으로 가요.
+get-show-replace-off = 꺼짐. { $episodes }의 선택한 파일은 이미 라이브러리에 있어서 건너뛰어요. 켜면 교체해요.
+get-show-replace-on = 새 다운로드가 끝나면 { $episodes }의 기존 파일은 휴지통으로 옮겨져요.
 get-show-replace-on-the-way =
     { $count ->
-       *[other] { $episodes }을(를) 지금 다운로드 중이에요: 그 다운로드는 취소되고 받은 부분은 휴지통으로 가요.
+       *[other] { $episodes }을(를) 지금 다운로드 중이에요: 그 다운로드는 취소되고 받은 부분 파일은 휴지통으로 옮겨져요.
     }
 get-show-kind-on-demand = 검색할 때 시작
 get-show-kind-rss-search = RSS 검색
@@ -1297,7 +1298,7 @@ get-show-plan-line = { $source }의 { $groups }에서 { $episodes }.
 get-show-and = { $first }, { $second }
 get-show-library-has =
     { $count ->
-       *[other] 라이브러리에 { $episodes }이(가) 있어요. 바꾸려면 아래의 기존 에피소드 교체를 켜세요.
+       *[other] 라이브러리에 이미 { $episodes }이(가) 있어요. 바꾸려면 아래의 기존 에피소드 교체를 켜세요.
     }
 get-show-together = 합계
 get-show-torrents-unit =
@@ -1308,18 +1309,18 @@ get-show-replace = 기존 에피소드 교체
 get-show-sequential = 순서대로 다운로드
 get-show-sequential-on = 켜짐: 새 토렌트마다 조각을 처음부터 받아서 앞 에피소드가 먼저 끝나고, 나머지를 받는 동안 볼 수 있어요. 전체적으로는 조금 느려요.
 get-show-sequential-off = 꺼짐: 클라이언트가 스웜이 주는 순서대로 조각을 받아요.
-get-show-rolling = 다음 몇 화 미리 받기
-get-show-rolling-on = 켜짐: 지금 { $count }화를 받고, 한 화를 다 볼 때마다 다음 화를 시작해요.
-get-show-rolling-on-delete = 켜짐: 지금 { $count }화를 받고, 한 화를 다 볼 때마다 다음 화를 시작해요. 본 에피소드는 디스크에서 지워져요.
+get-show-rolling = 미리 받기
+get-show-rolling-on = 켜짐: 지금 { $count }화를 다운로드하고, 한 화를 다 보면 다음 화를 시작해요.
+get-show-rolling-on-delete = 켜짐: 지금 { $count }화를 다운로드하고, 한 화를 다 보면 다음 화를 시작해요. 본 에피소드는 자동으로 삭제돼요.
 get-show-rolling-off = 꺼짐: 선택한 에피소드를 한꺼번에 다운로드해요.
-get-show-follow-off = 꺼짐: 새 에피소드는 여기에 빈칸으로 보이고, 저절로 다운로드되지 않아요.
+get-show-follow-off = 꺼짐: 새 에피소드는 여기에 빈칸으로 표시되고, 자동으로 다운로드되지 않아요.
 get-show-follow-no-feed = { $source }에는 구독할 피드가 없어서 새 에피소드가 자동으로 다운로드되지 않아요.
 get-show-follow-pick-group = 먼저 그룹을 고르세요: 구독은 그룹 하나와 화질 하나를 따라가요.
-get-show-follow-batch-only = 여기서 { $group }은(는) 일괄만 있어서 구독할 개별 에피소드 피드가 없어요.
-get-show-follow-on = 켜짐: { $source }의 { $feed } 피드. 새 에피소드가 올라오는 대로 다운로드해요.
+get-show-follow-batch-only = 여기서 { $group }에는 일괄 릴리스만 있어서 구독할 개별 에피소드 피드가 없어요.
+get-show-follow-on = 켜짐: { $source }의 { $feed } 피드. 새 에피소드가 올라오는 대로 자동으로 다운로드돼요.
 get-show-confirm =
     { $count ->
-       *[other] { $episodes }을(를) 지금 다운로드 중이에요. 교체하면 그 다운로드가 취소되고 받은 부분은 휴지통으로 가요.
+       *[other] { $episodes }을(를) 지금 다운로드 중이에요. 교체하면 그 다운로드가 취소되고 받은 부분 파일은 휴지통으로 옮겨져요.
     }
 get-show-confirm-go = 취소하고 교체
 get-show-state-error = 오류
@@ -1344,7 +1345,7 @@ get-show-stopping = 중지 중
 get-show-starting = 시작 중
 get-show-stop = 중지
 get-show-start-tip = 다운로드 다시 시작
-get-show-stop-tip = 다운로드 중지. 받은 부분은 남아요
+get-show-stop-tip = 다운로드 중지. 받은 데이터는 남아요
 get-show-cancelling = 취소 중
 get-show-cancel-tip = 이 다운로드를 취소하고 받은 부분은 휴지통으로 옮겨요
 get-show-episode-order = 에피소드 순서대로 다운로드
@@ -1388,7 +1389,7 @@ torrent-row-seeders =
     { $count ->
        *[other] 시더 { $count }
     }
-torrent-row-rolling = 순환, { $total }화 중 { $next }~{ $through }화
+torrent-row-rolling = 미리 받기, { $total }화 중 { $next }~{ $through }화
 torrent-row-stop = 중지
 
 ## SourceRow
@@ -1415,7 +1416,7 @@ start-source-starting = 시작 중
 search-progress-why-helper = Anibeam이 검색 도우미를 시작하는 중이에요. 1~2초 걸려요.
 search-progress-why-starting = { $endpoint }은(는) 검색할 때 시작하는 도우미를 거쳐요. 첫 검색은 최대 { $seconds }초 기다리고, 그다음부터는 바로 해요.
 search-progress-why-reading = 릴리스를 그룹별로 나누고 라이브러리와 비교하는 중이에요.
-search-progress-why-ondemand = 새 검색마다 도우미가 { $endpoint }을(를) 새로 읽어요. 보통 10~20초 걸려요.
+search-progress-why-ondemand = 새 검색마다 도우미가 { $endpoint }을(를) 새로 조회해요. 보통 10~20초 걸려요.
 search-progress-why-slow = 지금 { $endpoint }의 응답이 느려요.
 search-progress-why-usual = 보통 1~2초 걸려요.
 search-progress-why-and-slow = { $why } 평소보다 오래 걸리고 있어요. 취소하고 다른 소스를 써 보세요.
@@ -1473,12 +1474,12 @@ downloads-delete-finished-heading =
     { $count ->
        *[other] 완결 작품 { $count }개를 삭제할까요? ({ $size })
     }
-downloads-delete-finished-base = { $titles }. 제공처에서 완결로 표시했고 모든 에피소드를 시청한 작품만 해당돼요. 아직 방영 중이거나 종영 여부가 추정인 작품은 남아요. 번외를 포함해 모든 파일이 휴지통으로 가요. 토렌트도 { $client }에서 빠지므로 다시 다운로드할 수 있어요.
+downloads-delete-finished-base = { $titles }. 완결로 표시됐고 모든 에피소드를 시청한 작품만 해당돼요. 방영 중이거나 확인되지 않은 작품은 남아요. 번외를 포함해 모든 파일이 휴지통으로 옮겨지고, 토렌트는 { $client }에서 제거되므로 다시 다운로드할 수 있어요.
 downloads-delete-watched-heading =
     { $count ->
        *[other] 시청한 에피소드 { $count }개를 삭제할까요? ({ $size })
     }
-downloads-delete-watched-base = 모든 작품에서 시청한 모든 에피소드가 대상이에요. 아직 안 본 에피소드와 번외는 남아요. 파일과 자막은 휴지통으로 가니 거기서 되살릴 수 있어요. 토렌트도 { $client }에서 빠지므로 다시 다운로드할 수 있어요.
+downloads-delete-watched-base = 모든 작품에서 시청한 모든 에피소드예요. 안 본 에피소드와 번외는 남아요. 파일과 자막은 휴지통으로 옮겨지니 되살릴 수 있어요. 토렌트는 { $client }에서 제거되므로 다시 다운로드할 수 있어요.
 downloads-move-to-trash = 휴지통으로 이동
 downloads-remove-group-torrents =
     { $count ->
@@ -1501,9 +1502,9 @@ downloads-error-unknown = 문제가 생겼어요. 다시 시도하세요.
 downloads-search-all-off = 모든 소스가 꺼져 있어요. 검색하려면 하나를 켜세요.
 downloads-turn-on = { $name } 켜기
 downloads-search-no-sources = 아직 검색할 소스가 없어요. 설정의 다운로드에서 소스 목록을 추가하세요.
-downloads-no-sources = 아직 검색할 소스가 없습니다
+downloads-no-sources = 아직 검색할 소스가 없어요
 downloads-search-none-started = 검색을 시작할 수 있는 소스가 없어요. 잠시 후 다시 시도하세요.
-downloads-auto-resolution = 제공되는 가장 선명한 { $resolution }(으)로 좁혔어요
+downloads-auto-resolution = 가장 높은 화질인 { $resolution }(으)로 좁혔어요
 downloads-search-one-failed = { $name } 검색이 실패했어요. 다시 시도하거나 다른 소스를 검색하세요.
 downloads-search-all-failed = 검색할 수 있는 소스가 없었어요. 잠시 후 다시 시도하세요.
 downloads-narrowing-on = { $name }에서 좁히는 중
@@ -1513,7 +1514,7 @@ downloads-refine-empty = 좁힐 단어를 입력하세요.
 downloads-refine-no-change = 바뀌는 게 없어요.
 downloads-movie-tick-one = 릴리스 하나를 선택한 뒤 영화로 다운로드를 누르세요.
 downloads-group-downloading = 다운로드 중
-downloads-group-downloading-line = 진행 중. 자세한 내용은 오른쪽 활동에 있어요.
+downloads-group-downloading-line = 진행 중. 자세한 내용은 오른쪽 활동을 보세요.
 downloads-group-seeding = 시딩 중
 downloads-group-seeding-line = 다운로드했고 아직 공유 중이에요.
 downloads-group-done = 완료
@@ -1565,16 +1566,16 @@ downloads-files-torrents = 토렌트가 받은 파일
 downloads-files-torrents-remote = 토렌트가 받은 파일, { $client }이(가) 삭제
 downloads-files-folder-and = { $folder }와(과) { $torrents }
 downloads-unsubscribe-heading = { $title } 구독을 해지할까요?
-downloads-unsubscribe-base = 피드와 다운로드 규칙이 { $client }에서 빠지므로 새 항목이 오지 않아요.
+downloads-unsubscribe-base = 피드와 다운로드 규칙이 { $client }에서 제거되므로 새 에피소드가 다운로드되지 않아요.
 downloads-unsubscribe-complete-heading = 완비된 작품 { $count }개의 구독을 모두 해지할까요?
-downloads-unsubscribe-complete-base = 피드와 다운로드 규칙이 { $client }에서 빠져요. 모든 에피소드가 라이브러리에 있어요.
+downloads-unsubscribe-complete-base = 피드와 다운로드 규칙이 { $client }에서 제거돼요. 모든 에피소드가 이미 라이브러리에 있어요.
 downloads-files-folders-and-torrents = 폴더와 토렌트가 받은 파일
 downloads-one-at-a-time = 하나씩 처리되고, 진행되는 대로 페이지에 표시돼요.
 downloads-subscription-stays = { $base } 구독은 유지돼요.
 downloads-cancel-heading = { $title }을(를) 취소할까요?
 downloads-cancel-group-base =
     { $count ->
-       *[other] 다운로드 { $count }개가 멈추고 { $client }에서 빠져요.
+       *[other] 다운로드 { $count }개가 멈추고 { $client }에서 제거돼요.
     }
 downloads-files-so-far-it = 지금까지 받은 파일
 downloads-files-so-far-they = 지금까지 받은 파일
@@ -1583,14 +1584,14 @@ downloads-keep-downloading = 계속 다운로드
 downloads-remove-heading = { $title }을(를) 제거할까요?
 downloads-remove-group-base =
     { $count ->
-       *[other] 토렌트 { $count }개가 { $client }에서 빠져요. 아래를 선택하지 않으면 파일은 남아요.
+       *[other] 토렌트 { $count }개가 { $client }에서 제거돼요. 아래를 선택하지 않으면 파일은 남아요.
     }
 downloads-remove-detail-base =
     { $count ->
-       *[other] 토렌트 { $count }개가 { $client }에서 빠져요. 아래를 선택하지 않으면 파일은 남아요.
+       *[other] 토렌트 { $count }개가 { $client }에서 제거돼요. 아래를 선택하지 않으면 파일은 남아요.
     }
 downloads-remove-broken-heading = 파일이 없는 작품 { $count }개의 토렌트를 모두 제거할까요?
-downloads-remove-broken-base = 토렌트 { $count }개가 { $client }에서 빠져요. 없는 폴더를 가리키므로 파일은 건드리지 않고, 구독은 유지돼요.
+downloads-remove-broken-base = 토렌트 { $count }개가 { $client }에서 제거돼요. 폴더가 없으므로 파일은 건드리지 않고, 구독은 유지돼요.
 downloads-remove-torrent-heading = 이 토렌트를 제거할까요?
 downloads-files-it-downloaded = 받은 파일
 downloads-cancel-torrent-heading = 이 다운로드를 취소할까요?
@@ -1598,7 +1599,7 @@ downloads-cancel-many-heading =
     { $count ->
        *[other] 다운로드 { $count }개를 취소할까요?
     }
-downloads-cancel-many-base = 이 작품의 모든 다운로드가 멈추고 { $client }에서 빠져요.
+downloads-cancel-many-base = 이 작품의 모든 다운로드가 멈추고 { $client }에서 제거돼요.
 downloads-cancel-all = 모두 취소
 downloads-summary-connecting = 연결 중.
 downloads-summary-client-on = { $client } { $version } 연결됨.
@@ -1635,15 +1636,15 @@ downloads-activity-hide = 활동 숨기기
 downloads-activity = 활동
 downloads-moving =
     { $count ->
-       *[other] 다운로드 { $count }개 진행 중
+       *[other] 진행 중인 다운로드 { $count }개
     }
 downloads-back = 다운로드로 돌아가기
 downloads-chip-search-ready = 검색 준비됨
 downloads-chip-search-starting = 검색 시작 중
 downloads-chip-search-off = 검색 꺼짐
-downloads-chip-answers-at = { $summary } 주소: { $url }.
-downloads-chip-helper-missing = 검색 도우미가 설치되지 않았어요. 클릭하면 추가 방법이 있는 다운로드 설정이 열려요
-downloads-chip-helper-failed = 검색 도우미가 멈췄어요. 다시 연결하면 다시 시작해요. 무엇이 잘못됐는지는 다운로드 설정에 있어요
+downloads-chip-answers-at = { $summary } { $url }에서 수신 대기 중.
+downloads-chip-helper-missing = 검색 도우미가 설치되지 않았어요. 클릭하면 설정 방법이 있는 설정, 다운로드가 열려요
+downloads-chip-helper-failed = 검색 도우미가 멈췄어요. 다시 연결을 눌러 다시 시작하거나, 자세한 내용은 설정, 다운로드에서 확인하세요
 downloads-chip-open-settings = 다운로드 설정 열기
 downloads-chip-client-on = { $client } { $version }
 downloads-chip-client-off = { $client } 꺼짐
@@ -1742,7 +1743,7 @@ downloads-tick-missing =
     { $count ->
        *[other] 누락된 에피소드 { $count }개 선택
     }
-    .tip = 라이브러리에 없는 에피소드마다 시더가 가장 많은 릴리스를 골라요
+    .tip = 누락된 에피소드마다 시더가 가장 많은 릴리스를 선택해요
 downloads-open-in-library = 라이브러리에서 열기
 downloads-not-this-show = 이 작품이 아님
 downloads-no-releases = 릴리스 없음
@@ -1764,9 +1765,9 @@ downloads-download-ticked =
 downloads-download-shown = 표시된 { $count }개 다운로드
 downloads-download-all = { $count }개 모두 다운로드
 downloads-download-movie = 영화로 다운로드
-    .tip = 선택한 릴리스 하나를 바로 영화 폴더로
+    .tip = 선택한 릴리스 하나를 바로 영화 폴더에 저장해요
 downloads-subscribe = 구독
-downloads-subscribe-body = 이 검색과 일치하는 새 릴리스가 올라오는 대로 여기 지정한 폴더로 다운로드해요.
+downloads-subscribe-body = 이 검색과 맞는 새 릴리스가 여기 지정한 폴더로 자동으로 다운로드돼요.
 downloads-name-placeholder = 첫 릴리스에서 가져옴
 downloads-subscribe-search = 이 검색 구독
 downloads-subscribe-no-feed = 여기에는 구독할 피드가 없어요
@@ -1779,8 +1780,8 @@ downloads-preview-must-not = 포함하면 안 됨: { $terms }
 downloads-helper-changed = 다운로드가 응답하지 않는 도우미로 설정돼 있어요
 downloads-helper-missing = 이 Anibeam에는 다운로드 기능이 없어요
 downloads-helper-failed = 다운로드를 시작하지 못했어요
-downloads-helper-changed-body = 검색과 다운로드는 작은 도우미 프로그램을 거쳐요. 설정이 Anibeam 자체 도우미가 아닌 다른 도우미를 가리키고 있고, 그 도우미가 응답하지 않아요. 되돌리면 저절로 시작해요.
-downloads-helper-missing-body = 검색과 다운로드에 쓰는 도우미 프로그램 없이 빌드됐어요. 릴리스 페이지의 설치 파일에는 들어 있어요. 이 사본에 추가하는 방법은 설정, 다운로드에 있어요.
+downloads-helper-changed-body = 검색과 다운로드는 작은 도우미 프로그램을 거쳐요. 지금 설정이 Anibeam 내장 도우미가 아닌 다른 도우미를 가리키고 있고, 그 도우미가 응답하지 않아요. 되돌리면 Anibeam 도우미가 자동으로 시작돼요.
+downloads-helper-missing-body = 이 빌드에는 검색과 다운로드에 쓰는 도우미 프로그램이 없어요. 릴리스 페이지의 공식 설치 파일에는 들어 있고, 설정 방법은 설정, 다운로드에 있어요.
 downloads-helper-failed-body = 검색과 다운로드에 쓰는 도우미 프로그램이 준비되기 전에 멈췄어요. 대부분 다시 시작하면 해결돼요.
 downloads-helper-use-own = Anibeam 자체 도우미 사용
 downloads-helper-start-again = 다시 시작
@@ -1791,11 +1792,11 @@ downloads-lens-airing-count = 방영 중  { $count }
 downloads-lens-following-count = 구독 중  { $count }
 downloads-lens-downloaded-count = 받은 항목  { $count }
 downloads-lens-gaps = 라이브러리 누락
-downloads-lens-gaps-line = 방영했지만 디스크에 없는 에피소드예요. 작품을 열어 누가 갖고 있는지 확인하세요.
+downloads-lens-gaps-line = 방영했지만 디스크에 없는 에피소드예요. 작품을 열어 검색하세요.
 downloads-lens-gaps-none = 누락 없음: 모든 작품의 방영된 에피소드가 디스크에 있어요.
 downloads-lens-airing-line = 라이브러리에서 앞으로 나올 에피소드가 있는 작품이에요. 하나를 열어 구독하세요.
 downloads-lens-airing-none = 라이브러리에 방영 중인 작품이 없어요
-downloads-lens-airing-none-body = 라이브러리에 있고 앞으로 나올 에피소드가 있는 작품이 여기에 표시돼요. 방영 중에서 방영하는 모든 작품을 볼 수 있어요.
+downloads-lens-airing-none-body = 라이브러리에 있고 앞으로 나올 에피소드가 있는 작품이 여기에 표시돼요. 지금 방영 중인 모든 작품은 방영 중에서 볼 수 있어요.
 downloads-airing-now = 방영 중
 downloads-lens-following = 구독 중
 downloads-card-next =
@@ -1837,7 +1838,7 @@ downloads-on-disk-line = 라이브러리에 있지만 { $client }에 토렌트�
 downloads-nothing-downloaded = 받은 항목 없음
 downloads-nothing-downloaded-body = 다운로드하거나 구독한 항목이 작품별로 여기에 표시돼요.
 downloads-client-off-title = { $client }이(가) 연결되지 않았어요
-downloads-client-off-body = 실행 중인지 확인한 뒤 다시 연결하세요. 주소와 비밀번호는 설정의 다운로드에 있어요.
+downloads-client-off-body = 실행 중인지 확인한 뒤 다시 연결하세요. 주소와 비밀번호는 설정의 다운로드에서 확인할 수 있어요.
 downloads-connect-again = 다시 연결
 downloads-view-grid = 격자
 downloads-view-list = 목록
@@ -1867,7 +1868,7 @@ track-picker-off = 끔
 roll-controls-window = { $ahead }화 미리 받기: { $total }화 중 { $next }~{ $through }화
 roll-controls-window-watched = { $ahead }화 미리 받기: { $total }화 중 { $next }~{ $through }화, { $watched }화 시청
 roll-controls-more = { $count }화 더 받기
-roll-controls-more-tip = 다음 에피소드를 지금 다운로드해요. 따라잡으면 Anibeam이 다시 다음 몇 화를 미리 받아 둬요.
+roll-controls-more-tip = 다음 에피소드를 지금 다운로드해요. 따라잡으면 미리 받기가 다시 시작돼요.
 roll-controls-fewer-tip = 미리 받을 화수 하나 줄이기
 roll-controls-ahead = { $count }화 앞
 roll-controls-further-tip = 미리 받을 화수 하나 늘리기
@@ -1970,7 +1971,7 @@ endpoint-repos-panel-fields-changed = 필드가 바뀌었어요.
 endpoint-repos-panel-needs-fields = 검색하려면 { $fields }이(가) 필요해요.
 endpoint-repos-panel-no-longer-offered = 소스 목록에서 더 이상 제공하지 않아요.
 endpoint-repos-panel-update-requests-to = 업데이트하면 { $host }에 요청을 보내요.
-endpoint-repos-panel-unreadable = 이 목록을 읽지 못했어요. 목록 새로고침으로 다시 시도해요.
+endpoint-repos-panel-unreadable = 이 소스 목록을 읽지 못했어요. 목록 새로고침을 눌러 다시 시도하세요.
 endpoint-repos-panel-checking = 확인 중
 endpoint-repos-panel-add = 추가
 endpoint-repos-panel-fingerprint = 키 지문  { $fingerprint }
@@ -1997,10 +1998,10 @@ source-attach-added = { $count ->
     [one] { $name } 추가됨: 소스 { $count }개 켜짐.
    *[other] { $name } 추가됨: 소스 { $count }개 켜짐.
 }
-source-attach-added-none = { $name } 추가됨. 새로 켤 소스가 없습니다.
+source-attach-added-none = { $name } 추가됨. 새로 켤 소스가 없어요.
 source-attach-waiting = { $count ->
-    [one] { $names }에는 먼저 값이 필요합니다.
-   *[other] { $names }에는 먼저 값이 필요합니다.
+    [one] { $names }에는 먼저 값이 필요해요.
+   *[other] { $names }에는 먼저 값이 필요해요.
 }
 source-attach-fill-in = 입력
 
@@ -2019,7 +2020,7 @@ schedule-tile-last = 마지막
 schedule-tile-out = 공개
 schedule-ends-at = { $number }화에서 완결
 schedule-dated-by-site = { $count }화는 { $site } 날짜
-schedule-dated-by-record = { $count }화는 기록상 날짜
+schedule-dated-by-record = { $count }화는 작품 정보 날짜
 schedule-set-by-you = { $count }화는 직접 지정
 schedule-guessed-weekly = { $count }화는 매주로 추정
 schedule-nothing-set = 지정한 것 없음
@@ -2067,9 +2068,7 @@ show-rate-it = 평가하기
 show-anilist-score = AniList { $score }
 show-forecast = 나와 { $percent }% 일치
 show-because-you-watched = 이 작품을 봤기 때문에
-show-hidden-loved = { $count ->
-   *[other] 좋아하는 숨은 태그 { $count }개 덕분이에요
-}
+show-hidden-loved = 좋아하는 편인 숨은 태그 { $count }개와 맞아요
 show-you-gave-it = 내가 준 점수 { $score }
 show-story = 줄거리
 show-genres-tags = 장르와 태그
@@ -2088,7 +2087,7 @@ connect-finish-in-browser = 브라우저에서 마무리하세요
 connect-signed-in-anilist = { $account } 계정으로 로그인했어요. 목록은 시청 중 페이지에 있어요.
 connect-signed-in-mal = { $account } 계정으로 로그인했어요. 보는 대로 에피소드가 거기에 기록돼요.
 connect-setup-lead = { $name }은(는) 직접 만든 앱을 통해 Anibeam에 로그인해요. 한 번만, 1분 정도 걸려요.
-connect-page-open = 브라우저에 { $name } 로그인 페이지가 열렸어요. 거기서 Anibeam을 승인하면 이 창은 저절로 닫혀요.
+connect-page-open = 브라우저에 { $name } 로그인 페이지가 열렸어요. 거기서 Anibeam을 승인하면 이 창은 자동으로 닫혀요.
 connect-page-opening = 브라우저에서 { $name } 로그인 페이지를 여는 중이에요.
 connect-open-watching = 시청 중 열기
 connect-done = 완료
@@ -2108,7 +2107,7 @@ connect-step-paste-id-anilist = AniList에서는 Client ID라고 해요: 새 클
 connect-step-paste-id-mal = MyAnimeList에서는 Client ID라고 해요: 새 앱 페이지에 있는 긴 문자열이에요.
 connect-client-id = 클라이언트 ID
 connect-client-secret-web = 클라이언트 시크릿(웹 앱만)
-connect-step-connect-body = 브라우저가 열리고 { $name }이(가) 로그인과 Anibeam 승인을 요청하면, Anibeam이 응답을 받아요.
+connect-step-connect-body = 브라우저가 열리면 { $name }에 로그인하고 Anibeam을 승인하세요.
 
 ## SettingsPage
 
@@ -2153,7 +2152,7 @@ settings-find-title-language =
 settings-find-mode =
     .words = 다크 라이트 시스템 테마 야간 모드
 settings-find-colours-from =
-    .words = 터미널 데스크톱 시스템 테마 소스 kitty 색상
+    .words = 색상 색 컬러 터미널 데스크톱 시스템 테마 소스 kitty colour color
 settings-find-dark-theme =
     .words = 색 구성표 base16 다크 테마
 settings-find-light-theme =
@@ -2199,7 +2198,7 @@ settings-find-styled =
 settings-find-font =
     .words = 글꼴 폰트 서체
 settings-find-text-colour =
-    .words = 색상 글자 색
+    .words = 색상 글자 색 컬러 colour color
 settings-find-outline =
     .words = 윤곽선 테두리 외곽선
 settings-find-background =
@@ -2219,7 +2218,7 @@ settings-find-torrent-client =
 settings-find-search-helper =
     .words = anirss rss 피드 토큰 명령 서버 고급 검색 도우미
 settings-find-next-few =
-    .words = 순환 미리 받기 에피소드 앞 삭제 시청 보관 디스크 공간
+    .words = 미리 받기 롤링 에피소드 앞 삭제 시청 보관 디스크 공간
 settings-find-unsubscribe =
     .words = 정리 피드 완결 구독 해지
 settings-find-last-search =
@@ -2263,10 +2262,10 @@ settings-downloads-title = 다운로드
 settings-downloads-anirss-ready = 실행 중, 버전 { $version }, 주소 { $url }.
 settings-downloads-anirss-starting = 검색 도우미 시작 중.
 settings-downloads-anirss-missing = 검색 도우미가 설치되지 않았어요. Anibeam을 다시 설치하거나 명령에 직접 쓰는 anirss를 지정하세요.
-settings-downloads-anirss-failed = 검색 도우미가 멈췄어요. 다시 시도하면 시작해요. 무슨 말을 남겼는지는 세부 정보에 있어요.
+settings-downloads-anirss-failed = 검색 도우미가 멈췄어요. 다시 시도를 눌러 다시 시작하거나, 세부 정보에서 오류 출력을 확인하세요.
 settings-downloads-anirss-idle = 아직 시작되지 않았어요. 다운로드 페이지에서 처음 검색할 때 시작해요.
 settings-downloads-torrent-trying = { $client } 시도 중.
-settings-downloads-torrent-answered = { $client } { $version } 응답함.
+settings-downloads-torrent-answered = { $client } { $version }에 연결됨.
 settings-downloads-torrent-failed = { $client }에 연결되지 않았어요. 위의 주소와 비밀번호를 확인하고 다시 테스트하세요.
 settings-downloads-torrent-untried = 아직 시도하지 않았어요.
 settings-downloads-password-saved = 이 클라이언트의 비밀번호가 여기에 저장돼 있어요.
@@ -2275,7 +2274,7 @@ settings-downloads-password-none = 저장된 비밀번호가 없어요. 이 기�
 settings-downloads-mismatch = 검색 도우미는 { $helperUrl }와(과), Anibeam은 { $url }와(과) 통신해요. 직접 실행하는 검색 도우미는 자체 config.toml에서 주소를 읽으므로, 여기서 클라이언트를 바꿔도 따라오지 않아요.
 settings-downloads-torrent-title = 토렌트 클라이언트
 settings-downloads-which-client = 클라이언트
-settings-downloads-pick-for-me = 자동 선택
+settings-downloads-pick-for-me = 자동
 settings-downloads-my-own = 내 클라이언트
 settings-downloads-built-in = 내장
 settings-downloads-saved-clients = 저장된 클라이언트
@@ -2295,7 +2294,7 @@ settings-downloads-save-to-pick = 다운로드 저장 위치
 settings-downloads-connection = 연결
 settings-downloads-open-config = 설정 파일 열기
 settings-downloads-details = 세부 정보
-settings-downloads-details-torrent = Anibeam이 시도했을 때 { $client }의 응답이에요.
+settings-downloads-details-torrent = { $client }이(가) 반환한 오류예요.
 settings-downloads-test-trying = 시도 중
 settings-downloads-test-save = 저장하고 테스트
 settings-downloads-test = 테스트
@@ -2308,18 +2307,18 @@ settings-downloads-runs-sidecar = Anibeam이 실행
 settings-downloads-runs-remote = 직접 실행
 settings-downloads-command = 명령
 settings-downloads-key = 키
-settings-downloads-details-anirss = 검색 도우미가 멈출 때 남긴 말이에요.
+settings-downloads-details-anirss = 검색 도우미 세부 정보예요.
 settings-downloads-starting = 시작 중
 settings-downloads-reconnect = 다시 연결
 settings-downloads-save-first = 먼저 변경 사항을 저장하세요
-settings-downloads-roll-title = 다음 몇 화 미리 받기
-settings-downloads-roll-big = 긴 작품
+settings-downloads-roll-title = 미리 받기
+settings-downloads-roll-big = 긴 작품은 자동으로 미리 받기
 settings-downloads-roll-ahead = 미리 받을 화수
 settings-downloads-unit-episodes = 화
-settings-downloads-roll-over = 긴 작품 기준
+settings-downloads-roll-over = 이보다 긴 작품 미리 받기
 settings-downloads-roll-watched = 시청한 에피소드
 settings-downloads-keep-all = 모두 보관
-settings-downloads-keep-behind = 뒤에 남길 화수
+settings-downloads-keep-behind = 남겨 둘 시청 에피소드
 settings-downloads-subscriptions-title = 구독과 검색
 settings-downloads-last-search = 마지막 검색 유지
 settings-downloads-prune = 완결 작품 구독 해지
@@ -2354,7 +2353,7 @@ settings-developer-peak = 최대
 settings-developer-heap = 힙
 settings-developer-files-mapped = 매핑된 파일
 settings-developer-threads = 스레드
-settings-developer-give-back = 메모리 반환
+settings-developer-give-back = 메모리 해제
 settings-developer-released = { $before } → { $after }
 settings-developer-free-now = 지금 해제
 settings-developer-images-total = 시작 이후 이미지
@@ -2376,8 +2375,8 @@ settings-developer-load-no-images = { $page }, 이미지 없음
 settings-developer-offscreen-of = { $total }개 중 { $offscreen }개
 settings-developer-loads-empty = 아무 페이지나 열면 여기에 표시돼요.
 settings-developer-load-images-off = { $page }, 이미지 끔
-settings-developer-load-frames = 로드하는 동안 프레임 { $frames }개를 그렸고, 두 프레임 사이 최대 간격은 { $gap }이에요.
-settings-developer-load-frames-timed-out = 로드하는 동안 프레임 { $frames }개를 그렸고, 두 프레임 사이 최대 간격은 { $gap }이에요. 15초 후 이미지 기다리기를 포기했어요.
+settings-developer-load-frames = 로드하는 동안 프레임 { $frames }개를 그렸고, 가장 긴 프레임 간격은 { $gap }이었어요.
+settings-developer-load-frames-timed-out = 로드하는 동안 프레임 { $frames }개를 그렸고, 가장 긴 프레임 간격은 { $gap }이었어요. 15초 동안 이미지를 기다리다 시간이 초과됐어요.
 settings-developer-built = 생성
 settings-developer-settled = 안정
 settings-developer-core-data = 코어에서 받은 데이터
@@ -2446,22 +2445,22 @@ key-help-key-ctrl-q = Ctrl+Q
 key-help-play-pause = 재생 또는 일시정지
 key-help-seek-5 = 5초 이동
 key-help-seek-10 = 10초 이동
-key-help-skip = 오프닝이나 엔딩 스킵, 없으면 90초
+key-help-skip = 오프닝이나 엔딩 스킵, 또는 90초 이동
 key-help-frame-step = 한 프레임 뒤로 또는 앞으로
 key-help-speed = 0.25씩 느리게 또는 빠르게
 key-help-normal-speed = 보통 속도
 key-help-volume = 볼륨 5씩 올리기 또는 내리기
 key-help-mute = 음소거
-key-help-subtitles-toggle = 자막 끄기와 다시 켜기
+key-help-subtitles-toggle = 자막 켜기/끄기
 key-help-subtitle-delay = 자막 지연 100ms 빠르게 또는 느리게
 key-help-audio-delay = 오디오 지연 100ms 빠르게 또는 느리게
 key-help-hold-speed = 누르는 동안 2배속
 key-help-screenshot = Pictures에 스크린샷 저장
 key-help-episode = 다음 또는 이전 에피소드
 key-help-chapter = 이전 또는 다음 챕터
-key-help-start-end = 처음, 또는 엔딩
+key-help-start-end = 처음이나 엔딩으로 이동
 key-help-fullscreen = 전체 화면
-key-help-escape-player = 열린 것 닫기, 없으면 전체 화면 종료, 없으면 플레이어 나가기
+key-help-escape-player = 열린 것 닫기, 전체 화면 종료, 또는 플레이어 나가기
 key-help-toggle-list = 이 목록 보기 또는 숨기기
 key-help-library-search = 라이브러리와 검색
 key-help-search-page = 이 페이지 검색
@@ -2469,9 +2468,9 @@ key-help-activity = 활동
 key-help-settings = 설정
 key-help-quit = 종료
 key-help-forward = 앞으로
-key-help-escape-app = 열린 것 닫기, 없으면 뒤로
+key-help-escape-app = 열린 것 닫기, 또는 뒤로
 key-help-context-menu = 오른쪽 클릭 메뉴
-key-help-pick-card = 카드 선택, 여러 개에 한꺼번에 적용
+key-help-pick-card = 카드를 선택해 여러 개에 한꺼번에 적용
 key-help-pick-range = 여기까지 모든 카드 선택
 key-help-pick-all = 보이는 모든 카드 선택
 
@@ -2483,7 +2482,7 @@ settings-about-update-ready = { $version } 설치 준비 완료.
 settings-about-update-command = { $version } 출시. 다음 명령으로 업데이트하세요: { $command }
 settings-about-update-progress = { $headline }  ·  { $detail }
 settings-about-update-source = { $version } 출시. 소스로 빌드한 사본이에요: pull 후 다시 빌드하세요.
-settings-about-update-elsewhere = { $version } 출시, 이 컴퓨터용 다운로드는 없어요.
+settings-about-update-elsewhere = { $version } 출시, 이 컴퓨터용 설치 파일은 없어요.
 settings-about-version = 버전
 settings-about-build = Anibeam { $build }
 settings-about-whats-new = 새로운 기능
@@ -2523,7 +2522,7 @@ discord-ask-wants = { $name } 님이 함께하고 싶어 해요
 discord-ask-start-room = 방 만들기
 discord-ask-let-in = 들여보내기
 discord-ask-no = 아니요
-settings-playback-discord-blocked = Discord에서 거절한 사람
+settings-playback-discord-blocked = Discord에서 차단됨
 room-panel-discord = Discord에서
 room-panel-discord-open = 공개
 room-panel-discord-invite = 초대 전용
@@ -2574,7 +2573,7 @@ settings-accounts-days-unit = 일
 settings-phone-title = 휴대전화 앱
 settings-phone-online = 온라인
 settings-phone-offline = 오프라인
-settings-phone-untrusted = 이 컴퓨터에서 받는 것 없음
+settings-phone-untrusted = 이 컴퓨터에 접근 권한 없음
 settings-phone-share = Tailscale로 공유
 settings-phone-stream = 에피소드 스트리밍
 settings-phone-host-service = 호스트 서비스
@@ -2582,7 +2581,7 @@ settings-phone-not-running = 실행 안 됨
 settings-phone-running = 실행 중
 settings-phone-copy-command = 명령 복사
 settings-phone-command-copied = 명령 복사됨
-settings-phone-nobody = 받는 것 없음: Tailscale에 소유자 이름이 없어요
+settings-phone-nobody = 접근 권한 없음: Tailscale이 이 기기의 사용자를 알려 주지 않았어요
 settings-phone-people = 사람
 settings-phone-own-profile = 이 컴퓨터의 프로필
 settings-phone-person-own-devices =
@@ -2612,7 +2611,7 @@ settings-help-report = 문제 신고
 ## SettingsPlaybackTab: subtitles
 
 settings-subtitles-title = 자막
-settings-subtitles-reset-done = 자막이 처음 상태로 돌아갔어요
+settings-subtitles-reset-done = 자막 스타일을 기본값으로 재설정했어요
 settings-subtitles-size-place = 크기와 위치
 settings-subtitles-size = 크기
 settings-subtitles-position = 위치
@@ -2620,7 +2619,7 @@ settings-subtitles-style = 스타일
 settings-subtitles-styled = 스타일 자막
 settings-subtitles-as-made = 원본
 settings-subtitles-size-only = 크기만
-settings-subtitles-mine = 내 설정
+settings-subtitles-mine = 사용자 지정
 settings-subtitles-font = 글꼴
 settings-subtitles-font-invalid = Noto Sans처럼 글꼴 이름을 입력하세요.
 settings-subtitles-bold = 굵게
@@ -2628,11 +2627,11 @@ settings-subtitles-text-colour = 글자 색
 settings-subtitles-colour-invalid = #ffcc00 같은 색을 입력하세요.
 settings-subtitles-outline = 윤곽선
 settings-subtitles-outline-invalid = 너비는 0 이상의 숫자예요.
-settings-subtitles-outline-colour-invalid = #000000처럼 색을 입력하세요.
+settings-subtitles-outline-colour-invalid = #000000 같은 색을 입력하세요.
 settings-subtitles-shadow = 그림자
 settings-subtitles-shadow-invalid = 0 이상의 숫자예요. 0은 그림자 없음.
 settings-subtitles-box = 배경 상자
-settings-subtitles-start-over = 처음 상태로
+settings-subtitles-start-over = 자막 스타일 재설정
 settings-subtitles-reset = 초기화
 
 ## SettingsAboutTab: storage and backup
@@ -2664,7 +2663,7 @@ settings-data-summary-accounts =
     }
 settings-data-summary-fixes =
     { $count ->
-       *[other] 파일 { $count }개에 직접 만든 수정이 적용돼요.
+       *[other] 파일 { $count }개에 저장된 수정을 적용했어요.
     }
 settings-data-summary-unavailable =
     { $count ->
@@ -2784,10 +2783,10 @@ settings-appearance-poster-size = 포스터 크기
 settings-appearance-poster-small = 작게
 settings-appearance-poster-medium = 중간
 settings-appearance-poster-large = 크게
-settings-appearance-out-now = 방영 중의 지금 공개
+settings-appearance-out-now = 방영 중 "지금 공개" 스타일
 settings-appearance-out-now-cards = 카드
 settings-appearance-out-now-list = 목록
-settings-appearance-out-now-grid = 지금 공개 카드
+settings-appearance-out-now-grid = "지금 공개" 격자 크기
 settings-appearance-grid = { $columns } × { $rows }
 settings-appearance-reduce-motion = 움직임 줄이기
 
@@ -2875,7 +2874,7 @@ recommended-no-list-title = 아직 배울 데이터가 없어요
 recommended-never-fitted-title = 작품 순위 매기는 중
 recommended-nothing-left-title = 남은 게 없어요
 recommended-no-scores-body = 추천은 목록의 점수에서 배워요. AniList에서 작품 몇 개에 점수를 주면 여기에 나타나요.
-recommended-no-list-body = 설정에서 AniList를 연결하거나 이 기기에 목록을 두면, 평가한 작품으로 이 페이지가 배워요.
+recommended-no-list-body = 평가에 따른 추천을 받으려면 설정에서 AniList를 연결하거나 이 기기에 로컬 목록을 두세요.
 recommended-never-fitted-body = 첫 순위 매기기는 AniList를 1~2분 동안 읽어요. 백그라운드에서 실행돼요.
 recommended-nothing-left-library-body = 라이브러리에서 맞는 작품은 모두 봤어요. 전체에서 아직 없는 작품을 찾아보세요.
 recommended-nothing-left-body = 목록에서 맞는 작품은 모두 봤어요. 전체에서 목록에 없는 작품을 찾아보세요.
@@ -2982,7 +2981,7 @@ remove-also-torrents =
        *[other] 토렌트 { $count }개도 제거
     }
 remove-torrents-go-with-files = 파일을 삭제하면 토렌트도 함께 제거돼요.
-remove-torrents-files-stay = 클라이언트에서 빠지고, 파일은 남아요.
+remove-torrents-files-stay = 파일은 그대로 두고 클라이언트에서 제거해요.
 remove-also-files = 파일도 삭제
 remove-files-default-where = 토렌트가 받은 파일
 remove-files-detail-rule = { $where }을(를) 휴지통으로 옮기고 토렌트를 제거해요.
@@ -3014,7 +3013,7 @@ recommended-hover-anilist-score = AniList { $score }
 recommended-hover-forecast = { $percent }%
 recommended-hover-hidden-tags =
     { $count ->
-       *[other] 좋아하는 숨은 태그 { $count }개
+       *[other] 좋아하는 숨은 태그 { $count }개와 맞아요
     }
 recommended-hover-because = 이 작품을 봤기 때문에
 
@@ -3153,20 +3152,20 @@ problem-torrent-failed = 토렌트 클라이언트가 그 작업을 하지 못�
 problem-downloads-unreachable-next = 실행 중인지, 설정의 다운로드에 있는 주소가 맞는지 확인하세요.
 problem-downloads-unauthorized-next = 설정의 다운로드에서 사용자 이름과 비밀번호를 확인하세요.
 problem-downloads-not-running-next = 설정의 다운로드에서 시작하세요.
-problem-downloads-missing-next = 설정 방법은 설정의 다운로드에 있어요.
+problem-downloads-missing-next = 설정하려면 설정의 다운로드를 여세요.
 problem-trash = { -app-name }이(가) 파일을 휴지통으로 옮기지 못했어요.
 problem-trash-next = 내 파일인지, 디스크가 읽기 전용이 아닌지 확인하세요.
 problem-source-list = 그 소스 목록이 동작하지 않았어요.
 problem-source-list-next = 설정의 다운로드, 소스 목록에서 주소를 확인하세요.
 problem-remote-unreachable = { $name }이(가) 응답하지 않았어요.
 problem-remote-unreachable-next = 사이트가 다운됐을 수 있어요. 나중에 다시 시도하거나 다른 소스를 검색하세요.
-problem-remote-unauthorized = { $name }이(가) 받은 키를 거부했어요.
-problem-remote-unauthorized-next = 설정의 다운로드, 소스 목록에서 키를 바꾸세요.
+problem-remote-unauthorized = { $name }이(가) 키를 거부했어요.
+problem-remote-unauthorized-next = 설정의 다운로드, 소스 목록에서 키를 업데이트하세요.
 problem-remote-failed = { $name }이(가) 그 작업을 하지 못했어요.
 problem-remote-failed-next = 나중에 다시 시도하거나 다른 소스를 검색하세요.
 problem-provider-sign-in = { $name }이(가) { -app-name } 로그인을 거부했어요.
 problem-provider-sign-in-next = 설정의 계정에서 다시 연결하세요.
-problem-provider-turned-away = { $name }이(가) { -app-name }의 요청을 거부했어요.
+problem-provider-turned-away = { $name }이(가) { -app-name }의 접근을 거부했어요.
 problem-provider-busy = 지금 { $name }이(가) 바빠요.
 problem-provider-busy-next = 1분 기다린 뒤 다시 시도하세요.
 problem-provider-no-answer = { $name }이(가) 응답하지 않았어요.
@@ -3174,8 +3173,8 @@ problem-provider-no-answer-next = 인터넷 연결을 확인하고 다시 시도
 problem-provider-trouble = 지금 { $name }에 문제가 있어요.
 problem-provider-trouble-next = 몇 분 뒤 다시 시도하세요.
 problem-provider-rejected = { $name }이(가) 받아들이지 않았어요.
-problem-not-found = { -app-name }이(가) 더 이상 찾을 수 없어요.
-problem-not-found-next = 제거됐을 수 있어요. 다시 시도하면 페이지를 새로 불러와요.
+problem-not-found = { -app-name }이(가) 그 항목을 더 이상 찾을 수 없어요.
+problem-not-found-next = 제거됐을 수 있어요. 페이지를 다시 불러와 보세요.
 problem-invalid-next = 확인하고 다시 시도하세요.
 problem-unavailable = 지금은 그 폴더에 접근할 수 없어요.
 problem-unavailable-next = 드라이브를 연결하거나 설정의 라이브러리에서 폴더를 확인하세요.
@@ -3262,10 +3261,10 @@ shell-update-gone = { -app-name } { $version }은(는) 더 이상 제공되지 �
 
 onboarding-step-together = 함께 보기
 onboarding-title-together = 친구와 함께 보기
-onboarding-body-together = 플레이어에서 방을 만들고 코드를 보내세요. 각자 자기 파일로 에피소드를 재생하고, 재생, 일시정지, 탐색은 모두에게 똑같이 맞춰져요.
+onboarding-body-together = 플레이어에서 방을 만들고 코드를 공유하세요. 각자 자기 파일로 에피소드를 재생하고, 재생, 일시정지, 탐색은 모두에게 맞춰져요.
 onboarding-ready-together = 함께 보기
-onboarding-ready-together-as = 방에서 { $name }(으)로 보여요.
-onboarding-ready-together-none = 아직 이름이 없어요. 처음 쓸 때 방 패널에서 물어봐요.
+onboarding-ready-together-as = { $name }(으)로 표시돼요.
+onboarding-ready-together-none = 아직 이름이 없어요. 처음 방에 참여하거나 방을 만들 때 물어봐요.
 onboarding-together-you = 나
 onboarding-together-code = 방 코드
 onboarding-together-episode = Frieren · 3화
@@ -3285,11 +3284,11 @@ room-name-bad = 쓸 수 없는 이름이에요. 1~32자로 정하세요.
 room-error-not-found = 그 코드의 방이 없어요. 보낸 사람에게 확인하세요. 방이 닫혔을 수 있어요.
 room-error-full = 방이 꽉 찼어요. 방에는 10명까지 들어갈 수 있어요.
 room-error-unreachable = 방 서버에 연결하지 못했어요. 연결을 확인하고 다시 시도하세요.
-room-error-refused = 방 서버가 거부했어요. 잠시 후 다시 시도하세요.
-room-error-proto = 그 방은 더 새로운 버전의 방을 써요. 참여하려면 { -app-name }을(를) 업데이트하세요.
+room-error-refused = 방 서버가 요청을 거부했어요. 잠시 후 다시 시도하세요.
+room-error-proto = 그 방은 더 새로운 버전의 함께 보기를 써요. 참여하려면 { -app-name }을(를) 업데이트하세요.
 room-error-not-in-room = 더 이상 그 방에 있지 않아요. 방을 다시 만들거나 참여하세요.
 room-error-bad-code = 방 코드는 K7QM2X처럼 영문자와 숫자 6자예요.
-room-error-bad-relay = 설정, 재생의 방 서버가 웹 주소가 아니에요. 거기서 고친 뒤 다시 시도하세요.
+room-error-bad-relay = 설정, 재생의 방 서버가 올바른 웹 주소가 아니에요. 거기서 고친 뒤 다시 시도하세요.
 room-error-cannot-fetch = 호스트가 지금은 이 에피소드를 공유할 수 없어요. 호스트가 방에 돌아오면 다시 시도하세요.
 room-error-needs-episode = 그 방 서버는 방을 만들려면 에피소드가 있어야 해요. 플레이어에서 만들어 주세요.
 room-panel-title = 함께 보기
@@ -3304,7 +3303,7 @@ room-panel-start = 방 만들기
 room-panel-or-join = 또는 코드로 참여
 room-panel-join-label = 방 코드
 room-panel-join = 참여
-room-panel-you-are = { $name }(으)로 보여요
+room-panel-you-are = { $name }(으)로 표시 중
 room-panel-change-name = 변경
 room-panel-code-label = 방 코드
 room-panel-copy = 링크 복사
@@ -3333,7 +3332,7 @@ room-panel-searching = 찾는 중
 room-panel-failed = 받지 못했어요
 room-panel-percent = { $percent }%
 room-panel-left = { $time } 남음
-room-panel-nothing-picked = 아직 고른 것이 없어요
+room-panel-nothing-picked = 아직 선택한 것이 없어요
 room-panel-this-episode = 이 에피소드
 room-panel-whole-show = 시리즈 전체
 # The host's ready gate (#922): how many in the room have the episode open
