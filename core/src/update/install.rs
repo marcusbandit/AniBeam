@@ -195,10 +195,10 @@ fn win_arch(arch: &str) -> &str {
     }
 }
 
-/// pacman's name for the package that owns `exe`, when pacman is there and owns it.
-/// Where the apt and dnf repos on anibeam.app are set up; a package installed from a file
-/// without them has no source that brings updates.
+/// Where the apt repo on anibeam.app is set up; a package installed from a file without it
+/// has no source that brings updates.
 const APT_SOURCE: &str = "/etc/apt/sources.list.d/anibeam.sources";
+/// The same for the dnf repo.
 const DNF_REPO: &str = "/etc/yum.repos.d/anibeam.repo";
 
 /// The package manager that owns `exe`, and its name for the package. A system has one of
@@ -302,15 +302,9 @@ pub async fn fetch(
         )
     })?;
     let _ = tokio::fs::remove_dir_all(work).await;
-    tokio::fs::create_dir_all(work).await.map_err(|e| {
-        tr(
-            "core-update-cannot-make",
-            &[
-                ("path", work.display().to_string().into()),
-                ("error", e.to_string().into()),
-            ],
-        )
-    })?;
+    tokio::fs::create_dir_all(work)
+        .await
+        .map_err(|e| failed_at("core-update-cannot-make", work, e))?;
     match install {
         Install::AppImage { path } => {
             let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
@@ -322,24 +316,13 @@ pub async fn fetch(
                 use std::os::unix::fs::PermissionsExt;
                 tokio::fs::set_permissions(&next, std::fs::Permissions::from_mode(0o755))
                     .await
-                    .map_err(|e| {
-                        tr(
-                            "core-update-cannot-mark",
-                            &[("error", e.to_string().into())],
-                        )
-                    })?;
+                    .map_err(|e| failed("core-update-cannot-mark", e))?;
             }
             // The running copy is mounted from the old file's inode, which the rename
             // leaves alone until the app ends.
-            tokio::fs::rename(&next, path).await.map_err(|e| {
-                tr(
-                    "core-update-cannot-replace",
-                    &[
-                        ("path", path.display().to_string().into()),
-                        ("error", e.to_string().into()),
-                    ],
-                )
-            })?;
+            tokio::fs::rename(&next, path)
+                .await
+                .map_err(|e| failed_at("core-update-cannot-replace", path, e))?;
             Ok(Prepared::AppImage { path: path.clone() })
         }
         Install::MacApp { bundle } => {
@@ -387,30 +370,20 @@ async fn download(
         .connect_timeout(Duration::from_secs(20))
         .read_timeout(Duration::from_secs(60))
         .build()
-        .map_err(|e| {
-            tr(
-                "core-update-cannot-start",
-                &[("error", e.to_string().into())],
-            )
-        })?;
+        .map_err(|e| failed("core-update-cannot-start", e))?;
     let mut res = client
         .get(&asset.url)
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| {
-            tr(
-                "core-update-did-not-start",
-                &[("error", e.to_string().into())],
-            )
-        })?;
+        .map_err(|e| failed("core-update-did-not-start", e))?;
     let total = res.content_length().unwrap_or(asset.size);
     let mut part = to.as_os_str().to_owned();
     part.push(".part");
     let part = PathBuf::from(part);
     let mut file = tokio::fs::File::create(&part)
         .await
-        .map_err(|e| cannot_write(&part, e))?;
+        .map_err(|e| failed_at("core-update-cannot-write", &part, e))?;
     let mut hash = Sha256::new();
     let mut got = 0u64;
     let mut told = u64::MAX;
@@ -418,14 +391,14 @@ async fn download(
         while let Some(chunk) = res
             .chunk()
             .await
-            .map_err(|e| tr("core-update-stopped", &[("error", e.to_string().into())]))?
+            .map_err(|e| failed("core-update-stopped", e))?
         {
             if cancel.load(Ordering::SeqCst) {
                 return Err(tr("core-update-cancelled", &[]));
             }
             file.write_all(&chunk)
                 .await
-                .map_err(|e| cannot_write(&part, e))?;
+                .map_err(|e| failed_at("core-update-cannot-write", &part, e))?;
             hash.update(&chunk);
             got += chunk.len() as u64;
             // Once a percent, not once a chunk
@@ -435,7 +408,9 @@ async fn download(
                 progress(got, total);
             }
         }
-        file.flush().await.map_err(|e| cannot_write(&part, e))?;
+        file.flush()
+            .await
+            .map_err(|e| failed_at("core-update-cannot-write", &part, e))?;
         if got != asset.size {
             return Err(tr(
                 "core-update-ended-early",
@@ -463,19 +438,22 @@ async fn download(
         let _ = tokio::fs::remove_file(&part).await;
         return Err(e);
     }
-    tokio::fs::rename(&part, to).await.map_err(|e| {
-        tr(
-            "core-update-cannot-move",
-            &[("error", e.to_string().into())],
-        )
-    })
+    tokio::fs::rename(&part, to)
+        .await
+        .map_err(|e| failed("core-update-cannot-move", e))
 }
 
-fn cannot_write(part: &Path, e: std::io::Error) -> String {
+/// The sentence `key` names, with what went wrong in it.
+fn failed(key: &str, e: impl std::fmt::Display) -> String {
+    tr(key, &[("error", e.to_string().into())])
+}
+
+/// The same, for something that went wrong at `path`.
+fn failed_at(key: &str, path: &Path, e: impl std::fmt::Display) -> String {
     tr(
-        "core-update-cannot-write",
+        key,
         &[
-            ("path", part.display().to_string().into()),
+            ("path", path.display().to_string().into()),
             ("error", e.to_string().into()),
         ],
     )
@@ -506,14 +484,11 @@ async fn stage_from_dmg(dmg: &Path, mount: &Path, staged: &Path) -> Result<(), S
         .arg(mount)
         .arg(dmg))
     .await
-    .map_err(|e| tr("core-update-cannot-open-dmg", &[("error", e.into())]))?;
+    .map_err(|e| failed("core-update-cannot-open-dmg", e))?;
     let copied = async {
-        let mut entries = tokio::fs::read_dir(mount).await.map_err(|e| {
-            tr(
-                "core-update-cannot-read-dmg",
-                &[("error", e.to_string().into())],
-            )
-        })?;
+        let mut entries = tokio::fs::read_dir(mount)
+            .await
+            .map_err(|e| failed("core-update-cannot-read-dmg", e))?;
         let mut app = None;
         while let Ok(Some(entry)) = entries.next_entry().await {
             if entry.path().extension() == Some("app".as_ref()) {
@@ -525,7 +500,7 @@ async fn stage_from_dmg(dmg: &Path, mount: &Path, staged: &Path) -> Result<(), S
         let _ = tokio::fs::remove_dir_all(staged).await;
         run(Command::new("ditto").arg(&app).arg(staged))
             .await
-            .map_err(|e| tr("core-update-cannot-copy", &[("error", e.into())]))
+            .map_err(|e| failed("core-update-cannot-copy", e))
     }
     .await;
     let _ = run(Command::new("hdiutil")
