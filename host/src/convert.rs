@@ -101,62 +101,43 @@ enum Encoder {
 
 const VAAPI_DEVICE: &str = "/dev/dri/renderD128";
 
+/// Appends each of `more` to `args`.
+fn push(args: &mut Vec<String>, more: &[&str]) {
+    args.extend(more.iter().map(|s| s.to_string()));
+}
+
 impl Encoder {
     fn args(self, height: u32, out: &mut Vec<String>) {
-        let rate = max_rate(height).to_string();
-        let push = |out: &mut Vec<String>, a: &[&str]| out.extend(a.iter().map(|s| s.to_string()));
-        match self {
-            Encoder::Nvenc => {
-                push(
-                    out,
-                    &[
-                        "-c:v",
-                        "h264_nvenc",
-                        "-preset",
-                        "p4",
-                        "-rc",
-                        "vbr",
-                        "-cq",
-                        "23",
-                        "-b:v",
-                        "0",
-                        // A forced keyframe has to be an IDR frame, or NVENC
-                        // does not flag it and no piece starts there.
-                        "-forced-idr",
-                        "1",
-                    ],
-                );
-                push(
-                    out,
-                    &["-maxrate", &rate, "-bufsize", &rate, "-profile:v", "high"],
-                );
-            }
-            Encoder::Vaapi => {
-                push(
-                    out,
-                    &[
-                        "-c:v",
-                        "h264_vaapi",
-                        "-b:v",
-                        &rate,
-                        "-maxrate",
-                        &rate,
-                        "-profile:v",
-                        "high",
-                    ],
-                );
-            }
-            Encoder::X264 => {
-                push(
-                    out,
-                    &["-c:v", "libx264", "-preset", "veryfast", "-crf", "22"],
-                );
-                push(
-                    out,
-                    &["-maxrate", &rate, "-bufsize", &rate, "-profile:v", "high"],
-                );
-            }
-        }
+        let rate = max_rate(height);
+        let codec: &[&str] = match self {
+            Encoder::Nvenc => &[
+                "-c:v",
+                "h264_nvenc",
+                "-preset",
+                "p4",
+                "-rc",
+                "vbr",
+                "-cq",
+                "23",
+                "-b:v",
+                "0",
+                // A forced keyframe has to be an IDR frame, or NVENC does not
+                // flag it and no piece starts there.
+                "-forced-idr",
+                "1",
+                "-maxrate",
+                rate,
+                "-bufsize",
+                rate,
+            ],
+            Encoder::Vaapi => &["-c:v", "h264_vaapi", "-b:v", rate, "-maxrate", rate],
+            Encoder::X264 => &[
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-maxrate", rate,
+                "-bufsize", rate,
+            ],
+        };
+        push(out, codec);
+        push(out, &["-profile:v", "high"]);
     }
 
     /// The end of the picture's filter chain: VAAPI wants the frames on the GPU.
@@ -186,6 +167,32 @@ async fn encoder() -> Option<Encoder> {
         .await
 }
 
+/// ffmpeg's arguments for a tiny test clip from `source` through `enc`, up to
+/// where its output goes.
+fn clip_through(enc: Encoder, source: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    push(
+        &mut args,
+        &["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
+    );
+    if enc == Encoder::Vaapi {
+        push(&mut args, &["-vaapi_device", VAAPI_DEVICE]);
+    }
+    push(
+        &mut args,
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            source,
+            "-vf",
+            &format!("null{}", enc.upload()),
+        ],
+    );
+    enc.args(144, &mut args);
+    args
+}
+
 /// Whether `enc` runs here and cuts a piece at every keyframe it is told to
 /// force. A short clip with a keyframe forced every second goes through the
 /// same HLS muxer the conversions use, and has to come out as more than one
@@ -200,22 +207,10 @@ async fn works(enc: Encoder) -> bool {
     if std::fs::create_dir_all(&dir).is_err() {
         return false;
     }
-    let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    if enc == Encoder::Vaapi {
-        args.extend(["-vaapi_device".into(), VAAPI_DEVICE.into()]);
-    }
-    args.extend(
-        ["-f", "lavfi", "-i", "color=black:s=256x144:r=10:d=2.5"]
-            .iter()
-            .map(|s| s.to_string()),
-    );
-    args.extend(["-vf".into(), format!("null{}", enc.upload())]);
-    enc.args(144, &mut args);
-    args.extend(
-        [
+    let mut args = clip_through(enc, "color=black:s=256x144:r=10:d=2.5");
+    push(
+        &mut args,
+        &[
             "-force_key_frames",
             "expr:gte(t,n_forced*1)",
             "-f",
@@ -224,13 +219,11 @@ async fn works(enc: Encoder) -> bool {
             "1",
             "-hls_list_size",
             "0",
-        ]
-        .iter()
-        .map(|s| s.to_string()),
+            "-hls_segment_filename",
+            &dir.join("p%d.ts").to_string_lossy(),
+            &dir.join("probe.m3u8").to_string_lossy(),
+        ],
     );
-    args.push("-hls_segment_filename".into());
-    args.push(dir.join("p%d.ts").to_string_lossy().into_owned());
-    args.push(dir.join("probe.m3u8").to_string_lossy().into_owned());
     let run = command("ffmpeg")
         .args(&args)
         .stdin(Stdio::null())
@@ -314,8 +307,7 @@ fn read_probe(v: &serde_json::Value) -> wire::Probe {
         bitrate: num(&format["bit_rate"]).unwrap_or(0.0) as u64,
         ..Default::default()
     };
-    let streams = v["streams"].as_array().cloned().unwrap_or_default();
-    for s in &streams {
+    for s in v["streams"].as_array().into_iter().flatten() {
         let codec = s["codec_name"].as_str().unwrap_or_default().to_string();
         let track = || wire::Track {
             codec: codec.clone(),
@@ -371,6 +363,9 @@ struct Run {
     child: Child,
     /// The piece this ffmpeg started at.
     from: u32,
+    /// The last piece of this run counted on disk so far. A piece is never
+    /// taken away while its run lasts, so the next count carries on here.
+    written: u32,
     stopped: bool,
     /// How it ended, once it has.
     ended: Option<bool>,
@@ -456,12 +451,13 @@ impl Converter {
             j.asked = i;
             let file = j.dir.join(format!("seg{i}.ts"));
             if let Ok(bytes) = tokio::fs::read(&file).await {
-                let written = written(&j.dir, j.run.as_ref().map_or(i, |r| r.from)).await;
-                pace(&mut j, written);
+                if let Some(written) = j.written().await {
+                    pace(&mut j, written);
+                }
                 return Some(bytes);
             }
             let from = j.run.as_ref().map(|r| r.from);
-            let written = written(&j.dir, from.unwrap_or(i)).await;
+            let written = j.written().await;
             let alive = j.run.as_mut().is_some_and(Run::alive);
             let covers = from.is_some_and(|f| f <= i);
             if covers && !alive {
@@ -483,7 +479,9 @@ impl Converter {
                 }
                 // This ffmpeg failed, or the file is shorter than its probe
                 // said. Starting it again would only fail again.
-                let said = std::fs::read_to_string(j.dir.join(LOG)).unwrap_or_default();
+                let said = tokio::fs::read_to_string(j.dir.join(LOG))
+                    .await
+                    .unwrap_or_default();
                 let last = said.lines().last().unwrap_or("nothing");
                 tracing::warn!(
                     "conversion of file {} ended before piece {i}; ffmpeg said: {last}",
@@ -491,7 +489,7 @@ impl Converter {
                 );
                 return None;
             }
-            if covers && i <= written + NEAR {
+            if covers && written.is_some_and(|w| i <= w + NEAR) {
                 if let Some(r) = j.run.as_mut() {
                     r.signal(false);
                 }
@@ -503,6 +501,7 @@ impl Converter {
                 j.run = Some(Run {
                     child,
                     from: i,
+                    written: i,
                     stopped: false,
                     ended: None,
                 });
@@ -588,15 +587,15 @@ async fn pacer(job: std::sync::Weak<tokio::sync::Mutex<Job>>, run: u64) {
         if !r.alive() {
             return;
         }
-        let from = r.from;
         if j.used.elapsed() >= IDLE {
             if let Some(r) = j.run.take() {
                 r.kill();
             }
             return;
         }
-        let written = written(&j.dir, from).await;
-        pace(&mut j, written);
+        if let Some(written) = j.written().await {
+            pace(&mut j, written);
+        }
     }
 }
 
@@ -613,16 +612,19 @@ fn pace(j: &mut Job, written: u32) {
     }
 }
 
-/// The last piece on disk, counting up from `from`.
-async fn written(dir: &Path, from: u32) -> u32 {
-    let mut n = from;
-    while tokio::fs::try_exists(dir.join(format!("seg{}.ts", n + 1)))
-        .await
-        .unwrap_or(false)
-    {
-        n += 1;
+impl Job {
+    /// The last piece of this run on disk, counting up from its last count.
+    /// None while no ffmpeg runs, which writes nothing to count.
+    async fn written(&mut self) -> Option<u32> {
+        let r = self.run.as_mut()?;
+        while tokio::fs::try_exists(self.dir.join(format!("seg{}.ts", r.written + 1)))
+            .await
+            .unwrap_or(false)
+        {
+            r.written += 1;
+        }
+        Some(r.written)
     }
-    n
 }
 
 /// One text subtitle track of the file as ASS, read out whole by ffmpeg.
@@ -704,10 +706,12 @@ fn ffmpeg_args(enc: Encoder, key: &Key, source: &Source, dir: &Path, from: u32) 
     let start = f64::from(from) * wire::HLS_PIECE;
     let height = height_for(key.height).min(source.probe.height.unwrap_or(u32::MAX).max(144));
     let mut a: Vec<String> = Vec::new();
-    let mut push = |v: &[&str]| a.extend(v.iter().map(|s| s.to_string()));
-    push(&["-hide_banner", "-loglevel", "error", "-nostdin", "-y"]);
+    push(
+        &mut a,
+        &["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
+    );
     if enc == Encoder::Vaapi {
-        push(&["-vaapi_device", VAAPI_DEVICE]);
+        push(&mut a, &["-vaapi_device", VAAPI_DEVICE]);
     }
     // Each run counts from zero at its first piece and is moved to that
     // piece's place in the episode on the way out, so a piece made by a later
@@ -718,7 +722,7 @@ fn ffmpeg_args(enc: Encoder, key: &Key, source: &Source, dir: &Path, from: u32) 
     } else {
         source.path.to_string_lossy().into_owned()
     };
-    push(&["-ss", &format!("{start:.3}"), "-i", &input]);
+    push(&mut a, &["-ss", &format!("{start:.3}"), "-i", &input]);
     let scale = format!("scale=-2:{height}:flags=bicubic{}", enc.upload());
     let bitmap = key
         .burn
@@ -726,27 +730,33 @@ fn ffmpeg_args(enc: Encoder, key: &Key, source: &Source, dir: &Path, from: u32) 
         .is_some_and(|t| is_bitmap(&t.codec));
     match key.burn {
         Some(b) if bitmap => {
-            push(&[
-                "-filter_complex",
-                &format!("[0:v:0][0:s:{b}]overlay,{scale}[v]"),
-                "-map",
-                "[v]",
-            ]);
+            push(
+                &mut a,
+                &[
+                    "-filter_complex",
+                    &format!("[0:v:0][0:s:{b}]overlay,{scale}[v]"),
+                    "-map",
+                    "[v]",
+                ],
+            );
         }
         Some(b) => {
-            push(&[
-                "-map",
-                "0:v:0",
-                "-vf",
-                // libass reads the subtitles on the file's clock, so the
-                // picture is moved onto it for the drawing and back after.
-                &format!(
-                    "setpts=PTS+{start:.3}/TB,subtitles={}:si={b},setpts=PTS-{start:.3}/TB,{scale}",
-                    input_name(&source.path)
-                ),
-            ]);
+            push(
+                &mut a,
+                &[
+                    "-map",
+                    "0:v:0",
+                    "-vf",
+                    // libass reads the subtitles on the file's clock, so the
+                    // picture is moved onto it for the drawing and back after.
+                    &format!(
+                        "setpts=PTS+{start:.3}/TB,subtitles={}:si={b},setpts=PTS-{start:.3}/TB,{scale}",
+                        input_name(&source.path)
+                    ),
+                ],
+            );
         }
-        None => push(&["-map", "0:v:0", "-vf", &scale]),
+        None => push(&mut a, &["-map", "0:v:0", "-vf", &scale]),
     }
     let audio = key.audio.unwrap_or_else(|| {
         source
@@ -757,44 +767,47 @@ fn ffmpeg_args(enc: Encoder, key: &Key, source: &Source, dir: &Path, from: u32) 
             .unwrap_or(0)
     });
     if !source.probe.audio.is_empty() {
-        push(&[
-            "-map",
-            &format!("0:a:{audio}"),
-            "-c:a",
-            "aac",
-            "-ac",
-            "2",
-            "-b:a",
-            "160k",
-        ]);
+        push(
+            &mut a,
+            &[
+                "-map",
+                &format!("0:a:{audio}"),
+                "-c:a",
+                "aac",
+                "-ac",
+                "2",
+                "-b:a",
+                "160k",
+            ],
+        );
     }
-    push(&["-sn", "-dn"]);
-    let mut enc_args = Vec::new();
-    enc.args(height, &mut enc_args);
-    a.extend(enc_args);
+    push(&mut a, &["-sn", "-dn"]);
+    enc.args(height, &mut a);
     // A keyframe at every piece's start: this run starts at one.
     let gop = format!("expr:gte(t,n_forced*{})", wire::HLS_PIECE);
-    let mut push = |v: &[&str]| a.extend(v.iter().map(|s| s.to_string()));
-    push(&["-force_key_frames", &gop, "-sc_threshold", "0"]);
-    push(&[
-        "-f",
-        "hls",
-        "-hls_time",
-        &wire::HLS_PIECE.to_string(),
-        "-hls_list_size",
-        "0",
-        "-hls_playlist_type",
-        "vod",
-        "-hls_flags",
-        "temp_file+independent_segments",
-        "-start_number",
-        &from.to_string(),
-        "-output_ts_offset",
-        &format!("{start:.3}"),
-        "-hls_segment_filename",
-        &dir.join("seg%d.ts").to_string_lossy(),
-        &dir.join("ffmpeg.m3u8").to_string_lossy(),
-    ]);
+    push(&mut a, &["-force_key_frames", &gop, "-sc_threshold", "0"]);
+    push(
+        &mut a,
+        &[
+            "-f",
+            "hls",
+            "-hls_time",
+            &wire::HLS_PIECE.to_string(),
+            "-hls_list_size",
+            "0",
+            "-hls_playlist_type",
+            "vod",
+            "-hls_flags",
+            "temp_file+independent_segments",
+            "-start_number",
+            &from.to_string(),
+            "-output_ts_offset",
+            &format!("{start:.3}"),
+            "-hls_segment_filename",
+            &dir.join("seg%d.ts").to_string_lossy(),
+            &dir.join("ffmpeg.m3u8").to_string_lossy(),
+        ],
+    );
     a
 }
 
@@ -899,6 +912,58 @@ mod tests {
     }
 
     #[test]
+    fn every_encoder_is_capped_at_its_heights_rate() {
+        let args = |enc: Encoder| {
+            let mut out = Vec::new();
+            enc.args(720, &mut out);
+            out.join(" ")
+        };
+        assert!(args(Encoder::Nvenc).ends_with("-maxrate 4M -bufsize 4M -profile:v high"));
+        assert!(args(Encoder::X264).ends_with("-crf 22 -maxrate 4M -bufsize 4M -profile:v high"));
+        assert_eq!(
+            args(Encoder::Vaapi),
+            "-c:v h264_vaapi -b:v 4M -maxrate 4M -profile:v high"
+        );
+    }
+
+    /// The pieces of a run are counted on from the last count, so a long
+    /// episode costs a check or two per look rather than one per piece.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_count_of_written_pieces_carries_on_from_the_last() {
+        let dir = tempfile::tempdir().unwrap();
+        let touch = |n: u32| std::fs::write(dir.path().join(format!("seg{n}.ts")), b"x").unwrap();
+        let child = command("sleep")
+            .arg("30")
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let mut job = Job {
+            dir: dir.path().to_path_buf(),
+            used: Instant::now(),
+            asked: 0,
+            run: None,
+            runs: 0,
+        };
+        (0..3).for_each(touch);
+        // No ffmpeg, nothing to count.
+        assert_eq!(job.written().await, None);
+        job.run = Some(Run {
+            child,
+            from: 0,
+            written: 0,
+            stopped: false,
+            ended: None,
+        });
+        assert_eq!(job.written().await, Some(2));
+        (3..6).for_each(touch);
+        assert_eq!(job.written().await, Some(5));
+        // A piece before the last count is never looked at again.
+        std::fs::remove_file(dir.path().join("seg1.ts")).unwrap();
+        assert_eq!(job.written().await, Some(5));
+    }
+
+    #[test]
     fn nvenc_makes_every_forced_keyframe_one_a_piece_can_start_at() {
         // Without it NVENC writes a forced keyframe as a plain I frame that
         // is not flagged as a keyframe, the HLS muxer cuts only at NVENC's own
@@ -911,14 +976,8 @@ mod tests {
 
     /// Whether `enc` runs at all here, the way the probe used to ask.
     fn runs(enc: Encoder) -> bool {
-        let mut args: Vec<String> = vec!["-hide_banner".into(), "-loglevel".into(), "error".into()];
-        if enc == Encoder::Vaapi {
-            args.extend(["-vaapi_device".into(), VAAPI_DEVICE.into()]);
-        }
-        args.extend(["-f", "lavfi", "-i", "color=black:s=256x144:d=0.2"].map(String::from));
-        args.extend(["-vf".into(), format!("null{}", enc.upload())]);
-        enc.args(144, &mut args);
-        args.extend(["-f", "null", "-"].map(String::from));
+        let mut args = clip_through(enc, "color=black:s=256x144:d=0.2");
+        push(&mut args, &["-f", "null", "-"]);
         std::process::Command::new("ffmpeg")
             .args(&args)
             .stdin(Stdio::null())
