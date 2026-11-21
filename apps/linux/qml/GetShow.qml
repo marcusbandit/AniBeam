@@ -281,9 +281,10 @@ Item {
     property string chosen: ""
     // Whether the picks are the automatic pick, which picks again whenever the rows change
     property bool autoPick: false
-    // The batches picked whole: row key -> the episodes it held then. Its gaps are picked
-    // again only when its count changes them, never for a batch picked for one replacement
-    // or one whose gaps were dropped.
+    // The batches picked whole: row key -> the episodes it held then. When its count adds
+    // episodes it did not hold, those gaps are picked too. An episode it held then is never
+    // picked again, so one the user dropped, here or through another row, stays dropped. A
+    // batch picked for one replacement, or whose gaps were dropped, is not in here.
     property var wholeBatches: ({})
     property bool follow: !!show && !!show.airing
     // Swap the episodes the library has for the picked releases; off until asked for
@@ -324,21 +325,24 @@ Item {
     }
     // The rows changed under the user's picks: a batch was counted after it was picked, or the
     // releases changed. Only picks a row still holds stay, a batch picked whole takes the gaps
-    // its new count fills, and when the chosen row went the row holding most of what is left
-    // becomes the choice; with nothing left the automatic pick runs again (#1374).
+    // its new count adds, and when the chosen row went the row holding most of what is left
+    // becomes the choice. When the rows took every pick away, the automatic pick runs
+    // again; picks the user cleared by hand stay cleared (#1374).
     function settlePicks() {
         var p = {}, changed = false, held = {}, whole = {}
         for (var r = 0; r < rows.length; r++) for (var e in rows[r].eps) held[e + "|" + rows[r].eps[e]] = true
         for (var n in picks) { if (held[n + "|" + picks[n]]) p[n] = picks[n]; else changed = true }
         for (var k = 0; k < rows.length; k++) {
             var row = rows[k]
-            if (!row.batch || wholeBatches[row.key] === undefined) continue
-            whole[row.key] = row.label
-            if (wholeBatches[row.key] === row.label) continue
-            wanted(row).forEach(function(x) { if (p[x] === undefined) { p[x] = row.eps[x]; changed = true } })
+            var was = wholeBatches[row.key]
+            if (!row.batch || was === undefined) continue
+            whole[row.key] = was.concat(row.list.filter(function(x) { return was.indexOf(x) < 0 }))
+            wanted(row).forEach(function(x) { if (p[x] === undefined && was.indexOf(x) < 0) { p[x] = row.eps[x]; changed = true } })
         }
         wholeBatches = whole
         if (changed) picks = p
+        // The rows took every pick away: the automatic pick looks for a group that has them
+        if (changed && !Object.keys(p).length) { chosen = ""; wholeBatches = ({}); return }
         if (rows.some(function(row) { return row.key === chosen })) return
         var most = 0, best = ""
         for (var j = 0; j < rows.length; j++) {
@@ -376,7 +380,7 @@ Item {
         if (!w.length && explicit) w = covered(row)
         for (var i = 0; i < w.length; i++) p[w[i]] = row.eps[w[i]]
         var whole = {}
-        if (row.batch && w.length) whole[row.key] = row.label
+        if (row.batch && w.length) whole[row.key] = row.list.slice()
         wholeBatches = whole
         autoPick = !explicit
         // The automatic pick runs on every change of the rows: only a different pick is news
@@ -393,7 +397,7 @@ Item {
         var mine = w.filter(function(n) { return p[n] === row.eps[n] })
         var whole = JSON.parse(JSON.stringify(wholeBatches))
         if (w.length && mine.length === w.length) { w.forEach(function(n) { delete p[n] }); delete whole[row.key] }
-        else { w.forEach(function(n) { p[n] = row.eps[n] }); if (row.batch && w.length) whole[row.key] = row.label }
+        else { w.forEach(function(n) { p[n] = row.eps[n] }); if (row.batch && w.length) whole[row.key] = row.list.slice() }
         wholeBatches = whole
         autoPick = false
         picks = p
@@ -409,7 +413,7 @@ Item {
             var on = p[n] === row.eps[n], w = wanted(row)
             for (var i = 0; i < w.length; i++) { if (on) { if (p[w[i]] === row.eps[w[i]]) delete p[w[i]] } else p[w[i]] = row.eps[w[i]] }
             var whole = JSON.parse(JSON.stringify(wholeBatches))
-            if (on) delete whole[row.key]; else whole[row.key] = row.label
+            if (on) delete whole[row.key]; else whole[row.key] = row.list.slice()
             wholeBatches = whole
             autoPick = false
             picks = p
@@ -1019,7 +1023,7 @@ Item {
                             accessibleName: words.t("get-show-replace")
                             objectName: "get-replace"
                             checked: root.replaceOn
-                            onToggled: function(on) { root.replaceOn = on }
+                            onToggled: function(on) { root.autoPick = false; root.replaceOn = on }
                         }
                         Column {
                             id: replaceText
@@ -1035,7 +1039,7 @@ Item {
                         objectName: "get-sequential"
                         title: words.t("get-show-sequential")
                         checked: root.sequential
-                        onToggled: function(on) { root.sequential = on }
+                        onToggled: function(on) { root.autoPick = false; root.sequential = on }
                         tip: root.sequential ? words.t("get-show-sequential-on") : words.t("get-show-sequential-off")
                     }
                     OptionRow {
@@ -1043,7 +1047,7 @@ Item {
                         visible: !root.replacing
                         title: words.t("get-show-rolling")
                         checked: root.rolling
-                        onToggled: function(on) { root.rollChoice = on }
+                        onToggled: function(on) { root.autoPick = false; root.rollChoice = on }
                         tip: root.rolling ? words.t(root.rollDefaults.delete_watched !== false ? "get-show-rolling-on-delete" : "get-show-rolling-on", { count: root.rollDefaults.ahead })
                             : words.t("get-show-rolling-off")
                     }
@@ -1051,7 +1055,7 @@ Item {
                         objectName: "get-follow"
                         title: words.t("get-show-subscribe")
                         checked: root.follow
-                        onToggled: function(on) { root.follow = on }
+                        onToggled: function(on) { root.autoPick = false; root.follow = on }
                         tip: !root.follow ? words.t("get-show-follow-off")
                             : !root.activeFollowable ? words.t("get-show-follow-no-feed", { source: root.active })
                             : !root.chosenRow ? words.t("get-show-follow-pick-group")
