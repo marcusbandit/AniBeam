@@ -147,13 +147,15 @@ fn patch(entry: &str) -> Option<String> {
     Some(text)
 }
 
-/// Who `current`, the entry xdg-mime names, is: one of `ours`, another app, or nobody.
+/// Who `current`, the entry xdg-mime names, is: `ours` (this run's own entry), another app,
+/// or nobody. The other build's entry (Dev beside an installed Nightly) counts as another
+/// app, since links then open in that build and not this one.
 #[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
-fn handler_word(current: &str, ours: &[&str]) -> &'static str {
+fn handler_word(current: &str, ours: &str) -> &'static str {
     let current = current.trim();
     if current.is_empty() {
         "none"
-    } else if ours.contains(&current) {
+    } else if current == ours {
         "anibeam"
     } else {
         "other"
@@ -309,9 +311,9 @@ pub(crate) mod linux {
     }
 
     pub fn magnet_handler() -> Option<&'static str> {
-        entry_name()?;
+        let ours = entry_name()?;
         let current = default_of(MAGNET)?;
-        Some(super::handler_word(&current, &[MAIN, DEV]))
+        Some(super::handler_word(&current, ours))
     }
 
     pub fn make_magnet_default() {
@@ -427,20 +429,18 @@ mod tests {
 
     #[test]
     fn the_magnet_handler_is_ours_anothers_or_nobodys() {
-        let ours = [
-            "com.marcusrosado.Anibeam.desktop",
-            "com.marcusrosado.Anibeam.Dev.desktop",
-        ];
+        let ours = "com.marcusrosado.Anibeam.desktop";
         assert_eq!(
-            handler_word("com.marcusrosado.Anibeam.desktop\n", &ours),
+            handler_word("com.marcusrosado.Anibeam.desktop\n", ours),
             "anibeam"
         );
+        // The other build's entry opens links in that build, not in this one
         assert_eq!(
-            handler_word("com.marcusrosado.Anibeam.Dev.desktop", &ours),
-            "anibeam"
+            handler_word("com.marcusrosado.Anibeam.Dev.desktop", ours),
+            "other"
         );
-        assert_eq!(handler_word("org.example.Torrents.desktop", &ours), "other");
-        assert_eq!(handler_word("  ", &ours), "none");
+        assert_eq!(handler_word("org.example.Torrents.desktop", ours), "other");
+        assert_eq!(handler_word("  ", ours), "none");
     }
 
     #[test]

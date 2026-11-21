@@ -299,6 +299,11 @@ Item {
         return r.error ? { hash: "", name: "", show: "", episode: null, batch: false } : r.reply.magnet
     }
     readonly property bool magnetOk: !!page.magnet && page.magnet.hash !== ""
+    // A magnet is offered only the shows its own name finds: what an earlier query found
+    // goes at once, and an answer still out for it is dropped
+    function dropAniHits() { page.aniHits = []; page.aniJob = -1 }
+    onMagnetModeChanged: page.dropAniHits()
+    onMatchTextChanged: if (page.magnetMode) page.dropAniHits()
     // What the shows are matched by: the show the magnet's name is a release of
     readonly property string matchText: page.magnetMode ? (page.magnet ? page.magnet.show : "") : page.query
     // A library show for a magnet, best first: one of its names is the show, then one starts
@@ -399,8 +404,8 @@ Item {
     // ---- A magnet downloads where its row says: into a library show's folder, under the
     // name the show view would give a show not in the library yet, or into the films' folder.
     // The core checks it for a video once the client knows its files
-    property real magnetJob: -1
-    property var magnetRetry: null
+    // Each magnet sent, by job: { title, retry }, until the client has it or it fails
+    property var magnetJobs: ({})
     function takeMagnet(link) {
         page.closeGet()
         page.clearSearch()
@@ -411,6 +416,12 @@ Item {
         // Once the field it just showed is up
         Qt.callLater(search.focusInput)
     }
+    function takeMagnetJob(job) {
+        var sent = page.magnetJobs[job]
+        if (sent === undefined) return null
+        var jobs = Object.assign({}, page.magnetJobs); delete jobs[job]; page.magnetJobs = jobs
+        return sent
+    }
     function getMagnet(row) {
         if (!page.magnetOk) return
         var link = page.query, m = page.magnet
@@ -419,16 +430,18 @@ Item {
         if (row.film) r = Door.call("DownloadMovie", { link: link, needs_video: true })
         else {
             var show = row.lib ? page.showFromCard(row.lib, m.show) : page.showFromHit(row.ani, m.show)
-            var options = { needs_video: true }
+            // Never rolling: a pasted magnet is fetched whole, as it was asked for
+            var options = { needs_video: true, rolling: false }
             if (row.lib) options.series = row.lib.id
             var item = { title: m.name || m.hash, link: link }
             r = Door.downloadReleasesWith([item], show.folderName || show.saveName || show.title, options)
         }
-        page.magnetRetry = function() { search.text = link; page.getMagnet(row) }
-        if (r.error) { frame.fail(r.error, page.magnetRetry); return }
-        page.magnetJob = r.reply.job
+        var retry = function() { search.text = link; page.getMagnet(row) }
+        if (r.error) { frame.fail(r.error, retry); return }
+        var jobs = Object.assign({}, page.magnetJobs)
+        jobs[r.reply.job] = { title: title, retry: retry }
+        page.magnetJobs = jobs
         search.text = ""
-        frame.toast(words.t("downloads-sent-to-client", { title: title, client: page.clientName }))
     }
 
     // ---- The show view: a show, its providers' releases, the plan
@@ -1692,7 +1705,12 @@ Item {
             }
         }
         function onTorrentsAdded(job, result) {
-            if (job === page.magnetJob) { page.magnetJob = -1; page.pollTorrents(); return }
+            var sent = page.takeMagnetJob(job)
+            if (sent) {
+                frame.toast(words.t("downloads-sent-to-client", { title: sent.title, client: page.clientName }))
+                page.pollTorrents()
+                return
+            }
             if (job === page.getJob) {
                 page.getJob = -1
                 page.getLine = words.t("downloads-sent-torrents", { count: result.count, client: page.clientName })
@@ -1765,7 +1783,7 @@ Item {
             if (job === page.startJob) { page.startDone(false, error); return }
             if (job === page.searchJob) { page.searchJob = -1; page.searching = false; page.failSearch(error, function() { page.runSearch() }) }
             else if (job === page.actionJob) { page.acting = false; page.failAction(error, page.actionRetry) }
-            else if (job === page.magnetJob) { page.magnetJob = -1; frame.fail(error, page.magnetRetry) }
+            else if (page.magnetJobs[job] !== undefined) frame.fail(error, page.takeMagnetJob(job).retry)
             else if (job === page.connectJob) { page.connecting = false; frame.fail(error, page.connect) }
             else if (job === page.previewJob) { page.previewJob = -1; frame.fail(error, page.previewSubscription) }
             else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.fail(error, page.repairRule) }
@@ -1779,6 +1797,7 @@ Item {
             } else if (kind === "ControlTorrents") frame.fail(error)
         }
         function onJobCancelled(job, kind) {
+            page.takeMagnetJob(job)
             if (page.getJobs[job] !== undefined) { var cn = page.getJobs[job]; var cj = Object.assign({}, page.getJobs); delete cj[job]; page.getJobs = cj; page.setResult(cn, { state: "idle" }) }
             if (job === page.runningJob) { page.queue.forEach(function(q) { page.mark(q.keys, false) }); page.queue = []; page.finishRunning(false) }
             if (page.searchJobs[job] !== undefined) {
@@ -1803,7 +1822,8 @@ Item {
         loadRules()
         pollTorrents()
         loadLibrary()
-        if (props.magnet) Qt.callLater(function() { page.takeMagnet(props.magnet) })
+        var pasted = frame.takePendingMagnet()
+        if (pasted) Qt.callLater(function() { page.takeMagnet(pasted) })
         else if (props.query) { search.text = props.query; Qt.callLater(page.runSearch) }
         // Back on the page: the last search again, unless Settings says to start empty
         else if (frame.prefs.keepDownloadsQuery && frame.downloadsQuery !== "" && props.series === undefined && !props.hit) {
