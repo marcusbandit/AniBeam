@@ -61,20 +61,7 @@ static CRC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([0-9A-Fa-f]{8})\]
 /// title is; a path counts by its last part.
 pub fn read_name(name: &str) -> ReleaseFacts {
     let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
-    read(&Release {
-        title: base.to_string(),
-        link: String::new(),
-        seeders: None,
-        leechers: None,
-        downloads: None,
-        size: String::new(),
-        category: String::new(),
-        page: String::new(),
-        source: String::new(),
-        resolution: String::new(),
-        infomkv: String::new(),
-        linktype: String::new(),
-    })
+    read(&crate::titled(base))
 }
 
 pub fn read(item: &Release) -> ReleaseFacts {
@@ -106,9 +93,10 @@ pub fn read(item: &Release) -> ReleaseFacts {
         season = c[1].parse().ok();
         episode = c[2].parse().ok();
     }
+    let range = if episode.is_none() { span(title) } else { None };
     let batch = episode.is_none()
         && (BATCH_WORD.is_match(title)
-            || ranged(title)
+            || range.is_some()
             // "Show S2 - 03" names a season and then its episode: not a pack
             || (!DASH_EPISODE.is_match(title)
                 && SEASON_PACK
@@ -122,7 +110,7 @@ pub fn read(item: &Release) -> ReleaseFacts {
             .or_else(|| WORD_EPISODE.captures(title).and_then(|c| c[1].parse().ok()))
             .filter(|n: &f64| *n < 2000.0 || *n > 2099.0);
     }
-    let span = if batch { span(title) } else { None };
+    let span = range.filter(|_| batch);
     ReleaseFacts {
         episode,
         season,
@@ -209,12 +197,8 @@ pub fn same_release(title: &str, facts: &ReleaseFacts, file: &str) -> bool {
         && version(title) == version(file)
 }
 
-/// A range of episodes, not a year span or a resolution pair.
-fn ranged(title: &str) -> bool {
-    span(title).is_some()
-}
-
-/// The first range of episodes a title names, as first and last.
+/// The first range of episodes a title names, as first and last: not a year span or a
+/// resolution pair.
 fn span(title: &str) -> Option<(u32, u32)> {
     RANGE.captures_iter(title).find_map(|c| {
         let (a, b) = (

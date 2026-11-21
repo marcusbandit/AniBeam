@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use anibeam_contract::i18n::tr;
 use anibeam_contract::*;
 use anibeam_foundation::services::Services;
 use anibeam_net::Http;
@@ -104,7 +105,7 @@ impl Native {
         if self.endpoints.is_empty() {
             return Err(CoreError::invalid(
                 "endpoint",
-                anibeam_contract::i18n::tr("core-releases-no-endpoints", &[]),
+                tr("core-releases-no-endpoints", &[]),
             ));
         }
         match name {
@@ -116,10 +117,7 @@ impl Native {
                 .ok_or_else(|| {
                     CoreError::invalid(
                         "endpoint",
-                        anibeam_contract::i18n::tr(
-                            "core-releases-no-source-named",
-                            &[("name", name.into())],
-                        ),
+                        tr("core-releases-no-source-named", &[("name", name.into())]),
                     )
                 }),
         }
@@ -172,7 +170,7 @@ impl Native {
         if query.is_empty() {
             return Err(CoreError::invalid(
                 "query",
-                anibeam_contract::i18n::tr("core-releases-empty-query", &[]),
+                tr("core-releases-empty-query", &[]),
             ));
         }
         let active = self.endpoint(endpoint)?;
@@ -267,25 +265,21 @@ impl Native {
         auto_resolution: bool,
     ) -> Result<Analysis, CoreError> {
         let ep = self.step_endpoint(endpoint)?;
-        let auto = if auto_resolution {
-            refinement::auto_resolution(query.trim(), items)
-        } else {
-            refinement::AutoResolution {
-                query: query.trim().to_string(),
-                items: items.to_vec(),
-                token: String::new(),
-                skipped_missing: 0,
-            }
+        let query = query.trim();
+        let auto = auto_resolution
+            .then(|| refinement::auto_resolution(query, items))
+            .flatten();
+        let (query, items, auto_resolution) = match auto {
+            Some(auto) => (auto.query, auto.items, Some(auto.token)),
+            None => (query.to_string(), items.to_vec(), None),
         };
-        let groups = refinement::compute_groups(&auto.items);
-        let best_fit = refinement::best_fit_info(&auto.query, &auto.items, &self.bestfit);
         Ok(Analysis {
             client_side: refinement::is_client_side(ep),
-            auto_resolution: (!auto.token.is_empty()).then(|| auto.token.clone()),
-            query: auto.query,
-            items: auto.items,
-            groups,
-            best_fit,
+            groups: refinement::compute_groups(&items),
+            best_fit: refinement::best_fit_info(&query, &items, &self.bestfit),
+            auto_resolution,
+            query,
+            items,
         })
     }
 
@@ -298,30 +292,22 @@ impl Native {
         items: &[Release],
         op: &RefineOp,
     ) -> Result<Refinement, CoreError> {
-        let ep = self.step_endpoint(endpoint)?.clone();
-        let http = self.http.clone();
+        let ep = self.step_endpoint(endpoint)?;
         let all_uploads = endpoints::found_unfiltered(items);
-        // Typed as the callback so the closure is generic over the borrows it is given.
-        let fetch: Box<refinement::FetchFn<'_>> = Box::new(move |ep: &Endpoint, q: &str| {
-            let http = http.clone();
-            let (ep, q) = (ep.clone(), q.to_string());
-            Box::pin(async move { endpoints::refetch(http.as_ref(), &ep, &q, all_uploads).await })
-        });
-        let outcome =
-            refinement::apply(&ep, query, items, op, &self.bestfit, fetch.as_ref()).await?;
-        let groups = refinement::compute_groups(&outcome.items);
-        let best_fit = refinement::best_fit_info(&outcome.query, &outcome.items, &self.bestfit);
-        let count = outcome.items.len() as i64;
+        let refetch = |q: String| async move {
+            endpoints::refetch(self.http.as_ref(), ep, &q, all_uploads).await
+        };
+        let outcome = refinement::apply(ep, query, items, op, &self.bestfit, refetch).await?;
         Ok(Refinement {
             applied: outcome.applied,
-            reason: outcome.reason.clone(),
-            mode: outcome.mode.clone(),
-            query: outcome.query.clone(),
             endpoint: ep.name.clone(),
-            groups,
-            best_fit,
+            groups: refinement::compute_groups(&outcome.items),
+            best_fit: refinement::best_fit_info(&outcome.query, &outcome.items, &self.bestfit),
             previous_count: outcome.previous_count as u64,
-            delta: count - outcome.previous_count as i64,
+            delta: outcome.items.len() as i64 - outcome.previous_count as i64,
+            reason: outcome.reason,
+            mode: outcome.mode,
+            query: outcome.query,
             items: outcome.items,
             facts: Vec::new(),
             show: None,
@@ -342,7 +328,7 @@ impl Native {
         if !endpoints::answers_rss(&ep.kind) {
             return Err(CoreError::invalid(
                 "endpoint",
-                anibeam_contract::i18n::tr(
+                tr(
                     "core-releases-cannot-follow",
                     &[("name", ep.name.as_str().into())],
                 ),
@@ -354,7 +340,7 @@ impl Native {
 
 /// Why a step after a search cannot go on: its endpoint left the list since.
 fn gone(name: &str) -> String {
-    anibeam_contract::i18n::tr("core-releases-endpoint-gone", &[("name", name.into())])
+    tr("core-releases-endpoint-gone", &[("name", name.into())])
 }
 
 /// A URL with any key in it cut short, for a list a person reads: the value of each secret

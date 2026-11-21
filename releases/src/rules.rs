@@ -335,18 +335,8 @@ mod tests {
     fn a_taken_link_is_not_taken_again() {
         let mut r = rule("", "");
         let item = |link: &str| Release {
-            title: "Frieren - 01".into(),
             link: link.into(),
-            seeders: None,
-            leechers: None,
-            downloads: None,
-            size: String::new(),
-            category: String::new(),
-            page: String::new(),
-            source: String::new(),
-            resolution: String::new(),
-            infomkv: String::new(),
-            linktype: String::new(),
+            ..crate::titled("Frieren - 01")
         };
         let items = vec![item("a"), item("b")];
         r.taken.insert("a".into());

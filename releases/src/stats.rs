@@ -1042,18 +1042,8 @@ mod tests {
 
     fn rel(link: &str) -> Release {
         Release {
-            title: "Show - 01".to_string(),
             link: link.to_string(),
-            seeders: None,
-            leechers: None,
-            downloads: None,
-            size: String::new(),
-            category: String::new(),
-            page: String::new(),
-            source: String::new(),
-            resolution: String::new(),
-            infomkv: String::new(),
-            linktype: String::new(),
+            ..crate::titled("Show - 01")
         }
     }
 

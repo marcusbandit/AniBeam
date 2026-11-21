@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Endpoint;
 use super::endpoints::{FIELD_RE, parse_qsl, urlencode};
+use anibeam_contract::i18n::tr;
 use anibeam_contract::{CoreError, Release};
 
 /// The parts of a definition that make a source more than a plain RSS feed. All off, the
@@ -65,7 +66,7 @@ impl Quirks {
                 || word.len() > 32
                 || !word.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
         {
-            return Err(anibeam_contract::i18n::tr(
+            return Err(tr(
                 "core-releases-quirks-variant",
                 &[("word", format!("{word:?}").into())],
             ));
@@ -74,50 +75,35 @@ impl Quirks {
             return Ok(());
         };
         if feed.pages.is_empty() || feed.pages.len() > MAX_PATTERNS {
-            return Err(anibeam_contract::i18n::tr(
+            return Err(tr(
                 "core-releases-quirks-pattern-count",
                 &[("most", MAX_PATTERNS.into())],
             ));
         }
         for p in &feed.pages {
             if p.len() > MAX_PATTERN {
-                return Err(anibeam_contract::i18n::tr(
-                    "core-releases-quirks-pattern-long",
-                    &[],
-                ));
+                return Err(tr("core-releases-quirks-pattern-long", &[]));
             }
             let re = compile(p).map_err(|e| {
-                anibeam_contract::i18n::tr(
+                tr(
                     "core-releases-quirks-pattern-bad",
                     &[("error", e.to_string().into())],
                 )
             })?;
             if !re.capture_names().any(|n| n == Some("slug")) {
-                return Err(anibeam_contract::i18n::tr(
-                    "core-releases-quirks-pattern-slug",
-                    &[],
-                ));
+                return Err(tr("core-releases-quirks-pattern-slug", &[]));
             }
         }
         // The show's feed carries the search address's parameters, a token among them, so it
         // must go to the same host.
         if !feed.url.starts_with("https://") {
-            return Err(anibeam_contract::i18n::tr(
-                "core-releases-quirks-url-https",
-                &[],
-            ));
+            return Err(tr("core-releases-quirks-url-https", &[]));
         }
         if crate::repos::index::host_of(&feed.url) != host.to_ascii_lowercase() {
-            return Err(anibeam_contract::i18n::tr(
-                "core-releases-quirks-url-host",
-                &[],
-            ));
+            return Err(tr("core-releases-quirks-url-host", &[]));
         }
         if feed.url.matches("{slug}").count() != 1 || feed.url.replace("{slug}", "").contains('{') {
-            return Err(anibeam_contract::i18n::tr(
-                "core-releases-quirks-url-slug",
-                &[],
-            ));
+            return Err(tr("core-releases-quirks-url-slug", &[]));
         }
         Ok(())
     }
@@ -150,7 +136,7 @@ pub(crate) fn field_core(field: &str) -> &str {
 
 /// Is this query field a quality facet? A leading `-` and quotes are stripped before the
 /// whole-token check.
-pub fn is_quality_token(field: &str) -> bool {
+fn is_quality_token(field: &str) -> bool {
     let core = field_core(field);
     !core.is_empty() && QUALITY_RE.is_match(core)
 }
@@ -258,7 +244,7 @@ fn slug_in(patterns: &[Regex], page: &str) -> Option<String> {
 
 /// The show's own feed for `slug`, carrying over every parameter of the endpoint's address
 /// but the one that holds the search.
-pub fn per_show_feed_url(ep: &Endpoint, feed: &ShowFeed, slug: &str) -> String {
+fn per_show_feed_url(ep: &Endpoint, feed: &ShowFeed, slug: &str) -> String {
     let qs = ep.url.split_once('?').map_or("", |(_, qs)| qs);
     let params: Vec<(String, String)> = parse_qsl(qs)
         .into_iter()

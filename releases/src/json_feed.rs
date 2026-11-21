@@ -51,7 +51,6 @@ pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
                 .filter(|t| !t.trim().is_empty())
                 .unwrap_or(e.title);
             Some(Release {
-                title,
                 link,
                 seeders: e.seeders,
                 leechers: e.leechers,
@@ -60,12 +59,9 @@ pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
                     .total_size
                     .map(super::fetch::size_text)
                     .unwrap_or_default(),
-                category: String::new(),
                 page: e.link.unwrap_or_default(),
                 source: source.to_string(),
-                resolution: String::new(),
-                infomkv: String::new(),
-                linktype: String::new(),
+                ..crate::titled(title)
             })
         })
         .collect())

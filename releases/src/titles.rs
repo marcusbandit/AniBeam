@@ -16,8 +16,6 @@ fn fancy(pattern: &str) -> FancyRegex {
 static POSTER_RE: LazyLock<Regex> = LazyLock::new(|| re(r"^\[([^\]]+)\]"));
 static TOKEN_RE: LazyLock<Regex> = LazyLock::new(|| re(r"[\s\[\]\(\)]+"));
 static NUMERIC_RE: LazyLock<Regex> = LazyLock::new(|| re(r"\A\d+\z"));
-static HEX_RE: LazyLock<Regex> = LazyLock::new(|| re(r"\A[0-9A-Fa-f]{6,}\z"));
-static NOT_HEX_LETTER_RE: LazyLock<Regex> = LazyLock::new(|| re(r"[g-zG-Z]"));
 /// Python's `$` also matches before one trailing newline, so the end is a lookahead.
 static EXT_RE: LazyLock<FancyRegex> = LazyLock::new(|| fancy(r"\.\w{2,4}(?=\n?\z)"));
 /// `<n>p`, as in `1080p`.
@@ -123,10 +121,9 @@ pub fn title_tokens(title: &str) -> Vec<String> {
         if NUMERIC_RE.is_match(token) {
             continue;
         }
-        if HEX_RE.is_match(token) && !NOT_HEX_LETTER_RE.is_match(token) {
-            continue;
-        }
-        if token.chars().count() < 2 {
+        // Six or more hex digits are a hash.
+        let hash = token.len() >= 6 && token.bytes().all(|b| b.is_ascii_hexdigit());
+        if hash || token.chars().count() < 2 {
             continue;
         }
         tokens.push(token.to_string());

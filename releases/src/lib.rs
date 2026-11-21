@@ -33,6 +33,25 @@ pub mod titles;
 pub use team::Releases;
 pub use team::{AnirssView, EndpointSync, Searcher};
 
+/// A release that names only its title: no link, its counts unknown, every other field empty.
+/// The readers fill in what their feed gives with `..titled(...)`.
+pub(crate) fn titled(title: impl Into<String>) -> anibeam_contract::Release {
+    anibeam_contract::Release {
+        title: title.into(),
+        link: String::new(),
+        seeders: None,
+        leechers: None,
+        downloads: None,
+        size: String::new(),
+        category: String::new(),
+        page: String::new(),
+        source: String::new(),
+        resolution: String::new(),
+        infomkv: String::new(),
+        linktype: String::new(),
+    }
+}
+
 /// A search endpoint (anirss `endpoints.Endpoint`, without the on-demand start and stop
 /// commands, which the core keeps elsewhere).
 #[derive(Clone, Debug, PartialEq)]
