@@ -5,8 +5,10 @@
 // The head names the page and says how anirss and the torrent client stand. Under it one
 // wide field: typing lists shows (the library's first, then AniList's), Return searches
 // release names the old way (the table, filters, Subscribe), asking every source that is
-// switched on. Under the field the sources: a chip per provider, lit when on and greyed when
-// off, a click flips it. A plain endpoint is on by default; an on-demand one (a site reached
+// switched on. A magnet link in the field (pasted, typed, or opened from the desktop) searches
+// nothing: it lists the name it carries, the shows that name matches (the library's first,
+// the best one picked) and Film, and Return downloads it there (#1391). Under the field the
+// sources: a chip per provider, lit when on and greyed when off, a click flips it. A plain endpoint is on by default; an on-demand one (a site reached
 // through a pod behind Jackett) is on only while it runs. Clicking it while it does not run asks, in a
 // small sheet, whether to start Jackett; Anibeam starts it on that confirm and never before,
 // and the core refuses a search that would start it behind your back.
@@ -38,6 +40,7 @@ Item {
     // Escape closes the show, then the search; out of a release list that came from a show's
     // grid, it goes back to the grid
     function escapePressed() {
+        if (page.magnetMode) { search.text = ""; return true }
         if (page.searching) { page.cancelSearch(); return true }
         if (page.detail !== null) { page.closeDetail(); return true }
         if (page.getShow !== null) { page.closeGet(); return true }
@@ -283,12 +286,46 @@ Item {
     property var aniHits: []
     property real aniJob: -1
     // Index 0 is the release search row, there only while a source is on; the shows start at 1
-    readonly property bool canSearchReleases: enabledEndpoints.length > 0
+    readonly property bool canSearchReleases: enabledEndpoints.length > 0 && !magnetMode
     readonly property int suggestFirst: canSearchReleases ? 0 : 1
     property int suggestIndex: 0
     property bool suggestClosed: false
     readonly property string query: search.text.trim()
+    // ---- A magnet link in the field: what it names, read by the core
+    readonly property bool magnetMode: /^magnet:\?/i.test(page.query)
+    readonly property var magnet: {
+        if (!page.magnetMode) return null
+        var r = Door.call("ReadMagnet", { link: page.query })
+        return r.error ? { hash: "", name: "", show: "", episode: null, batch: false } : r.reply.magnet
+    }
+    readonly property bool magnetOk: !!page.magnet && page.magnet.hash !== ""
+    // What the shows are matched by: the show the magnet's name is a release of
+    readonly property string matchText: page.magnetMode ? (page.magnet ? page.magnet.show : "") : page.query
+    // A library show for a magnet, best first: one of its names is the show, then one starts
+    // with it, then one holds it
+    function magnetScore(c) {
+        var want = page.norm(page.matchText)
+        if (want.length < 2) return 0
+        var best = 0
+        page.namesOfCard(c).concat([(c.titles || {}).folder]).forEach(function(n) {
+            var k = page.norm(n)
+            if (!k) return
+            if (k === want) best = Math.max(best, 3)
+            else if (k.indexOf(want) === 0 || want.indexOf(k) === 0) best = Math.max(best, 2)
+            else if (k.indexOf(want) >= 0 || want.indexOf(k) >= 0) best = Math.max(best, 1)
+        })
+        return best
+    }
     readonly property var libHits: {
+        if (page.magnetMode) {
+            var scored = []
+            for (var m = 0; m < libCards.length; m++) {
+                var sc = page.magnetScore(libCards[m])
+                if (sc > 0) scored.push({ c: libCards[m], s: sc })
+            }
+            scored.sort(function(a, b) { return b.s - a.s })
+            return scored.slice(0, 5).map(function(x) { return x.c })
+        }
         var q = page.query.toLowerCase()
         if (q.length < 2) return []
         var out = []
@@ -305,18 +342,27 @@ Item {
         return aniHits.filter(function(h) { return !ids[h.id] }).slice(0, 5)
     }
     readonly property var suggestRows: libHits.map(function(c) { return { lib: c } }).concat(aniOnly.map(function(h) { return { ani: h } }))
-    readonly property bool suggesting: !suggestClosed && query.length >= 2 && search.editing && page.state === null && !page.searching
+    // Every row a key can step to: the shows, and for a magnet Film after them
+    readonly property int suggestCount: suggestRows.length + (magnetOk ? 1 : 0)
+    readonly property bool suggesting: !suggestClosed && query.length >= 2 && (search.editing || magnetMode) && page.state === null && !page.searching
     Timer {
         id: aniDebounce
         interval: 300
         onTriggered: {
-            if (page.query.length < 2) { page.aniHits = []; return }
-            var r = Door.searchOn("Anilist", page.query, 8)
+            if (page.matchText.length < 2) { page.aniHits = []; return }
+            var r = Door.searchOn("Anilist", page.matchText, 8)
             if (!r.error) page.aniJob = r.reply.job
         }
     }
+    // The row at `index` (1 and up) as Return or a click takes it
+    function pickAt(index) {
+        if (index < 1 || index > page.suggestCount) return
+        if (index <= page.suggestRows.length) page.pickSuggestion(page.suggestRows[index - 1])
+        else page.pickSuggestion({ film: true })
+    }
     function pickSuggestion(row) {
         if (!row) return
+        if (page.magnetMode) { page.getMagnet(row); return }
         page.suggestClosed = true
         if (row.lib) page.openGet(page.showFromCard(row.lib, page.query))
         else page.openGet(page.showFromHit(row.ani, page.query))
@@ -348,6 +394,41 @@ Item {
         var out = [], seen = {}
         ;[first].concat(names).forEach(function(n) { var k = page.norm(n); if (n && k && !seen[k]) { seen[k] = true; out.push(String(n)) } })
         return out
+    }
+
+    // ---- A magnet downloads where its row says: into a library show's folder, under the
+    // name the show view would give a show not in the library yet, or into the films' folder.
+    // The core checks it for a video once the client knows its files
+    property real magnetJob: -1
+    property var magnetRetry: null
+    function takeMagnet(link) {
+        page.closeGet()
+        page.clearSearch()
+        search.text = link
+        page.suggestClosed = false
+        page.suggestIndex = page.suggestFirst
+        scroll.contentY = 0
+        // Once the field it just showed is up
+        Qt.callLater(search.focusInput)
+    }
+    function getMagnet(row) {
+        if (!page.magnetOk) return
+        var link = page.query, m = page.magnet
+        var title = m.name || m.show || m.hash
+        var r
+        if (row.film) r = Door.call("DownloadMovie", { link: link, needs_video: true })
+        else {
+            var show = row.lib ? page.showFromCard(row.lib, m.show) : page.showFromHit(row.ani, m.show)
+            var options = { needs_video: true }
+            if (row.lib) options.series = row.lib.id
+            var item = { title: m.name || m.hash, link: link }
+            r = Door.downloadReleasesWith([item], show.folderName || show.saveName || show.title, options)
+        }
+        page.magnetRetry = function() { search.text = link; page.getMagnet(row) }
+        if (r.error) { frame.fail(r.error, page.magnetRetry); return }
+        page.magnetJob = r.reply.job
+        search.text = ""
+        frame.toast(words.t("downloads-sent-to-client", { title: title, client: page.clientName }))
     }
 
     // ---- The show view: a show, its providers' releases, the plan
@@ -1611,6 +1692,7 @@ Item {
             }
         }
         function onTorrentsAdded(job, result) {
+            if (job === page.magnetJob) { page.magnetJob = -1; page.pollTorrents(); return }
             if (job === page.getJob) {
                 page.getJob = -1
                 page.getLine = words.t("downloads-sent-torrents", { count: result.count, client: page.clientName })
@@ -1683,6 +1765,7 @@ Item {
             if (job === page.startJob) { page.startDone(false, error); return }
             if (job === page.searchJob) { page.searchJob = -1; page.searching = false; page.failSearch(error, function() { page.runSearch() }) }
             else if (job === page.actionJob) { page.acting = false; page.failAction(error, page.actionRetry) }
+            else if (job === page.magnetJob) { page.magnetJob = -1; frame.fail(error, page.magnetRetry) }
             else if (job === page.connectJob) { page.connecting = false; frame.fail(error, page.connect) }
             else if (job === page.previewJob) { page.previewJob = -1; frame.fail(error, page.previewSubscription) }
             else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.fail(error, page.repairRule) }
@@ -1720,7 +1803,8 @@ Item {
         loadRules()
         pollTorrents()
         loadLibrary()
-        if (props.query) { search.text = props.query; Qt.callLater(page.runSearch) }
+        if (props.magnet) Qt.callLater(function() { page.takeMagnet(props.magnet) })
+        else if (props.query) { search.text = props.query; Qt.callLater(page.runSearch) }
         // Back on the page: the last search again, unless Settings says to start empty
         else if (frame.prefs.keepDownloadsQuery && frame.downloadsQuery !== "" && props.series === undefined && !props.hit) {
             search.text = frame.downloadsQuery
@@ -1919,7 +2003,7 @@ Item {
         SearchField {
             id: search
             objectName: "downloads-search"
-            visible: !page.noSources
+            visible: !page.noSources || page.magnetMode
             large: true
             width: parent.width
             placeholder: words.t("downloads-search-placeholder")
@@ -1927,13 +2011,18 @@ Item {
             goButton: true
             goBusy: page.searching
             goTip: page.enabledEndpoints.length ? words.t("downloads-search-go-tip", { names: page.enabledEndpoints.map(function(e) { return e.name }).join(", ") }) : words.t("downloads-search-go-off")
-            onGo: page.runSearch()
+            onGo: page.magnetMode ? page.pickAt(page.suggestIndex) : page.runSearch()
             onAccepted: {
-                if (page.suggesting && page.suggestIndex > 0 && page.suggestRows.length >= page.suggestIndex) page.pickSuggestion(page.suggestRows[page.suggestIndex - 1])
+                if (page.magnetMode) page.pickAt(page.suggestIndex)
+                else if (page.suggesting && page.suggestIndex > 0 && page.suggestRows.length >= page.suggestIndex) page.pickSuggestion(page.suggestRows[page.suggestIndex - 1])
                 else page.runSearch()
             }
-            onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(page.suggestFirst, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
-            onTextChanged: { page.suggestClosed = false; page.suggestIndex = page.suggestFirst; aniDebounce.restart() }
+            onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(page.suggestFirst, Math.min(page.suggestCount, page.suggestIndex + by)) }
+            onTextChanged: {
+                // A magnet searches nothing, so the last search's list makes way for its rows
+                if (page.magnetMode && (page.state !== null || page.searchError !== "")) page.clearSearch()
+                page.suggestClosed = false; page.suggestIndex = page.suggestFirst; aniDebounce.restart()
+            }
             onCleared: { page.aniHits = [] }
         }
 
@@ -1942,7 +2031,7 @@ Item {
             id: suggestTile
             objectName: "downloads-suggestions"
             // With no source on and no show matched yet there is nothing to offer
-            visible: page.suggesting && (page.suggestRows.length > 0 || page.canSearchReleases)
+            visible: page.suggesting && (page.suggestRows.length > 0 || page.canSearchReleases || page.magnetMode)
             width: parent.width
             implicitHeight: suggestBody.implicitHeight + padding * 2
             height: visible ? implicitHeight : 0
@@ -1951,6 +2040,25 @@ Item {
             Column {
                 id: suggestBody
                 width: parent.width
+                // A magnet: the name it carries, or that it names no torrent
+                Item {
+                    objectName: "suggest-magnet"
+                    visible: page.magnetMode
+                    width: parent.width
+                    height: visible ? magnetName.implicitHeight + theme.space(6) : 0
+                    Label {
+                        id: magnetName
+                        x: theme.space(4)
+                        width: parent.width - theme.space(8)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: !page.magnetOk ? words.t("downloads-magnet-invalid") : (page.magnet.name || page.magnet.hash)
+                        role: page.magnetOk ? "ledger" : "ui"
+                        color: page.magnetOk ? theme.text : theme.red
+                        wrapMode: Text.WrapAnywhere
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                    }
+                }
                 Repeater {
                     model: page.suggestRows
                     Item {
@@ -1991,7 +2099,7 @@ Item {
                             anchors.rightMargin: theme.space(5)
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: theme.space(1)
-                            Label { width: parent.width; text: srow.c ? page.nameOfCard(srow.c, page.query) : page.nameOfHit(srow.h, page.query); role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }); elide: Text.ElideRight }
+                            Label { width: parent.width; text: srow.c ? page.nameOfCard(srow.c, page.matchText) : page.nameOfHit(srow.h, page.matchText); role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }); elide: Text.ElideRight }
                             Label {
                                 width: parent.width
                                 text: {
@@ -2042,10 +2150,28 @@ Item {
                                 anchors.right: parent.right
                                 small: true; flat: true; takesFocus: false
                                 msg: "downloads-plan-to-watch"; icon: "bookmark"
-                                onClicked: frame.planToWatch(srow.h.id, page.nameOfHit(srow.h, page.query))
+                                onClicked: frame.planToWatch(srow.h.id, page.nameOfHit(srow.h, page.matchText))
                             }
                         }
                     }
+                }
+                // A magnet can be a film: it goes to the films' folder
+                Item {
+                    objectName: "suggest-film"
+                    visible: page.magnetOk
+                    width: parent.width
+                    height: visible ? theme.space(14) : 0
+                    readonly property bool current: page.suggestIndex === page.suggestRows.length + 1
+                    Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: parent.current || filmRowMouse.containsMouse ? theme.glassFloat : "transparent" }
+                    Label {
+                        x: theme.space(4)
+                        anchors.verticalCenter: parent.verticalCenter
+                        msg: "downloads-magnet-film"
+                        role: "ui"; color: theme.textDim
+                    }
+                    Label { visible: parent.current; anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; msg: "downloads-key-return"; role: "ledger"; color: theme.textFaint }
+                    MouseArea { id: filmRowMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.pickSuggestion({ film: true }); Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent)
+                        Accessible.onPressAction: page.pickSuggestion({ film: true }) }
                 }
                 // Searching release names needs a source that is on; without one, Return
                 // closes the box and says which source to turn on

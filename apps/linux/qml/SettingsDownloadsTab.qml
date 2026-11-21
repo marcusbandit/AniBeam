@@ -260,8 +260,14 @@ SettingsTab {
             SliderRow { objectName: "downloads-roll-keep"; unit: words.t("settings-downloads-unit-episodes"); from: 0; to: 12; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.keep_watched === undefined ? 1 : tab.roll.keep_watched
                         onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).keep_watched = Math.round(v) }) } } }
     }
+    // Who opens magnet links on this desktop (#1391); empty where it has no such setting
+    property string magnetHandler: Shell.magnetHandler()
+    readonly property string magnetLine: magnetHandler === "anibeam" ? words.t("settings-downloads-magnet-anibeam")
+        : magnetHandler === "other" ? words.t("settings-downloads-magnet-other") : words.t("settings-downloads-magnet-none")
     Panel {
         title: words.t("settings-downloads-subscriptions-title")
+        SettingRow { objectName: "downloads-magnet"; visible: tab.magnetHandler !== ""; label: words.t("settings-downloads-magnet"); status: tab.magnetLine
+            Button { objectName: "downloads-magnet-use"; visible: tab.magnetHandler !== "anibeam"; msg: "settings-downloads-magnet-use"; icon: "link"; flat: true; onClicked: tab.magnetHandler = Shell.makeMagnetDefault() } }
         SettingRow { label: words.t("settings-downloads-last-search")
             Switch { checked: frame.prefs.keepDownloadsQuery; onToggled: function(on) { frame.prefs.keepDownloadsQuery = on } } }
         SettingRow { label: words.t("settings-downloads-prune")
