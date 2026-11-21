@@ -47,6 +47,13 @@ pub fn url(addr: &SocketAddr) -> String {
     format!("http://{addr}")
 }
 
+/// The address of a base URL [`url`] made, as the request from it arrives:
+/// an IPv4 address mapped into IPv6 reads as itself.
+pub fn ip_of(base: &str) -> Option<IpAddr> {
+    let at: SocketAddr = base.strip_prefix("http://")?.parse().ok()?;
+    Some(crate::trust::canonical(at.ip()))
+}
+
 /// `http://desk.example-tailnet.ts.net:8790`.
 pub fn name_url(dns_name: &str, port: u16) -> String {
     format!("http://{}:{port}", dns_name.trim_end_matches('.'))
@@ -142,6 +149,12 @@ mod tests {
             url(&"[fd7a:115c:a1e0::5]:8790".parse().unwrap()),
             "http://[fd7a:115c:a1e0::5]:8790"
         );
+        assert_eq!(ip_of("http://100.64.0.1:8790"), Some(ip("100.64.0.1")));
+        assert_eq!(
+            ip_of("http://[::ffff:100.64.0.1]:8790"),
+            Some(ip("100.64.0.1"))
+        );
+        assert_eq!(ip_of("http://desk:8790"), None);
         assert_eq!(
             name_url("desk.example-tailnet.ts.net.", 8790),
             "http://desk.example-tailnet.ts.net:8790"

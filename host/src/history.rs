@@ -418,12 +418,7 @@ pub async fn merge(services: &Services, doc: Document) -> Result<Merged, CoreErr
 /// and merges it. Nothing is merged from something that is not Anibeam or
 /// does not serve its history.
 pub async fn pull(services: &Services, base: &str) -> Result<Merged, CoreError> {
-    let http = reqwest::Client::builder()
-        .timeout(PULL_FOR)
-        .redirect(reqwest::redirect::Policy::none())
-        .no_proxy()
-        .build()
-        .map_err(|e| CoreError::internal(e.to_string()))?;
+    let http = super::peers::client(PULL_FOR).map_err(|e| CoreError::internal(e.to_string()))?;
     let unreachable = |e: reqwest::Error| CoreError::internal(format!("{base}: {e}"));
     let hello: wire::Hello = http
         .get(format!("{base}{}", wire::HELLO))
@@ -481,15 +476,9 @@ pub async fn pull(services: &Services, base: &str) -> Result<Merged, CoreError> 
 /// The device a pull is from, by its Tailscale id when the last read knows
 /// its address, so its IPv4 and IPv6 addresses count as one computer.
 fn device(host: &Host, base: &str) -> String {
-    let ip = base
-        .strip_prefix("http://")
-        .and_then(|a| a.parse::<std::net::SocketAddr>().ok())
-        .map(|a| super::trust::canonical(a.ip()));
-    ip.and_then(|ip| {
-        host.tailnet_now()
-            .and_then(|t| t.peer(ip).map(|p| p.id.clone()))
-    })
-    .unwrap_or_else(|| base.to_string())
+    super::addr::ip_of(base)
+        .and_then(|ip| host.tailnet_now()?.peer(ip).map(|p| p.id.clone()))
+        .unwrap_or_else(|| base.to_string())
 }
 
 /// Whether the computer at `base` is due a pull, marking it pulled when it is.
@@ -524,18 +513,11 @@ pub fn pull_all(host: &Arc<Host>) {
     let handle = host.services.handle.clone();
     handle.spawn(async move {
         let reader = host.clone();
-        let asked = tokio::task::spawn_blocking(move || {
-            let tailnet = reader.tailnet(false)?;
-            Some(super::peers::candidates(
-                &tailnet,
-                &reader.switched_off(),
-                wire::DEFAULT_PORT,
-            ))
-        })
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+        let asked = tokio::task::spawn_blocking(move || reader.candidates())
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default();
         for found in super::peers::find(asked).await {
             pull_if_due(&host, &found.url).await;
         }
@@ -549,10 +531,7 @@ pub fn pull_back(host: &Arc<Host>, from: IpAddr) {
     if !super::addr::is_tailscale(&from) {
         return;
     }
-    let base = format!(
-        "http://{}",
-        std::net::SocketAddr::new(from, wire::DEFAULT_PORT)
-    );
+    let base = super::addr::url(&(from, wire::DEFAULT_PORT).into());
     let host = host.clone();
     let handle = host.services.handle.clone();
     handle.spawn(async move { pull_if_due(&host, &base).await });

@@ -23,23 +23,26 @@ pub fn candidates(t: &Tailnet, off: &[String], port: u16) -> Vec<(String, String
         .filter_map(|p| {
             // Only tailnet addresses are asked, whatever the status names.
             let ip = addr::pick(&p.ips).first().copied()?;
-            let at = std::net::SocketAddr::new(ip, port);
-            Some((p.name.clone(), format!("http://{at}")))
+            Some((p.name.clone(), addr::url(&(ip, port).into())))
         })
         .collect()
 }
 
-/// The candidates that answer their hello as Anibeam, in the order given.
-pub async fn find(candidates: Vec<(String, String)>) -> Vec<wire::PeerHost> {
-    // A device answers for itself only: no redirect is followed, so none can
-    // point this machine at its own or its network's services, and no proxy
-    // stands between two tailnet devices.
-    let Ok(http) = reqwest::Client::builder()
-        .timeout(ASK_FOR)
+/// A client for asking another tailnet device. A device answers for itself
+/// only: no redirect is followed, so none can point this machine at its own
+/// or its network's services, and no proxy stands between two tailnet
+/// devices.
+pub(crate) fn client(timeout: Duration) -> reqwest::Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(timeout)
         .redirect(reqwest::redirect::Policy::none())
         .no_proxy()
         .build()
-    else {
+}
+
+/// The candidates that answer their hello as Anibeam, in the order given.
+pub async fn find(candidates: Vec<(String, String)>) -> Vec<wire::PeerHost> {
+    let Ok(http) = client(ASK_FOR) else {
         return Vec::new();
     };
     let mut asks = tokio::task::JoinSet::new();
@@ -76,13 +79,7 @@ pub fn others(hosts: &[wire::PeerHost], from: std::net::IpAddr) -> Vec<wire::Pee
     let from = super::trust::canonical(from);
     hosts
         .iter()
-        .filter(|h| {
-            let at = h
-                .url
-                .strip_prefix("http://")
-                .and_then(|a| a.parse::<std::net::SocketAddr>().ok());
-            at.is_none_or(|at| super::trust::canonical(at.ip()) != from)
-        })
+        .filter(|h| addr::ip_of(&h.url) != Some(from))
         .cloned()
         .collect()
 }

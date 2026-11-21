@@ -124,6 +124,14 @@ struct Run {
     task: JoinHandle<()>,
 }
 
+impl Run {
+    /// The task winds its servers down by itself, and the runtime reaps it,
+    /// so its handle is dropped rather than awaited.
+    fn end(self) {
+        self.cancel.cancel();
+    }
+}
+
 /// The status and the bus that hears it change.
 struct Status {
     now: Mutex<HostStatus>,
@@ -185,7 +193,7 @@ impl Host {
             reading: Mutex::new(()),
             fixed_status: Mutex::new(None),
             pulled: Mutex::new(std::collections::HashMap::new()),
-            keys: keys::Keys::new(),
+            keys: keys::Keys::default(),
         }
     }
 
@@ -325,10 +333,7 @@ impl Host {
         }
         if !on {
             if let Some(run) = run.take() {
-                run.cancel.cancel();
-                // The task winds its servers down by itself, and the runtime
-                // reaps it; nothing here waits on it.
-                drop(run.task);
+                run.end();
             }
             self.status.put(None, off());
             return;
@@ -357,9 +362,30 @@ impl Host {
     /// The core is going away: end the supervisor and its servers.
     pub fn stop(&self) {
         if let Some(run) = recover(&self.run).take() {
-            run.cancel.cancel();
-            drop(run.task);
+            run.end();
         }
+    }
+
+    /// Reads the tailnet again on a worker, for a caller that answers from
+    /// the last read and must not wait for this one.
+    fn read_later(self: &Arc<Self>, then: impl FnOnce(&Host) + Send + 'static) {
+        let host = self.clone();
+        self.services.handle.spawn_blocking(move || {
+            host.tailnet(true);
+            then(&host);
+        });
+    }
+
+    /// Each trusted, online device worth asking for its hello
+    /// (`peers::candidates`). None when the tailnet cannot be read. Blocks
+    /// while it runs `tailscale`.
+    pub(crate) fn candidates(&self) -> Option<Vec<(String, String)>> {
+        let tailnet = self.tailnet(false)?;
+        Some(peers::candidates(
+            &tailnet,
+            &self.switched_off(),
+            DEFAULT_PORT,
+        ))
     }
 }
 
@@ -399,11 +425,9 @@ pub fn sync(host: &Arc<Host>) {
 /// whose profile it gets, and the people they belong to, as last read. It never
 /// waits: a fresh read runs on a worker and arrives as `TailnetDevicesChanged`.
 pub fn devices(host: &Arc<Host>) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
-    let arc = host.clone();
-    host.services.handle.spawn_blocking(move || {
-        arc.tailnet(true);
-        let (devices, people) = listed(&arc);
-        arc.services.bus.debug(
+    host.read_later(|host| {
+        let (devices, people) = listed(host);
+        host.services.bus.debug(
             Stage::System,
             "tailnet devices",
             EventBody::TailnetDevicesChanged { devices, people },
@@ -451,19 +475,15 @@ pub fn relayed(host: &Arc<Host>, from: std::net::IpAddr) -> bool {
     if !addr::is_tailscale(&from) {
         return false;
     }
-    let arc = host.clone();
-    host.services.handle.spawn_blocking(move || {
-        arc.tailnet(true);
-    });
+    host.read_later(|_| {});
     host.tailnet_now()
         .and_then(|t| t.peer(from).map(|p| p.relayed))
         .unwrap_or(false)
 }
 
 fn listed(host: &Host) -> (Vec<TailnetDevice>, Vec<TailnetPerson>) {
-    let off = recover(&host.off).clone();
     host.tailnet_now()
-        .map(|t| listing(&t, &off))
+        .map(|t| listing(&t, &host.switched_off()))
         .unwrap_or_default()
 }
 
@@ -681,13 +701,6 @@ async fn supervise(
                         Ok(now) => {
                             status.put(Some(&cancel), now.status());
                             serving = Some(now);
-                            if let Some(s) = serving.as_mut()
-                                && bind.is_none()
-                                && let Some(name) = magic_dns_name().await
-                            {
-                                s.name = Some(name);
-                                status.put(Some(&cancel), s.status());
-                            }
                             // Serving on the tailnet: catch up with every
                             // trusted Anibeam that is up. Not on an address a
                             // test or the env var chose, which is no tailnet.
@@ -700,6 +713,22 @@ async fn supervise(
                         Err(message) => status.put(Some(&cancel), waiting(&message)),
                     }
                 }
+            }
+        }
+        // The MagicDNS name, until one is known: Tailscale may not have named
+        // this machine yet when it first serves. Not for an address a test or
+        // the env var chose.
+        if let Some(s) = serving.as_mut()
+            && s.name.is_none()
+            && bind.is_none()
+        {
+            let name = tokio::select! {
+                name = dns_name(&host) => name,
+                _ = cancel.cancelled() => break,
+            };
+            if let Some(name) = name {
+                s.name = Some(name);
+                status.put(Some(&cancel), s.status());
             }
         }
         tokio::select! {
@@ -792,36 +821,14 @@ impl Serving {
     }
 }
 
-/// This machine's MagicDNS name from `tailscale status --json`, when the
-/// CLI is there and answers quickly. The macOS app keeps its CLI inside the
-/// bundle. Any failure is simply no name.
-async fn magic_dns_name() -> Option<String> {
-    for program in [
-        "tailscale",
-        "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
-    ] {
-        let run = tokio::process::Command::new(program)
-            .args(["status", "--json"])
-            .stdin(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .output();
-        let Ok(Ok(out)) = tokio::time::timeout(NAME_LIMIT, run).await else {
-            continue;
-        };
-        if let Some(name) = dns_name_of(&out.stdout) {
-            return Some(name);
-        }
-    }
-    None
-}
-
-/// `Self.DNSName` out of the status document, without its trailing dot.
-fn dns_name_of(json: &[u8]) -> Option<String> {
-    let doc: serde_json::Value = serde_json::from_slice(json).ok()?;
-    let name = doc.get("Self")?.get("DNSName")?.as_str()?;
-    let name = name.trim_end_matches('.');
-    (!name.is_empty()).then(|| name.to_string())
+/// This machine's MagicDNS name, from a read of the tailnet at most
+/// `TAILNET_AGAIN` old.
+async fn dns_name(host: &Weak<Host>) -> Option<String> {
+    let host = host.upgrade()?;
+    tokio::task::spawn_blocking(move || host.tailnet(true)?.dns_name.clone())
+        .await
+        .ok()
+        .flatten()
 }
 
 #[cfg(test)]
@@ -1003,17 +1010,5 @@ mod tests {
         // A held host keeps serving through a failed read, so the list it
         // had must still stand: never fall back to trusting everyone.
         assert_eq!(*recover(&host.off), ["nPhone"]);
-    }
-
-    #[test]
-    fn the_dns_name_comes_out_of_the_status_document() {
-        let doc = br#"{"Version":"1.80","Self":{"DNSName":"desk.example-tailnet.ts.net.","HostName":"desk"}}"#;
-        assert_eq!(
-            dns_name_of(doc).as_deref(),
-            Some("desk.example-tailnet.ts.net")
-        );
-        assert_eq!(dns_name_of(br#"{"Self":{"DNSName":""}}"#), None);
-        assert_eq!(dns_name_of(br#"{"Self":{}}"#), None);
-        assert_eq!(dns_name_of(b"not json"), None);
     }
 }

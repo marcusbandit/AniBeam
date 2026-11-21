@@ -51,6 +51,8 @@ pub struct Tailnet {
     pub me_user: Option<String>,
     /// Every user the status names, by id.
     pub users: Vec<TailnetUser>,
+    /// This machine's MagicDNS name, without its trailing dot.
+    pub dns_name: Option<String>,
 }
 
 impl Tailnet {
@@ -139,6 +141,11 @@ pub fn read_status(json: &[u8]) -> Option<Tailnet> {
             .unwrap_or_default()
     };
     let me = ips(v.get("Self")?);
+    let dns_name = v["Self"]["DNSName"]
+        .as_str()
+        .map(|name| name.trim_end_matches('.'))
+        .filter(|name| !name.is_empty())
+        .map(str::to_string);
     let mut peers: Vec<Peer> = v["Peer"]
         .as_object()
         .map(|all| {
@@ -199,6 +206,7 @@ pub fn read_status(json: &[u8]) -> Option<Tailnet> {
         peers,
         me_user,
         users,
+        dns_name,
     })
 }
 
@@ -408,6 +416,21 @@ mod tests {
         );
         assert_eq!(read_status(b"not json"), None);
         assert_eq!(read_status(b"{}"), None);
+    }
+
+    #[test]
+    fn this_machines_dns_name_loses_its_trailing_dot() {
+        let named = |self_: &str| {
+            read_status(format!(r#"{{"Self": {self_}}}"#).as_bytes())
+                .unwrap()
+                .dns_name
+        };
+        assert_eq!(
+            named(r#"{"DNSName": "desk.example-tailnet.ts.net."}"#).as_deref(),
+            Some("desk.example-tailnet.ts.net")
+        );
+        assert_eq!(named(r#"{"DNSName": ""}"#), None);
+        assert_eq!(named("{}"), None);
     }
 
     #[test]

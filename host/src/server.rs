@@ -16,7 +16,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 
 use super::Host;
-use super::build::{self, LibraryPart};
+use super::build::{self, Posters};
 use super::{convert, history, keys, peers, stream, trust};
 use anibeam_contract::CoreError;
 use anibeam_foundation::machine::hostname;
@@ -37,7 +37,7 @@ pub struct Served {
     /// The built snapshot per profile, each behind its own lock, so one person's
     /// build never holds up another's cached answer (#631).
     snapshot: std::sync::Mutex<HashMap<u64, Arc<SnapshotSlot>>>,
-    library: tokio::sync::Mutex<Option<(Instant, Arc<LibraryPart>)>>,
+    posters: tokio::sync::Mutex<Option<(Instant, Arc<Posters>)>>,
     /// The profile each person was answered as, by Tailscale user id, the owner under
     /// "": a profile never changes its person, so it is looked up once per launch.
     profiles: std::sync::Mutex<HashMap<String, u64>>,
@@ -63,7 +63,7 @@ pub fn router(team: Weak<Host>) -> Router {
         streams: stream::Streams::default(),
         host: hostname(),
         snapshot: std::sync::Mutex::new(HashMap::new()),
-        library: tokio::sync::Mutex::new(None),
+        posters: tokio::sync::Mutex::new(None),
         profiles: std::sync::Mutex::new(HashMap::new()),
         peers: tokio::sync::Mutex::new(None),
     });
@@ -90,7 +90,7 @@ pub fn router(team: Weak<Host>) -> Router {
         .route(wire::HISTORY, get(history_document))
         .route("/api/v1/posters/{id}", get(poster))
         .merge(streaming)
-        .fallback(not_found)
+        .fallback(|| async { not_found() })
         .method_not_allowed_fallback(not_allowed)
         .layer(axum::middleware::from_fn_with_state(
             served.clone(),
@@ -163,7 +163,7 @@ async fn trusted(
     next: axum::middleware::Next,
 ) -> Response {
     let Some(team) = st.live() else {
-        return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+        return shutting_down();
     };
     let header = request
         .headers()
@@ -286,8 +286,12 @@ pub(super) fn error(status: StatusCode, message: &str) -> Response {
     (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()
 }
 
-async fn not_found() -> Response {
+pub(super) fn not_found() -> Response {
     error(StatusCode::NOT_FOUND, "not found")
+}
+
+pub(super) fn shutting_down() -> Response {
+    error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down")
 }
 
 async fn not_allowed() -> Response {
@@ -297,15 +301,31 @@ async fn not_allowed() -> Response {
     )
 }
 
-fn json(body: Bytes) -> Response {
+/// A JSON answer that is never cached.
+pub(super) fn json_body(status: StatusCode, body: impl Into<Body>) -> Response {
     (
+        status,
         [
             (header::CONTENT_TYPE, "application/json"),
             (header::CACHE_CONTROL, "no-cache"),
         ],
-        Body::from(body),
+        body.into(),
     )
         .into_response()
+}
+
+/// `value` as a JSON answer.
+pub(super) fn json(status: StatusCode, value: &impl serde::Serialize) -> Response {
+    match serde_json::to_vec(value) {
+        Ok(body) => json_body(status, body),
+        Err(e) => {
+            tracing::warn!("host answer could not be written: {e}");
+            error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not write the answer",
+            )
+        }
+    }
 }
 
 fn failed(e: &CoreError) -> Response {
@@ -368,10 +388,7 @@ async fn hello(
         relayed,
         profile: named,
     };
-    match serde_json::to_vec(&hello) {
-        Ok(body) => json(Bytes::from(body)),
-        Err(e) => failed(&e.into()),
-    }
+    json(StatusCode::OK, &hello)
 }
 
 /// What this host serves past the snapshot: the list of other Anibeams and
@@ -419,19 +436,12 @@ async fn peer_list(
         Some(hosts) => hosts,
         None => {
             let Some(team) = st.live() else {
-                return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+                return shutting_down();
             };
-            let asked = tokio::task::spawn_blocking(move || {
-                let tailnet = team.tailnet(false)?;
-                Some(peers::candidates(
-                    &tailnet,
-                    &team.switched_off(),
-                    wire::DEFAULT_PORT,
-                ))
-            })
-            .await
-            .ok()
-            .flatten();
+            let asked = tokio::task::spawn_blocking(move || team.candidates())
+                .await
+                .ok()
+                .flatten();
             let Some(asked) = asked else {
                 return error(
                     StatusCode::SERVICE_UNAVAILABLE,
@@ -447,10 +457,7 @@ async fn peer_list(
     let list = wire::Peers {
         hosts: peers::others(&hosts, from.ip()),
     };
-    match serde_json::to_vec(&list) {
-        Ok(body) => json(Bytes::from(body)),
-        Err(e) => failed(&e.into()),
-    }
+    json(StatusCode::OK, &list)
 }
 
 async fn snapshot(
@@ -458,7 +465,7 @@ async fn snapshot(
     axum::Extension(Profile(profile)): axum::Extension<Profile>,
 ) -> Response {
     match snapshot_body(&st, profile).await {
-        Ok(body) => json(body),
+        Ok(body) => json_body(StatusCode::OK, body),
         Err(e) => failed(&e),
     }
 }
@@ -477,20 +484,20 @@ async fn snapshot_body(st: &Served, profile: u64) -> Result<Bytes, CoreError> {
     let team = st
         .live()
         .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-    let (snapshot, library) = build::snapshot(&team, &st.host, profile).await?;
+    let (snapshot, posters) = build::snapshot(&team, &st.host, profile).await?;
     let body = Bytes::from(serde_json::to_vec(&snapshot)?);
     // The posters are everyone's; the owner's read keeps their table fresh.
     if profile == anibeam_foundation::trust::OWNER {
-        *st.library.lock().await = Some((Instant::now(), Arc::new(library)));
+        *st.posters.lock().await = Some((Instant::now(), Arc::new(posters)));
     }
     *slot = Some((Instant::now(), body.clone()));
     Ok(body)
 }
 
-/// The library half alone, for a poster request that comes before any
+/// The poster table alone, for a poster request that comes before any
 /// snapshot, or long after the last one.
-async fn library(st: &Served) -> Result<Arc<LibraryPart>, CoreError> {
-    let mut slot = st.library.lock().await;
+async fn posters(st: &Served) -> Result<Arc<Posters>, CoreError> {
+    let mut slot = st.posters.lock().await;
     if let Some((at, part)) = slot.as_ref()
         && at.elapsed() < CACHE_FOR
     {
@@ -504,9 +511,9 @@ async fn library(st: &Served) -> Result<Arc<LibraryPart>, CoreError> {
     })
     .await
     .map_err(|e| CoreError::internal(format!("library read: {e}")))??;
-    let part = Arc::new(part);
-    *slot = Some((Instant::now(), part.clone()));
-    Ok(part)
+    let posters = Arc::new(part.posters);
+    *slot = Some((Instant::now(), posters.clone()));
+    Ok(posters)
 }
 
 /// The poster of one series. The id picks a file out of the table the last
@@ -517,20 +524,16 @@ async fn poster(
     headers: HeaderMap,
 ) -> Response {
     let Ok(id) = id.parse::<u64>() else {
-        return not_found().await;
+        return not_found();
     };
-    let part = match library(&st).await {
-        Ok(part) => part,
+    let posters = match posters(&st).await {
+        Ok(posters) => posters,
         Err(e) => return failed(&e),
     };
-    let Some(poster) = part.posters.get(&id) else {
-        return not_found().await;
+    let Some(poster) = posters.get(&id) else {
+        return not_found();
     };
     let etag = format!("\"{}\"", poster.tag);
-    let cache = [
-        (header::ETAG, etag.clone()),
-        (header::CACHE_CONTROL, POSTER_MAX_AGE.to_string()),
-    ];
     let matches = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok())
@@ -538,22 +541,18 @@ async fn poster(
             v.split(',')
                 .any(|t| t.trim().trim_start_matches("W/") == etag)
         });
+    let cache = [
+        (header::ETAG, etag),
+        (header::CACHE_CONTROL, POSTER_MAX_AGE.to_string()),
+    ];
     if matches {
         return (StatusCode::NOT_MODIFIED, cache).into_response();
     }
     let Ok(bytes) = tokio::fs::read(&poster.path).await else {
-        return not_found().await;
+        return not_found();
     };
     let kind = content_type(&poster.path, &bytes);
-    (
-        [
-            (header::CONTENT_TYPE, kind.to_string()),
-            (header::ETAG, etag),
-            (header::CACHE_CONTROL, POSTER_MAX_AGE.to_string()),
-        ],
-        Body::from(bytes),
-    )
-        .into_response()
+    ([(header::CONTENT_TYPE, kind)], cache, Body::from(bytes)).into_response()
 }
 
 /// By extension first; a file whose extension says nothing is read by its
@@ -585,7 +584,7 @@ async fn history_document(
     ConnectInfo(from): ConnectInfo<std::net::SocketAddr>,
 ) -> Response {
     let Some(team) = st.live() else {
-        return error(StatusCode::SERVICE_UNAVAILABLE, "core is shutting down");
+        return shutting_down();
     };
     let built = tokio::task::spawn_blocking(move || {
         let doc = history::document(&team.services);
@@ -594,10 +593,7 @@ async fn history_document(
     })
     .await;
     match built {
-        Ok(Ok(doc)) => match serde_json::to_vec(&doc) {
-            Ok(body) => json(Bytes::from(body)),
-            Err(e) => failed(&e.into()),
-        },
+        Ok(Ok(doc)) => json(StatusCode::OK, &doc),
         Ok(Err(e)) => failed(&e),
         Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     }
