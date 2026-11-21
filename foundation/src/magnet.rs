@@ -47,6 +47,26 @@ pub fn hash(link: &str) -> Option<String> {
     None
 }
 
+/// The name a magnet link carries in its first `dn`, decoded (`+` reads as a space, as a
+/// browser writes it in a query). None for anything that is not a magnet, or a magnet
+/// with no name.
+pub fn name(link: &str) -> Option<String> {
+    let link = link.trim();
+    let query = link
+        .get(..8)
+        .filter(|head| head.eq_ignore_ascii_case("magnet:?"))
+        .map(|_| &link[8..])?;
+    query.split('&').find_map(|part| {
+        let (key, value) = part.split_once('=')?;
+        if !key.eq_ignore_ascii_case("dn") {
+            return None;
+        }
+        let name = crate::percent::decode(value);
+        let name = name.trim();
+        (!name.is_empty()).then(|| name.to_string())
+    })
+}
+
 /// The magnet rebuilt from what another peer needs and nothing else: its
 /// hash, its name, and the trackers whose address carries nothing personal
 /// (`is_public_tracker`). Every other parameter goes, a web seed or an exact
@@ -158,6 +178,25 @@ mod tests {
             hash(&format!("Magnet:?xt=urn:btih:{hex}")).as_deref(),
             Some(hex)
         );
+    }
+
+    #[test]
+    fn a_magnet_gives_its_name_decoded() {
+        let hex = "0123456789abcdef0123456789abcdef01234567";
+        assert_eq!(
+            name(&format!(
+                "magnet:?xt=urn:btih:{hex}&dn=Example%20Show%20-%2003%20%5B1080p%5D&tr=x"
+            ))
+            .as_deref(),
+            Some("Example Show - 03 [1080p]")
+        );
+        assert_eq!(
+            name("MAGNET:?DN=Example+Film+2001&xt=urn:btih:x").as_deref(),
+            Some("Example Film 2001")
+        );
+        assert_eq!(name(&format!("magnet:?xt=urn:btih:{hex}")), None);
+        assert_eq!(name(&format!("magnet:?xt=urn:btih:{hex}&dn=")), None);
+        assert_eq!(name("https://example.com/?dn=x"), None);
     }
 
     #[test]

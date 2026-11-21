@@ -505,6 +505,24 @@ pub struct DownloadOptions {
     /// `None` when the settings say so for one this long.
     #[serde(default)]
     pub rolling: Option<bool>,
+    /// Check the torrents once the client knows their files: one with no
+    /// video anywhere in it is said to be nothing Anibeam plays and moves
+    /// to the person's Downloads folder (a pasted magnet link, #1391).
+    #[serde(default)]
+    pub needs_video: bool,
+}
+
+/// What a magnet link says, read for the shell before it is downloaded
+/// (`ReadMagnet`). `hash` is empty for a link that is not a magnet with an
+/// info-hash; `name` is its `dn`, empty when it has none; `show` is the
+/// show that name is a release of, and `episode` the episode it names.
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, uniffi::Record)]
+pub struct MagnetLink {
+    pub hash: String,
+    pub name: String,
+    pub show: String,
+    pub episode: Option<f64>,
+    pub batch: bool,
 }
 
 /// One item of a download and the episodes it replaces.

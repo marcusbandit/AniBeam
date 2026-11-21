@@ -66,6 +66,16 @@ impl AnirssHome {
         Some(self.dir()?.join("Downloads").join("Anime"))
     }
 
+    /// The person's Downloads folder, where a download Anibeam cannot play goes (#1391):
+    /// their own, or `Downloads` in the sandbox's home, so a sandboxed run never moves
+    /// anything into theirs.
+    pub fn downloads_dir(&self) -> Option<PathBuf> {
+        match self {
+            AnirssHome::Shared => anibeam_foundation::paths::user_downloads(),
+            AnirssHome::Sandbox(dir) => Some(dir.join("Downloads")),
+        }
+    }
+
     /// Points a child at the sandboxed home: `HOME` (`USERPROFILE` on Windows), made first so
     /// the child finds it, and the four XDG homes inside it. anirss itself reads none of the
     /// XDG variables (#610); they keep anything else the child runs, such as an endpoint's
@@ -113,6 +123,7 @@ mod tests {
             inside.join(".local/state/anirss")
         );
         assert_eq!(home.save_dir().unwrap(), inside.join("Downloads/Anime"));
+        assert_eq!(home.downloads_dir().unwrap(), inside.join("Downloads"));
     }
 
     #[test]

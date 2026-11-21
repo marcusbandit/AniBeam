@@ -71,6 +71,15 @@ impl CorePaths {
     }
 }
 
+/// The person's own Downloads folder: the desktop's download directory (XDG
+/// `user-dirs.dirs` on Linux), else `Downloads` in the home folder. None with no
+/// home folder at all.
+pub fn user_downloads() -> Option<PathBuf> {
+    directories::UserDirs::new()
+        .and_then(|u| u.download_dir().map(Path::to_path_buf))
+        .or_else(|| std::env::home_dir().map(|h| h.join("Downloads")))
+}
+
 /// `path` without its trailing separators, except that a Windows drive root keeps its
 /// own: `D:\` alone is the drive, `D:` is that drive's current directory.
 pub fn trim_separators(path: &str) -> &str {

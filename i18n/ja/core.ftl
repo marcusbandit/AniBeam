@@ -1156,6 +1156,8 @@ core-downloads-replace-bad-item = 項目{ $item }は{ $count }件のリリース
 # $episode is the episode's number
 core-downloads-not-replaced = 第{ $episode }話は置き換えられませんでした。
 core-downloads-replaced = 第{ $episode }話を新しいダウンロードに置き換えました。
+core-downloads-no-video-moved = { $name }には動画が含まれていないため、Anibeamでは再生できません。{ $folder }に移動しました。
+core-downloads-no-video = { $name }には動画が含まれていないため、Anibeamでは再生できません。
 
 ## downloads/src/rolling.rs
 

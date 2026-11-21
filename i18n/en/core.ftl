@@ -1397,6 +1397,9 @@ core-downloads-replace-bad-item = item { $item } is not one of the { $count } re
 # $episode is the episode's number
 core-downloads-not-replaced = Episode { $episode } was not replaced.
 core-downloads-replaced = Replaced episode { $episode } with the new download.
+# $name is a torrent's name, $folder the folder it moved to
+core-downloads-no-video-moved = { $name } has no video in it, so Anibeam can't play it. It's in { $folder } now.
+core-downloads-no-video = { $name } has no video in it, so Anibeam can't play it.
 
 ## downloads/src/rolling.rs
 

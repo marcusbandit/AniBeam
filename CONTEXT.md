@@ -238,6 +238,10 @@ _Avoid_: torrent (that is what it becomes once added), result, item, entry
 What the core reads off a release's title beside anirss's fields: the episode (and season), whether it is a batch, the release group, the resolution, the size in bytes, and whether the library series the search names already has that episode (On disk). A file whose torrent the core has seen (its file origin, recorded from the torrent client after a scan brings files in or when the Downloads page reads the client) is on disk only for that torrent, matched by the magnet's hash or by the torrent's name; a file with no origin is matched by its name. A title the core cannot read gets no episode, never episode 1. The date each release was posted, and a torznab feed's counts, come from the core's own read of the feed the search used, after the search answers.
 _Avoid_: metadata, parsed info
 
+**Pasted magnet**:
+A magnet link put straight into Downloads, pasted or typed into the search field or opened from the desktop's magnet handler. It searches nothing: its name (the `dn`) is read as a release title, the shows it matches are offered (the library's first, then AniList's, the best match picked) beside Film, and it downloads into the one picked. Once the torrent client knows its files, one with no video anywhere in it is said to be nothing Anibeam plays and moves to the person's Downloads folder, when the client keeps its files on this machine.
+_Avoid_: magnet search, quick add
+
 **On-demand endpoint**:
 An endpoint anirss starts only when a search needs it (a site reached through a search proxy: a podman pod behind Jackett), and keeps up while the sidecar holds its lease. The first search waits for it to come up, up to the endpoint's timeout; the page says so while it waits ("Starting <name>"), then "Searching <name>".
 _Avoid_: harness, container, lazy endpoint
