@@ -80,6 +80,7 @@ update-notice-later = Later
 
 whats-new-title = What's new
 whats-new-got-it = Got it
+whats-new-github = Full changelog on GitHub
 
 ## ActivityDrawer
 

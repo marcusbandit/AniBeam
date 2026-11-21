@@ -299,9 +299,6 @@ fn settings_url(config_dir: &std::path::Path) -> QString {
 /// version, which is this crate's.
 const NOTES: &str = include_str!("../../CHANGELOG.md");
 
-/// The notes in changes/ that have not shipped yet, which show under the newest heading.
-const CHANGES: &[&str] = include!(concat!(env!("OUT_DIR"), "/changes.rs"));
-
 /// `text` as an SVG QR code in a data URL, or empty when it does not fit in one.
 pub fn qr_data_url(text: &str) -> String {
     use base64::Engine;
@@ -378,7 +375,7 @@ impl qobject::Shell {
             seen.version = version;
         }
         let used = earlier.started;
-        let notes = changelog::parse_with(NOTES, CHANGES);
+        let notes = changelog::parse(NOTES);
         let state = serde_json::json!({
             // A version main has only just moved to has no lines yet; opening it would mark
             // it read before its notes are written.

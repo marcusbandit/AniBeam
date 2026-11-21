@@ -26,8 +26,6 @@ SELF_JOB="ios-automerge"
 ONLY='^(apps/phone/ios/'
 ONLY+='|apps/phone/src/(.+/)?(ios|metal)(\.rs$|/)'
 ONLY+='|apps/phone/scripts/[^/]*ios[^/]*$'
-# A phone change file is one line of patch notes, which a PR has to carry.
-ONLY+='|apps/phone/changes/[^/]+\.md$'
 ONLY+='|apps/linux/packaging/macos/'
 ONLY+=')'
 
