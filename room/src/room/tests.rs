@@ -802,6 +802,58 @@ fn a_room_survives_a_trip_through_json() {
     assert_eq!(back.state().position, 3.0);
 }
 
+/// The Worker keeps rooms in storage between messages, so a slot keeps the keys
+/// it was stored under, its rate window flat beside the rest.
+#[test]
+fn a_slot_is_stored_under_the_keys_it_always_had() {
+    let mut r = room();
+    join(&mut r, 1, "Ann", Some(KEY), 0);
+    for _ in 0..3 {
+        r.handle(ConnId(1), ClientMsg::Ping { c: 0 }, 1_500);
+    }
+    let v = serde_json::to_value(&r).unwrap();
+    let slot = v["slots"][0].as_object().unwrap();
+    let mut keys: Vec<&str> = slot.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        [
+            "conn",
+            "id",
+            "joined_ms",
+            "key",
+            "left_ms",
+            "name",
+            "progress",
+            "ready",
+            "rejoin_key",
+            "window_count",
+            "window_ms"
+        ]
+    );
+    assert_eq!(
+        (slot["window_ms"].as_u64(), slot["window_count"].as_u64()),
+        (Some(1_500), Some(3))
+    );
+    // A slot as the Worker stored it before reads back and keeps counting
+    let secret = [9u8; 16];
+    let stored = serde_json::json!({
+        "code": "K7QM2X", "host_key": KEY, "secret": secret, "keys_made": 1,
+        "episode": null,
+        "state": {"playing": false, "position": 0.0, "rate": 1.0, "at_ms": 0, "rev": 0},
+        "max": 10, "next_id": 2, "host": 1, "handover_ms": null, "empty_ms": null,
+        "closed": false,
+        "slots": [{
+            "id": 1, "name": "Ann", "ready": "loading", "joined_ms": 0, "conn": 1,
+            "left_ms": null, "rejoin_key": "00", "window_ms": 2_000,
+            "window_count": RATE_PER_SEC
+        }]
+    });
+    let mut back: Room = serde_json::from_value(stored).unwrap();
+    let outs = back.handle(ConnId(1), ClientMsg::Ping { c: 0 }, 2_500);
+    assert_eq!(error_code(&outs), Some(ErrorCode::RateLimited));
+}
+
 #[test]
 fn the_view_shows_connected_members_only() {
     let mut r = room();
