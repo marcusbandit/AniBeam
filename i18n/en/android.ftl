@@ -734,8 +734,8 @@ move-moved = { $count ->
    *[other] Moved { $count } shows to { $site }
 }
 move-failed = { $count ->
-    [one] { $site } rejected { $count } show; see the activity log
-   *[other] { $site } rejected { $count } shows; see the activity log
+    [one] Could not move { $count } show to { $site }; see the activity log
+   *[other] Could not move { $count } shows to { $site }; see the activity log
 }
 
 ## Downloads: find (search, shows, sources, releases)
@@ -1372,7 +1372,7 @@ clib-format-music = Music
 
 repos-by-hand-title = Add one by hand
 # { "{query}" } is the literal text {query}, where the search term goes in the address.
-repos-by-hand-note = For a site no repo carries. Any feed with { "{query}" } where the search goes, a Jackett or Prowlarr feed among them. A key or token in the address is moved to this phone's secret store.
+repos-by-hand-note = For a site no source list carries. Any feed with { "{query}" } where the search goes, a Jackett or Prowlarr feed among them. A key or token in the address is moved to this phone's secret store.
 # Placeholder of a text field.
 repos-name-placeholder = Name
 # Placeholder of a text field. Keep the address as it is.

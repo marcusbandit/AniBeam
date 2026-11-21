@@ -45,7 +45,7 @@ const MAL_EXPIRED: &str = "MAL auth expired, reconnect in Settings.";
 /// `core-trackers-mal-wants-secret` in the catalog; this is their English, which
 /// the tests hold the catalog to.
 #[cfg(test)]
-pub(crate) const MAL_WANTS_SECRET: &str = "MyAnimeList requires this app's client secret. Add it under Settings > Accounts, or register the app with App Type \"other\".";
+pub(crate) const MAL_WANTS_SECRET: &str = "MyAnimeList requires this app's client secret. Add it in your account settings, or register the app with App Type \"other\".";
 
 // Keys and bundled credentials ----------------------------------------------
 

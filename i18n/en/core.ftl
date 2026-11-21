@@ -626,7 +626,7 @@ core-presence-no-room = That Discord invite has no room yet. Ask them to start o
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = No client ID set for { $tracker }.
 core-trackers-mal-reconnect = Reconnect MyAnimeList in Settings.
-core-trackers-mal-wants-secret = MyAnimeList requires this app's client secret. Add it under Settings > Accounts, or register the app with App Type "other".
+core-trackers-mal-wants-secret = MyAnimeList requires this app's client secret. Add it in your account settings, or register the app with App Type "other".
 # $error is the parser's own message.
 core-trackers-token-reply-unreadable = could not read token response: { $error }
 core-trackers-token-reply-no-token = token response did not include an access token
@@ -652,12 +652,12 @@ core-trackers-moved-up-some-refused =
     Moved { $moved ->
         [one] { $moved } show
        *[other] { $moved } shows
-    } to { $site }; { $site } rejected { $failed ->
+    } to { $site }; could not move { $failed ->
         [one] { $failed } show
        *[other] { $failed } shows
     }.
 # $show is the show's folder name; $error is the tracker's answer, cleaned up.
-core-trackers-move-refused = { $site } rejected { $show }: { $error }
+core-trackers-move-refused = { $site } could not update { $show }: { $error }
 
 ## trackers/src/oauth.rs
 
@@ -1448,7 +1448,7 @@ core-releases-search-answered = search returned HTTP { $status }
 
 ## releases/src/native.rs
 
-core-releases-no-endpoints = no download sources yet: add a source list or a custom source
+core-releases-no-endpoints = no download sources yet: add a source list or a custom source in your download settings
 core-releases-no-source-named = no source named { $name }
 core-releases-empty-query = type something to search for
 core-releases-cannot-follow = { $name } cannot be followed: it supports search, but has no feed for new episodes

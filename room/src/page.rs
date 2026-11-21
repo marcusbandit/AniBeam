@@ -153,7 +153,7 @@ pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
             "Anibeam room".to_owned(),
             "Watch together in Anibeam".to_owned(),
             format!("Room {code}"),
-            "Nothing picked yet".to_owned(),
+            "Nothing selected yet".to_owned(),
             String::new(),
         ),
         Some(room) => {
@@ -421,7 +421,7 @@ mod tests {
         let mut room = view("S", None, None);
         room.episode = None;
         let html = join_html("K7QM2X", Some(&room));
-        assert!(html.contains("<h1>Nothing picked yet</h1>"));
+        assert!(html.contains("<h1>Nothing selected yet</h1>"));
         assert!(html.contains(r#"content="Watch together in Anibeam""#));
         assert!(html.contains(r#"href="anibeam://room/K7QM2X""#));
         assert!(!html.contains(r#"class="episode""#));

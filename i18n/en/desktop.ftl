@@ -168,10 +168,10 @@ frame-copy = Copy
 frame-copied = Copied
 frame-status-refused = { $tracker } rejected the update
 frame-status-refused-why = { $tracker } rejected the update: { $why }
-frame-lists-refused = { $tracker } rejected { $count ->
+frame-lists-refused = Could not move { $count ->
     [one] 1 show
    *[other] { $count } shows
-}; see the activity log
+} to { $tracker }; see the activity log
 frame-lists-moved = Moved { $count ->
     [one] 1 show
    *[other] { $count } shows
@@ -2109,7 +2109,7 @@ track-picker-off = Off
 roll-controls-window = Keeping { $ahead } ready: episodes { $next } to { $through } of { $total }
 roll-controls-window-watched = Keeping { $ahead } ready: episodes { $next } to { $through } of { $total }, { $watched } watched
 roll-controls-more = Get { $count } more
-roll-controls-more-tip = Download the next episodes now. Anibeam keeps the next few ready again once you catch up.
+roll-controls-more-tip = Download the next episodes now. Rolling downloads resume once you catch up.
 roll-controls-fewer-tip = Keep one fewer ahead
 roll-controls-ahead = { $count } ahead
 roll-controls-further-tip = Keep one more ahead
@@ -2486,7 +2486,7 @@ settings-find-title-language =
 settings-find-mode =
     .words = dark light system theme night
 settings-find-colours-from =
-    .words = terminal desktop system theme source kitty
+    .words = colour color terminal desktop system theme source kitty
 settings-find-dark-theme =
     .words = colour scheme base16
 settings-find-light-theme =
@@ -2536,7 +2536,7 @@ settings-find-styled =
 settings-find-font =
     .words = typeface
 settings-find-text-colour =
-    .words = color
+    .words = colour color
 settings-find-outline =
     .words = border stroke
 settings-find-background =
@@ -2796,7 +2796,7 @@ key-help-episode = Next or previous episode
 key-help-chapter = Previous or next chapter
 key-help-start-end = Jump to start or outro
 key-help-fullscreen = Fullscreen
-key-help-escape-player = Close open menu, exit fullscreen, or leave player
+key-help-escape-player = Close what is open, then exit fullscreen, then leave the player
 key-help-toggle-list = Show or hide this list
 key-help-library-search = Library and search
 key-help-search-page = Search this page
@@ -2805,7 +2805,7 @@ key-help-room = Watch together
 key-help-settings = Settings
 key-help-quit = Quit
 key-help-forward = Forward
-key-help-escape-app = Close open menu, or go back
+key-help-escape-app = Close what is open, then go back
 key-help-context-menu = The right-click menu
 key-help-pick-card = Select a card to act on multiple
 key-help-pick-range = Select all cards up to this one
