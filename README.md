@@ -73,7 +73,7 @@ Grab the newest version from **[Releases](https://github.com/marcusbandit/Anibea
 
 | Platform | Get it | Notes |
 | --- | --- | --- |
-| Any Linux, one line | `curl -fsSL https://anibeam.app/install.sh \| sh` | Picks the right way for your system below: the AUR on Arch, the apt or dnf repo on Ubuntu, Debian and Fedora, the AppImage anywhere else. |
+| Any Linux, one line | `curl -fsSL https://anibeam.app/install.sh \| sh` | Installs the AppImage with a menu entry and icon; it updates itself from Settings. `ANIBEAM_PACKAGE=1` before `sh` takes the system's package instead: the AUR on Arch, the apt or dnf repo on Ubuntu, Debian and Fedora. |
 | Arch Linux | `yay -S anibeam-bin` | The release build, installed in seconds. `yay -S anibeam` compiles it instead. Either pulls in anirss and qbittorrent-nox. |
 | Ubuntu, Debian | `sudo curl -fsSLo /etc/apt/sources.list.d/anibeam.sources https://anibeam.app/apt/anibeam.sources`<br>`sudo apt update && sudo apt install anibeam` | Ubuntu 24.04, Debian 13 and later. Updates come with `apt upgrade`. |
 | Fedora | `sudo dnf config-manager addrepo --from-repofile=https://anibeam.app/rpm/anibeam.repo`<br>`sudo dnf install anibeam` | Fedora 41 and later. Updates come with `dnf upgrade`. |
