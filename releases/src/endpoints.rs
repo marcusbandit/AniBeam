@@ -746,7 +746,7 @@ pub(crate) mod tests {
     fn validate_refuses_a_hand_added_json_source() {
         let err = validate("a", "json", "https://search.example.org/api?q={query}").unwrap_err();
         assert!(
-            matches!(&err, CoreError::Invalid { message, .. } if message.contains("endpoint repo")),
+            matches!(&err, CoreError::Invalid { message, .. } if message.contains("source list")),
             "{err:?}"
         );
     }

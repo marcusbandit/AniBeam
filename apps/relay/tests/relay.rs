@@ -177,7 +177,7 @@ async fn a_room_can_start_with_nothing_picked() {
     let room: CreatedRoom = serde_json::from_str(&body).unwrap();
     let (status, page) = http(&addr, "GET", &format!("/{}", room.code), "").await;
     assert_eq!(status, 200);
-    assert!(page.contains("Nothing picked yet"));
+    assert!(page.contains("Nothing selected yet"));
     let mut host = connect(&addr, &room.code).await;
     send(&mut host, &hello("Ann", Some(&room.host_key))).await;
     match recv(&mut host).await {

@@ -1523,7 +1523,7 @@ fn notes_on_a_show_not_on_the_list_write_nothing() {
                     .message
                     .as_deref()
                     .unwrap_or("")
-                    .contains("add it to a list"),
+                    .contains("Add it to a list"),
                 "{outcomes:?}"
             );
         }

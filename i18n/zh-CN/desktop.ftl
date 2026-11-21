@@ -333,7 +333,8 @@ onboarding-title-ready = 一切就绪
 onboarding-title-later = { $count ->
     [1] 已就绪，还有一项稍后处理
     [2] 已就绪，还有两项稍后处理
-   *[other] 已就绪，还有三项稍后处理
+    [3] 已就绪，还有三项稍后处理
+   *[other] 已就绪，还有 { $count } 项稍后处理
 }
 onboarding-body-welcome = Anibeam 把你的动漫集中在一处。它会找到磁盘上的番剧，直接在这里播放，并在你观看时同步更新 AniList 或 MyAnimeList。
 onboarding-body-library = 选择存放番剧的文件夹。其中每个文件夹都会成为一部番剧，带有海报、剧集和你的观看进度。Anibeam 只读取文件夹，从不移动或重命名文件。

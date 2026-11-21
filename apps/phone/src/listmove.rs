@@ -357,7 +357,7 @@ mod tests {
     fn a_move_that_failed_says_so_and_one_that_landed_says_where() {
         assert_eq!(
             moved_line(Tracker::Mal, 2, 1),
-            "MyAnimeList did not take 1 show; see the activity log"
+            "Could not move 1 show to MyAnimeList; see the activity log"
         );
         assert_eq!(
             moved_line(Tracker::Anilist, 3, 0),

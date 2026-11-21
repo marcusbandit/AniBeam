@@ -369,7 +369,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status
             .anirss
             .message
-            .starts_with("anirss 0.4.2 cannot keep each torrent client's login to itself"),
+            .starts_with("anirss 0.4.2 cannot keep each torrent client's login separate"),
         "{}",
         status.anirss.message
     );

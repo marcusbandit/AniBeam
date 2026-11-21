@@ -191,7 +191,7 @@ mod tests {
         assert_eq!(v["kind"], "NotConnected");
         assert_eq!(v["message"], "MyAnimeList is not connected.");
         assert_eq!(v["plain"], "MyAnimeList is not connected.");
-        assert_eq!(v["next"], "Connect it in Settings, under Accounts.");
+        assert_eq!(v["next"], "Connect it in Settings > Accounts.");
         assert_eq!(v["fix"], "settings:accounts");
     }
 

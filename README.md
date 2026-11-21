@@ -195,7 +195,7 @@ It can also browse and stream your computer's library from anywhere over [Tailsc
 
 <br>
 
-Open **Settings > Downloads > Torrent client**, click **Test**, and check **Details** for the exact error. If you want Anibeam to manage qBittorrent automatically, switch **Which client** to **Built-in** (or **Pick for me**) and save.
+Open **Settings > Downloads > Torrent client**, click **Test**, and check **Details** for the exact error. If you want Anibeam to manage qBittorrent automatically, switch **Which client** to **Built-in** (or **Auto**) and save.
 
 </details>
 

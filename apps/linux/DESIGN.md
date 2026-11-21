@@ -124,7 +124,7 @@ below where they disagree:
   the app). Beside it the open section at a readable measure: its name in the display cut,
   one plain sentence, then groups. A group (`Panel.qml`) is a heading in the display cut at
   `typeLarge` over one flat pane of rows with hairlines between them, never a pane in a
-  pane. Subtitles leads with its preview; Appearance sets it right under Colours, so the
+  pane. Subtitles leads with its preview; Appearance sets it right under Colors, so the
   knobs people reach for most stay at the top and the preview stays in view of them. Search swaps the section for the matching settings; picking one opens its section,
   scrolls to the row and lights it in the soft accent. Ledgers that belong to other pages
   (the on-disk list, recent scans, the poster wall) are gone from Settings.
@@ -132,7 +132,7 @@ below where they disagree:
   with its count and the search; under it one line of pills (the filter with its counts,
   Find the rest, Refresh all) that wraps on a narrow window. Then the figures on the
   ground (`Tiles.qml`), which are the sections' own counts off the whole library whatever
-  the filter, so they agree with what is below: Not recognised, Folder not found, Missing
+  the filter, so they agree with what is below: Not recognized, Folder not found, Missing
   episodes, Airing, Complete, and the files on disk against the expected total (a zero is
   a fact here; 0 need a match is the good news). The series are cut into those sections in
   the order a person works them, each a heading in the display cut at `typeLarge` with its

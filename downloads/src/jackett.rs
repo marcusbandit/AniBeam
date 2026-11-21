@@ -401,7 +401,7 @@ mod tests {
         assert_eq!(r, Err(StartFailure::Timeout(0)));
         assert_eq!(
             explain("proxied", &StartFailure::Timeout(60)).1,
-            "proxied started but did not answer within 60 seconds."
+            "proxied started but did not respond within 60 seconds."
         );
     }
 

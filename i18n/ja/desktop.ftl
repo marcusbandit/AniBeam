@@ -339,7 +339,8 @@ onboarding-title-ready = 準備完了です
 onboarding-title-later = { $count ->
     [1] 準備完了、あとで1つ設定
     [2] 準備完了、あとで2つ設定
-   *[other] 準備完了、あとで3つ設定
+    [3] 準備完了、あとで3つ設定
+   *[other] 準備完了、あとで{ $count }つ設定
 }
 onboarding-body-welcome = Anibeamはアニメを1か所にまとめます。ディスク上の作品を見つけ、ここで再生し、視聴に合わせてAniListやMyAnimeListを最新に保ちます。
 onboarding-body-library = 作品を保存しているフォルダを選んでください。中のフォルダがそれぞれ1つの作品になり、ポスター、エピソード、前回の続きが表示されます。Anibeamはフォルダを読むだけで、ファイルを移動したり名前を変えたりはしません。

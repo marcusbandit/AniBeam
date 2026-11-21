@@ -588,7 +588,7 @@ fn a_sign_in_cancelled_while_held_tells_the_tab() {
     }
     core.call(Call::CancelJob { job }).unwrap();
     let page = browser.join().unwrap();
-    assert!(page.contains("This sign-in was cancelled"), "{page}");
+    assert!(page.contains("Sign-in was canceled"), "{page}");
     let done = common::wait_job(&c, job);
     assert!(matches!(done.body, EventBody::JobCancelled), "{done:?}");
 }
