@@ -341,17 +341,16 @@ fn entry(row: &Row, lang: TitleLanguage) -> SeriesEntry {
 /// Only the provider the row names, never the columns another provider
 /// left behind.
 fn match_entry(row: &Row) -> Option<MatchEntry> {
+    let tracker = |provider| {
+        Some(MatchEntry::Tracker {
+            provider,
+            anilist_id: row.anilist_id,
+            mal_id: row.mal_id,
+        })
+    };
     match row.provider? {
-        Provider::Anilist => Some(MatchEntry::Tracker {
-            provider: TrackerName::Anilist,
-            anilist_id: row.anilist_id,
-            mal_id: row.mal_id,
-        }),
-        Provider::Mal => Some(MatchEntry::Tracker {
-            provider: TrackerName::Mal,
-            anilist_id: row.anilist_id,
-            mal_id: row.mal_id,
-        }),
+        Provider::Anilist => tracker(TrackerName::Anilist),
+        Provider::Mal => tracker(TrackerName::Mal),
         Provider::Tmdb => Some(MatchEntry::Tmdb {
             provider: TmdbName::Tmdb,
             tmdb_id: row.tmdb_id?,
@@ -404,63 +403,38 @@ fn account(
 fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
     let by_id: HashMap<u64, &Row> = rows.iter().map(|r| (r.id, r)).collect();
 
-    let mut views = Vec::new();
-    {
-        let mut stmt = conn.prepare(
-            "SELECT series_id, episode_key, at FROM views WHERE profile_id = 1 ORDER BY series_id",
-        )?;
-        let read = stmt.query_map([], |r| {
-            Ok((
-                r.get::<_, i64>(0)? as u64,
-                r.get::<_, String>(1)?,
-                r.get::<_, i64>(2)?,
-            ))
-        })?;
-        for row in read {
-            let (id, key, at) = row?;
-            let Some(series) = by_id.get(&id) else {
-                continue;
-            };
-            let (last_episode, season, file) = entry_of(series, &key);
-            views.push(View {
+    let views = entries(
+        conn,
+        &by_id,
+        "SELECT series_id, episode_key, at FROM views WHERE profile_id = 1 ORDER BY series_id",
+        |series, key, at| {
+            let (last_episode, season, file) = entry_of(series, key);
+            View {
                 series: series.path.clone(),
                 last_episode,
                 season,
                 file,
-                at: Value::String(format::format_instant(at)),
+                at,
                 extra: HashMap::new(),
-            });
-        }
-    }
-
-    let mut completed = Vec::new();
-    {
-        let mut stmt = conn.prepare(
-            "SELECT series_id, episode_key, at FROM completed WHERE profile_id = 1 ORDER BY series_id, episode_key",
-        )?;
-        let read = stmt.query_map([], |r| {
-            Ok((
-                r.get::<_, i64>(0)? as u64,
-                r.get::<_, String>(1)?,
-                r.get::<_, i64>(2)?,
-            ))
-        })?;
-        for row in read {
-            let (id, key, at) = row?;
-            let Some(series) = by_id.get(&id) else {
-                continue;
-            };
-            let (episode, season, file) = entry_of(series, &key);
-            completed.push(Completed {
+            }
+        },
+    )?;
+    let completed = entries(
+        conn,
+        &by_id,
+        "SELECT series_id, episode_key, at FROM completed WHERE profile_id = 1 ORDER BY series_id, episode_key",
+        |series, key, at| {
+            let (episode, season, file) = entry_of(series, key);
+            Completed {
                 series: series.path.clone(),
                 episode,
                 season,
                 file,
-                at: Value::String(format::format_instant(at)),
+                at,
                 extra: HashMap::new(),
-            });
-        }
-    }
+            }
+        },
+    )?;
 
     let mut resume_points = Vec::new();
     {
@@ -508,6 +482,36 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
         resume_points,
         extra: HashMap::new(),
     })
+}
+
+/// The rows of a views or completed table for the series the document
+/// carries, each made from its series, episode key and instant.
+fn entries<T>(
+    conn: &Connection,
+    by_id: &HashMap<u64, &Row>,
+    sql: &str,
+    make: impl Fn(&Row, &str, Value) -> T,
+) -> Result<Vec<T>, CoreError> {
+    let mut stmt = conn.prepare(sql)?;
+    let read = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, i64>(0)? as u64,
+            r.get::<_, String>(1)?,
+            r.get::<_, i64>(2)?,
+        ))
+    })?;
+    let mut out = Vec::new();
+    for row in read {
+        let (id, key, at) = row?;
+        if let Some(series) = by_id.get(&id) {
+            out.push(make(
+                series,
+                &key,
+                Value::String(format::format_instant(at)),
+            ));
+        }
+    }
+    Ok(out)
 }
 
 /// The number, season and file a view or a completed entry writes for a

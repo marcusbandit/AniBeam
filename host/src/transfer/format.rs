@@ -346,6 +346,21 @@ pub struct SortEntry {
 /// The version check reads the raw value first, so a document from a later
 /// core is refused by version rather than by whichever field it added.
 pub fn parse(bytes: &[u8]) -> Result<(Document, Vec<String>), CoreError> {
+    // A well-formed document reads straight into its records. Anything that
+    // does not (not JSON, another format, a later version, a key written
+    // twice) is read through a JSON tree first, which says why or reads it
+    // after all.
+    let doc = match serde_json::from_slice::<Document>(bytes) {
+        Ok(doc) if doc.format == FORMAT && doc.version <= VERSION => doc,
+        _ => parse_tree(bytes)?,
+    };
+    let ignored = doc.unknown_fields();
+    Ok((doc, ignored))
+}
+
+/// [`parse`] through a JSON tree: slower, and the reading that names what is
+/// wrong with a document.
+fn parse_tree(bytes: &[u8]) -> Result<Document, CoreError> {
     let value: Value = serde_json::from_slice(bytes).map_err(|e| {
         CoreError::invalid(
             "format",
@@ -371,10 +386,7 @@ pub fn parse(bytes: &[u8]) -> Result<(Document, Vec<String>), CoreError> {
     }
     // Version 1 migrates here by doing nothing: the fields version 2 added
     // are absent, so they read as None and the merge leaves them alone.
-    let doc: Document =
-        serde_json::from_value(value).map_err(|e| CoreError::invalid("format", e.to_string()))?;
-    let ignored = doc.unknown_fields();
-    Ok((doc, ignored))
+    serde_json::from_value(value).map_err(|e| CoreError::invalid("format", e.to_string()))
 }
 
 /// An instant in either of the two shapes the format carries: an RFC 3339
@@ -617,6 +629,29 @@ mod tests {
         assert!(
             matches!(parse(b"not json at all"), Err(CoreError::Invalid { field, .. }) if field == "format")
         );
+    }
+
+    #[test]
+    fn json_that_is_no_object_is_another_format() {
+        for text in ["[]", "\"anibeam-export\"", "3", "[\"anibeam-export\", 2]"] {
+            let Err(CoreError::Invalid { field, message }) = parse(text.as_bytes()) else {
+                panic!("{text} parsed");
+            };
+            assert_eq!(field, "format");
+            assert!(message.contains(FORMAT), "{text}: {message}");
+        }
+    }
+
+    /// A key written twice reads as its last copy, as a JSON tree reads it.
+    #[test]
+    fn a_key_written_twice_reads_as_its_last() {
+        let text = FIXTURE.replacen(
+            "\"format\": \"anibeam-export\",",
+            "\"format\": \"something-else\",\n  \"format\": \"anibeam-export\",",
+            1,
+        );
+        let (doc, _) = parse(text.as_bytes()).unwrap();
+        assert_eq!(doc.series.len(), 3);
     }
 
     #[test]
