@@ -2,21 +2,23 @@
 # Anibeam's installer for Linux and Mac:  curl -fsSL https://anibeam.app/install.sh | sh
 # The newest nightly instead:              curl -fsSL https://anibeam.app/install.sh | ANIBEAM_CHANNEL=nightly sh
 #
-# It installs Anibeam the way the system installs things, so updates arrive with the rest of it.
-# On a Mac (Apple silicon): the Homebrew cask when brew is there, otherwise the dmg's app copied
-# into /Applications. On Linux it reads /etc/os-release:
+# On Linux it installs the AppImage in ~/.local/bin, with a menu entry and its icon, on every
+# distro: the AppImage updates itself from Settings > About on whichever track it came from, stable
+# or nightly. The system's own package is there for those who pick it, with ANIBEAM_PACKAGE=1 or
+# the Arch, Debian and Fedora tabs on anibeam.app/download; it then updates with the system instead:
 #   Arch and its family    anibeam-bin from the AUR with yay or paru; without either, the AppImage
 #   Ubuntu, Debian         the apt repo on anibeam.app, then apt install anibeam
 #   Fedora                 the dnf repo on anibeam.app, then dnf install anibeam
-#   anything else          the AppImage in ~/.local/bin, with a menu entry
-# A nightly comes as the AppImage on every Linux, and as the dmg on a Mac: the package repos, the
-# AUR and the Homebrew cask carry stable releases only, and the AppImage and the dmg's app update
-# themselves on whichever track they came from.
-# On Linux it asks for sudo only for the system's own package manager; on a Mac it needs none. Read it first if you like:
+#   anything else          the AppImage
+# On a Mac (Apple silicon): the Homebrew cask when brew is there, otherwise the dmg's app copied
+# into /Applications. A nightly comes as the AppImage on every Linux, and as the dmg on a Mac: the
+# package repos, the AUR and the Homebrew cask carry stable releases only.
+# It asks for sudo only for the system's own package manager, and only with ANIBEAM_PACKAGE=1;
+# on a Mac it needs none. Read it first if you like:
 # https://anibeam.app/install.sh
 # Everything runs from main at the very end, so a download cut off half way runs nothing.
 #   ANIBEAM_BASE      where the repos live (default https://anibeam.app), for testing
-#   ANIBEAM_APPIMAGE  set to 1 to take the AppImage route on any system
+#   ANIBEAM_PACKAGE   set to 1 to install the system's own package (AUR, apt, dnf) on Linux
 #   ANIBEAM_CHANNEL   stable (the default) or nightly
 set -eu
 
@@ -114,7 +116,7 @@ mac() {
 sudo=""
 need_root() {
   [ "$(id -u)" -eq 0 ] && return
-  have sudo || fail "sudo is needed to install with the system's package manager. ANIBEAM_APPIMAGE=1 installs the AppImage in your home folder instead"
+  have sudo || fail "sudo is needed to install with the system's package manager. Leave ANIBEAM_PACKAGE unset to install the AppImage in your home folder instead"
   sudo=sudo
 }
 
@@ -210,17 +212,14 @@ main() {
     id="${ID:-}"
     like="${ID_LIKE:-}"
   fi
-  if [ "${ANIBEAM_APPIMAGE:-}" = 1 ]; then
-    appimage
-  elif [ -n "$nightly_route" ]; then
-    case " $id $like " in
-      *" arch "* | *" debian "* | *" fedora "*)
-        say "Nightly comes as the AppImage: the AUR and the apt and dnf repos carry stable releases only" ;;
-    esac
+  if [ "${ANIBEAM_PACKAGE:-}" != 1 ] || [ -n "$nightly_route" ]; then
+    if [ -n "$nightly_route" ] && [ "${ANIBEAM_PACKAGE:-}" = 1 ]; then
+      say "Nightly comes as the AppImage: the AUR and the apt and dnf repos carry stable releases only"
+    fi
     # A copy from the system's packages stays as it is: the menu entry this writes opens the
     # AppImage, but anibeam typed in a shell may still find the packaged one first
     if [ -x /usr/bin/anibeam ]; then
-      say "Anibeam from the system's packages stays in /usr/bin; the menu opens the nightly AppImage. Remove the package to keep one copy"
+      say "Anibeam from the system's packages stays in /usr/bin; the menu opens the AppImage. Remove the package to keep one copy"
     fi
     appimage
   elif family arch && have pacman; then
@@ -230,6 +229,7 @@ main() {
   elif { family fedora || [ "$id" = fedora ]; } && have dnf; then
     fedora
   else
+    say "No package for this system, so Anibeam goes in as the AppImage"
     appimage
   fi
   say "Anibeam is installed. Open it from your app menu, or run anibeam"
