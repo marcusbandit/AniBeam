@@ -175,6 +175,8 @@ fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
         Ok(()) => Ok(()),
         Err(_) => {
             std::fs::copy(from, to)?;
+            // The copy reaches the disk before the only flushed bytes go with the source.
+            File::open(to)?.sync_all()?;
             std::fs::remove_file(from)
         }
     }
@@ -185,6 +187,9 @@ fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
 pub struct Shelf {
     parts: PathBuf,
     torrents: Arc<Mutex<HashMap<String, Arc<Files>>>>,
+    /// Torrents whose files a remove took off the shelf, until a new copy or a failed
+    /// delete puts files back: a pass that meets one has nothing to flush.
+    retired: Arc<Mutex<HashSet<String>>>,
 }
 
 impl Shelf {
@@ -192,11 +197,13 @@ impl Shelf {
         Shelf {
             parts,
             torrents: Arc::default(),
+            retired: Arc::default(),
         }
     }
 
     /// The torrent's files, made for `folder` when it has none yet.
     pub fn files(&self, hash: &str, folder: &Path) -> Arc<Files> {
+        recover(&self.retired).remove(hash);
         recover(&self.torrents)
             .entry(hash.to_string())
             .or_insert_with(|| {
@@ -238,12 +245,6 @@ impl Shelf {
         recover(&self.torrents).get(hash).cloned()
     }
 
-    pub fn forget(&self, hash: &str) {
-        if let Some(files) = recover(&self.torrents).remove(hash) {
-            files.remove_parts();
-        }
-    }
-
     /// Takes a torrent's files off the shelf before librqbit deletes it, so an add of the
     /// same torrent meanwhile gets files of its own, and the delete leaves its part files.
     pub fn retire(&self, hash: &str) -> Option<Arc<Files>> {
@@ -251,7 +252,13 @@ impl Shelf {
         files
             .retired
             .store(true, std::sync::atomic::Ordering::SeqCst);
+        recover(&self.retired).insert(hash.to_string());
         Some(files)
+    }
+
+    /// Whether a remove took the torrent's files off the shelf.
+    pub fn is_retired(&self, hash: &str) -> bool {
+        recover(&self.retired).contains(hash)
     }
 
     /// Puts back a torrent's files a delete that failed had taken off the shelf.
@@ -259,6 +266,7 @@ impl Shelf {
         files
             .retired
             .store(false, std::sync::atomic::Ordering::SeqCst);
+        recover(&self.retired).remove(hash);
         recover(&self.torrents)
             .entry(hash.to_string())
             .or_insert(files);
