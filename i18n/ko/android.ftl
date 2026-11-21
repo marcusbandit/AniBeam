@@ -54,7 +54,7 @@ lang-name-zh-CN = 중국어(간체)
 ## Onboarding
 
 onb-welcome-title = Anibeam
-onb-welcome-note = 이 휴대전화에서 보는 애니. 작품을 찾고, 누가 갖고 있는지 보고, 다운로드하고, 목록을 맞춰 두세요.
+onb-welcome-note = 이 휴대전화에서 보는 애니. 작품을 찾고, 에피소드를 다운로드하고, 목록을 맞춰 두세요.
 onb-language-title = 언어
 onb-language-note = 따로 고르지 않으면 Anibeam은 휴대전화 언어를 써요. 나중에 더보기에서 바꿀 수 있어요.
 onb-lists-title = 내 목록
@@ -62,19 +62,19 @@ onb-lists-note = 여기서 본 작품이 AniList나 MyAnimeList에 기록되도�
 onb-wifi-title = Wi-Fi 전용
 onb-wifi-note = 에피소드는 용량이 커요. 따로 설정하지 않으면 Anibeam은 Wi-Fi에서만 다운로드해요.
 onb-storage-title = 저장 공간
-onb-storage-note = Anibeam이 다운로드할 수 있는 용량의 상한이에요. 미리 확보하지는 않아요. 에피소드가 채울 때까지 공간은 그대로 비어 있어요.
+onb-storage-note = Anibeam이 다운로드할 수 있는 용량의 상한을 정해요. 미리 확보하는 공간은 없어요: 에피소드를 다운로드하기 전까지 공간은 비어 있어요.
 onb-notify-title = 알림
 onb-notify-note = 에피소드를 다운로드하는 동안 알림에 진행 상황이 표시되고, 시청할 준비가 되면 또 다른 알림이 와요. 알림이 없어도 다운로드는 진행돼요.
-onb-sites-title = 검색 사이트
-onb-sites-note = Anibeam에는 검색할 사이트가 들어 있지 않아요. 저장소는 서명된 검색 사이트 목록이에요. 저장소 주소를 붙여넣고 키를 확인한 뒤 원하는 사이트를 설치하세요. 나중에 더보기에서 해도 돼요.
+onb-sites-title = 소스 목록
+onb-sites-note = Anibeam에는 다운로드 소스가 들어 있지 않아요. 소스 목록은 검색할 사이트를 모은 서명된 카탈로그예요. 주소를 붙여넣고 키를 확인한 뒤 원하는 소스를 설치하세요. 나중에 더보기에서 해도 돼요.
 onb-computer-title = 내 컴퓨터
-onb-computer-note = 컴퓨터의 Anibeam은 Tailscale로 이 휴대폰과 라이브러리를 공유할 수 있어요. 그 작품이 라이브러리에 표시되고, 에피소드를 여기서 재생해요. 컴퓨터의 Tailscale 이름과 포트를 입력하고 테스트를 누르세요. 컴퓨터가 없다면 비워 두고 시작하세요. 나중에 더보기에서 할 수 있어요.
+onb-computer-note = 컴퓨터의 Anibeam은 Tailscale로 이 휴대전화와 라이브러리를 공유할 수 있어서, 그 작품이 라이브러리에 표시되고 여기서 재생돼요. 컴퓨터의 Tailscale 이름과 포트를 입력하고 테스트를 누르세요. 컴퓨터가 없다면 비워 두고 시작을 누르세요. 나중에 더보기에서 설정할 수 있어요.
 onb-wifi-only = Wi-Fi에서만
-onb-wifi-on = 켜짐. 모바일 데이터는 먼저 물어봐요.
+onb-wifi-on = 켜짐. 모바일 데이터를 쓰기 전에 Anibeam이 물어봐요.
 onb-wifi-off = 꺼짐. 모바일 데이터로도 다운로드해요.
 onb-storage-caption = 18 GB는 에피소드 약 12개 분량이에요. 휴대전화 전체 저장 공간까지 원하는 만큼 조절하세요.
 onb-use-cap = 이 제한 사용
-onb-cap-on = 켜짐. { $cap }에 도달하면 에피소드를 삭제할 때까지 더 받지 않아요.
+onb-cap-on = 켜짐. { $cap }에 도달하면 에피소드를 삭제할 때까지 Anibeam이 새 다운로드를 시작하지 않아요.
 onb-cap-off = 꺼짐. 휴대전화가 가득 찰 때까지 다운로드해요.
 onb-start = 시작
 onb-continue = 계속
@@ -101,7 +101,7 @@ look-size-normal = 보통
 look-size-large = 크게
 look-size-larger = 더 크게
 look-size-largest = 최대
-look-text-size-note = Anibeam 전체의 글자 크기예요. 휴대전화의 글자 크기 설정에 더해져요.
+look-text-size-note = Anibeam 전체의 글자 크기예요. 휴대전화 시스템 설정 위에 적용돼요.
 
 ## The window: tabs and the sheets over every page
 
@@ -129,7 +129,7 @@ more-search-hits = { $count ->
    *[other] 설정 { $count }개
 }
 more-search-tap = 탭해서 이동
-more-search-hint = 더 쉬운 단어로 검색해 보세요: 저장 공간, Wi-Fi, 트래커, 사이트, 컴퓨터.
+more-search-hint = 저장 공간, Wi-Fi, 트래커, 사이트, 컴퓨터 같은 단어로 검색해 보세요.
 more-accounts = 계정
 more-streaming = 스트리밍
 more-subtitles = 자막
@@ -151,14 +151,12 @@ more-dl-status-mobile-cap = Wi-Fi 및 모바일 데이터, { $cap } 제한
 more-stream-status-auto = 자동, 모바일 데이터나 릴레이에서는 720p
 more-stream-status-original = 항상 원본 파일
 more-stream-status-converted = { $quality } 변환
-more-sites-status-none = 저장소 없음
-more-sites-status-on = 사이트 { $sites }개 켜짐
-more-sites-status-on-from = 사이트 { $sites }개 켜짐, 저장소 { $repos }개
+more-sites-status-none = 소스 목록 없음
+more-sites-status-on = 소스 { $sites }개 켜짐
+more-sites-status-on-from = 소스 { $sites }개 켜짐, 목록 { $repos }개에서
 more-conn-status-unchecked = 아직 확인 안 함
-more-conn-status-ok = 모든 단계 통과
-more-conn-status-failed = { $total ->
-    *[other] { $total }단계 중 { $failed }단계 실패
-}
+more-conn-status-ok = 모든 확인 통과
+more-conn-status-failed = 확인 { $total }개 중 { $failed }개 실패
 more-computer-status-none = 아직 연결 안 됨
 more-icon-default = 기본
 more-icon-dark = 다크
@@ -174,7 +172,7 @@ more-stats-status-empty = 한 해의 시청 기록
 
 ## More: the sections' own settings
 
-more-accounts-note = 여기서 본 작품이 목록에 기록되고, 목록의 진행 상황이 작품에 표시돼요.
+more-accounts-note = 여기서 본 에피소드가 목록에 업데이트되고, 목록의 진행 상황이 라이브러리에 표시돼요.
 more-storage = 저장 공간
 more-storage-capped = { $cap } 제한
 more-storage-no-cap = 제한 없음
@@ -182,12 +180,31 @@ more-storage-used = 에피소드 사용량
 more-storage-cap-caption = 제한
 more-storage-free = 휴대전화 여유 공간
 more-set-storage-cap = 저장 공간 제한
-more-storage-cap-on = { $cap }에 도달하면 에피소드를 삭제할 때까지 더 받지 않아요.
+more-set-rolling = 미리 받기
+more-roll-note-over = { $count }화 초과
+more-roll-note-asked = 요청할 때
+more-roll-big = 긴 작품은 자동으로 미리 받기
+more-roll-big-help = { $count }화가 넘는 작품은 자동으로 몇 화씩 다운로드해요. 다운로드에서 모두 한꺼번에 다운로드할 수도 있어요.
+more-roll-ahead = 미리 받을 화수
+more-roll-ahead-help = 지금 보는 화 다음으로 다운로드해 둘 화수예요. 12화는 대략 한 시즌이에요.
+more-roll-over = 이보다 긴 작품 미리 받기
+more-roll-over-help = 이보다 에피소드가 많은 다운로드는 몇 화씩 받아요.
+more-roll-watched = 시청한 에피소드
+more-roll-delete = 삭제
+more-roll-keep-all = 모두 보관
+more-roll-delete-help = 다음 화로 넘어가면 자동으로 삭제돼서, 휴대전화에는 앞으로 볼 에피소드만 남아요.
+more-roll-keep-all-help = 시청한 뒤에도 모든 파일이 휴대전화에 남아요.
+more-roll-behind = 남겨 둘 시청 에피소드
+more-roll-behind-help = { $count ->
+    [0] 에피소드를 다 보면 그 전 화가 삭제돼요.
+   *[other] 방금 다 본 화 이전에 남겨 둘 시청한 에피소드 수예요. { $count }(으)로 하면 { $episode }화를 다 볼 때 1화가 삭제돼요.
+    }
+more-storage-cap-on = { $cap }에 도달하면 에피소드를 삭제할 때까지 Anibeam이 새 다운로드를 시작하지 않아요.
 more-storage-cap-off = 꺼짐: 휴대전화가 가득 찰 때까지 다운로드해요.
 more-network = 네트워크
 more-network-wifi = Wi-Fi 전용
 more-network-mobile = Wi-Fi 및 모바일 데이터
-more-wifi-on = 켜짐. Wi-Fi에 연결될 때까지 다운로드를 기다리고, 모바일 데이터는 먼저 물어봐요.
+more-wifi-on = 켜짐. 다운로드는 Wi-Fi를 기다리고, 모바일 데이터를 쓰기 전에 Anibeam이 물어봐요.
 more-set-stream-quality = 스트리밍 화질
 more-stream-question = 컴퓨터의 에피소드를 여기서 재생하는 방식이에요.
 more-stream-auto-note = 자동은 Wi-Fi에서는 파일을 그대로 재생하고, 모바일 데이터이거나 Tailscale이 릴레이로 컴퓨터에 연결될 때는 720p로 변환해서 재생해요.
@@ -196,7 +213,7 @@ more-stream-converted-note = 컴퓨터에서 { $quality } 화질로 변환해요
 more-set-feeds = 내 피드
 more-feeds-note = 사이트보다 먼저 검색해요
 more-set-check = 연결 확인
-more-check-note = 이 휴대전화와 검색 사이트 사이의 각 단계를 테스트해요: 사이트 찾기, 연결, 보안 연결.
+more-check-note = 이 휴대전화와 다운로드 소스 사이의 각 단계를 테스트해요: DNS 조회, 연결, HTTPS.
 more-check-copy = 결과 복사
 more-set-computer = 내 컴퓨터의 Anibeam
 more-computer-note = 그 컴퓨터의 라이브러리가 라이브러리에 표시되고, 에피소드를 여기서 재생해요. my-computer 같은 이름이나 100.64.0.1 같은 주소를 입력하세요.
@@ -206,7 +223,7 @@ more-icon-note = 홈 화면과 앱 서랍에 표시되는 아이콘이에요.
 more-icon-line-note = 라인 아트는 다른 Material You 아이콘처럼 배경화면 색을 따라가요.
 more-icon-moved-note = 일부 런처는 아이콘이 바뀌면 홈 화면에서 지워요. 앱 서랍에는 남아 있으니 거기서 다시 끌어다 놓으세요.
 more-set-whats-new = 새로운 기능
-more-set-onboarding = 다시 설정
+more-set-onboarding = 설정 다시 실행
 more-update-out = Anibeam { $version } 출시
 more-update-download = 다운로드
 more-about-status-update = 새 버전이 나왔습니다
@@ -220,6 +237,7 @@ host-synced = { $when } 동기화됨.
 host-last-try = { $when } 마지막 시도: { $error }
 host-asking = 요청 중...
 host-reached = { $host }에 연결됨, Anibeam { $version }.
+host-reached-for = { $host }에 연결됨, Anibeam { $version }, { $name }의 진행 상황.
 host-saved = 저장됨. 동기화 중...
 host-none = 컴퓨터 없음. 이 휴대폰은 자체 라이브러리만 사용해요.
 acct-signed-in-as = { $name } 계정으로 로그인됨
@@ -240,6 +258,7 @@ lib-note-phone = { $count ->
    *[other] 이 휴대전화, 작품 { $count }개
 }
 lib-note-remote = { $device }, { $when } 동기화
+lib-note-remote-for = { $device }, { $name }의 진행 상황, { $when } 동기화
 lib-empty-search = "{ $query }" 검색 결과가 없어요.
 lib-empty-phone = 이 휴대전화에는 아직 없어요.
 lib-empty-remote = 그 기기의 라이브러리가 비어 있어요.
@@ -267,8 +286,8 @@ list-completed = 완료
 list-paused = 보류
 list-dropped = 중단
 list-repeating = 재시청 중
-more-check-all-ok = 모든 단계를 통과했어요.
-more-check-failed = { $total }단계 중 { $failed }단계 실패. 이 목록을 스크린샷으로 찍으면 어디가 문제인지 알 수 있어요.
+more-check-all-ok = 모든 확인을 통과했어요.
+more-check-failed = 확인 { $total }개 중 { $failed }개 실패. 이 목록을 스크린샷으로 찍으면 어디가 문제인지 알 수 있어요.
 more-check-row = { $step }  { $ms } ms
 more-check-copied = 복사했어요. 메시지에 붙여넣으세요.
 more-version = Android용 Anibeam { $version } (빌드 { $build })
@@ -300,12 +319,13 @@ more-set-subs-style = 자막 스타일
 more-words-anilist = anilist 트래커 로그인 계정 연결 목록 진행 sign in
 more-words-mal = mal myanimelist 트래커 로그인 계정 연결 목록 진행 sign in
 more-words-storage-cap = 공간 디스크 제한 용량 gb 가득 저장 삭제 크기
+more-words-rolling = 미리 받기 롤링 긴 작품 에피소드 앞 삭제 시청 보관 일괄 공간 rolling roll
 more-words-wifi = 와이파이 wifi wi-fi 모바일 데이터 셀룰러 네트워크
 more-words-notifications = 알림 통지 진행 권한 허용 notification
 more-words-stream-quality = 자동 원본 1080p 720p 480p 변환 데이터 컴퓨터 재생 화질
-more-words-check-repos = 새로고침 업데이트 저장소 repo endpoint
-more-words-add-repo = 저장소 repo endpoint 신뢰 지문 주소 url
-more-words-add-site = 사이트 직접 추가 endpoint 피드 rss torznab jackett prowlarr 주소
+more-words-check-repos = 새로고침 업데이트 소스 목록 저장소 repo endpoint
+more-words-add-repo = 소스 목록 저장소 repo endpoint 신뢰 지문 주소 url
+more-words-add-site = 사이트 소스 직접 추가 endpoint 피드 rss torznab jackett prowlarr 주소
 more-words-feeds = 피드 rss 소스 제거
 more-words-check = 네트워크 dns 테스트 https 보안 연결 인터넷
 more-words-computer = tailscale tailnet 호스트 주소 데스크톱 컴퓨터 라이브러리 스트리밍 테스트 저장 기기
@@ -415,9 +435,7 @@ phone-series-get-episodes = 에피소드 받기
 phone-series-episodes = 에피소드
 series-delete-episodes = 에피소드 삭제
 series-delete-tap = 삭제할 에피소드를 탭하세요.
-phone-series-delete-picked = { $count ->
-   *[other] 에피소드 { $count }개 선택됨.
-}
+phone-series-delete-picked = 에피소드 { $count }개 선택됨.
 series-delete-note = 파일이 이 휴대전화에서 삭제돼요. 시청 기록은 그대로 남아요.
 series-delete-button = { $count ->
    *[other] 에피소드 { $count }개 삭제
@@ -454,7 +472,7 @@ show-status-completed = 완료
 show-status-paused = 보류
 show-status-dropped = 중단
 show-status-repeating = 재시청 중
-show-status-now = { $label }, 현재
+show-status-now = { $label }(현재)
 phone-show-add-to-list = 목록에 추가
 phone-show-your-score = 내 점수 { $score }
 show-rate = 평점
@@ -568,6 +586,7 @@ inspect-holds = { $count ->
 
 phone-notes-title = 새로운 기능
 notes-got-it = 확인
+notes-github = GitHub에서 전체 변경 내역 보기
 
 ## Move the list to a tracker
 
@@ -597,9 +616,7 @@ move-moving = { $count ->
 move-moved = { $count ->
    *[other] { $site }에 작품 { $count }개 옮겼어요
 }
-move-failed = { $count ->
-   *[other] { $site }에서 작품 { $count }개를 받지 못했어요. 활동 로그를 확인하세요
-}
+move-failed = 작품 { $count }개를 { $site }(으)로 옮기지 못했어요. 활동 로그를 확인하세요
 
 ## Downloads: find (search, shows, sources, releases)
 
@@ -616,9 +633,9 @@ find-lens-downloaded = 받은 항목
 find-lens-with-count = { $lens } { $count }
 find-what-to-get = 받을 작품
 find-lens-list-line = 내 목록의 시청 중, 시청 예정 작품이에요. 하나를 열어 에피소드를 받으세요.
-find-lens-gaps-line = 방영했지만 이 휴대전화에 없는 에피소드예요. 작품을 열어 누가 갖고 있는지 확인하세요.
+find-lens-gaps-line = 방영했지만 이 휴대전화에 없는 에피소드예요. 작품을 열어 검색하세요.
 find-lens-airing-line = 앞으로 나올 새 에피소드예요. 가까운 순.
-find-lens-following-line = 구독 중인 항목이에요. 새 에피소드가 자동으로 다운로드돼요. 하나를 열어 구독을 멈출 수 있어요.
+find-lens-following-line = 구독: 새 에피소드가 자동으로 다운로드돼요. 하나를 열어 구독을 멈출 수 있어요.
 find-lens-downloaded-line = 이 휴대전화가 다운로드한 항목이에요. 작품별로 보여요.
 
 find-lens-gaps-empty = 누락 없음: 시작한 모든 작품에 방영된 에피소드가 다 있어요.
@@ -655,11 +672,11 @@ find-show-gone = 그 작품은 이 휴대전화 라이브러리에 더 이상 �
 ## Shows as you type
 
 find-shows = 작품
-find-suggesting = AniList에 요청 중...
-find-suggest-tap = 탭하면 누가 갖고 있는지 보여요. 검색 키를 누르면 릴리스 이름을 검색해요.
-find-suggest-none = 그 이름의 작품이 없어요. 검색 키를 누르면 릴리스 이름을 검색해요.
+find-suggesting = AniList 검색 중...
+find-suggest-tap = 작품을 탭하면 소스를 검색해요. 검색 키를 누르면 릴리스 이름을 검색해요.
+find-suggest-none = 그 이름의 작품이 없어요. 대신 검색 키를 누르면 릴리스 이름을 검색해요.
 find-suggest-hint = 입력하는 동안 작품이 나타나요. 검색 키를 누르면 릴리스 이름을 검색해요.
-find-suggest-failed = AniList에 요청하지 못했어요: { $error }
+find-suggest-failed = AniList에 연결하지 못했어요: { $error }
 find-library-line = 내 라이브러리
 find-library-line-none = 내 라이브러리, 이 휴대전화에 { $total }개 중 없음
 find-library-line-some = 내 라이브러리, 이 휴대전화에 { $total }개 중 { $here }개
@@ -691,19 +708,19 @@ find-stop-failed = 구독 해지를 마치지 못했어요: { $error }
 find-where = 받을 곳
 find-where-pick = 소스를 골라 무엇이 있는지 확인하세요.
 find-where-nothing = 직접 선택하기 전에는 아무것도 다운로드하지 않아요.
-find-source-idle = 탭해서 확인
+find-source-idle = 탭해서 검색
 find-source-trying = 시도 중: { $name }
 find-source-searching = 검색 중
 find-source-silent = 응답 없음
-find-no-sites-title = 검색 사이트가 아직 없어요
-find-no-sites-body = 더보기에서 검색 사이트 저장소나 내 피드를 추가하세요.
+find-no-sites-title = 아직 다운로드 소스가 없어요
+find-no-sites-body = 더보기에서 소스 목록이나 내 피드를 추가하세요.
 find-open-more = 더보기 열기
 find-pick-source-title = 소스 선택
-find-pick-source-body = 릴리스가 격자로 표시돼요. 에피소드 하나가 큐브 하나예요.
+find-pick-source-body = 릴리스가 격자로 표시돼요. 에피소드 하나가 칸 하나예요.
 find-releases = { $count ->
    *[other] 릴리스 { $count }개
 }
-find-unreachable = { $host }에 연결할 수 없어요. 일부 네트워크와 국가에서는 릴리스 사이트를 차단해요. Anibeam은 이름 차단은 이미 우회하니, 사이트 자체가 차단됐거나 사이트가 다운된 거예요. VPN을 쓰거나 다른 소스를 써 보세요.
+find-unreachable = { $host }에 연결할 수 없어요. 일부 네트워크는 릴리스 사이트를 차단해요. Anibeam은 DNS 차단을 이미 우회하므로, 이 사이트가 직접 차단됐거나 다운됐을 수 있어요. VPN이나 다른 소스를 써 보세요.
 find-the-source = 소스
 
 find-has = 보유 목록
@@ -715,17 +732,19 @@ find-on-this-phone = 이 휴대전화
 find-on-computer = { $name }
 
 find-plan-no-releases = 이 소스에는 이 작품의 릴리스가 없어요.
-find-plan-nothing-picked = 선택한 항목 없음: 행이나 큐브를 탭하세요.
+find-plan-nothing-picked = 선택한 항목 없음: 행이나 에피소드를 탭하세요.
 find-plan-line = { $episodes }, { $groups }, { $size }
-find-plan-skipped = { $count ->
-   *[other] 이미 있는 에피소드는 제외했어요. 다시 받으려면 교체를 켜세요.
-}
+find-plan-skipped = 이미 있는 에피소드는 건너뛰어요. 다시 다운로드하려면 교체를 켜세요.
 find-plan-follow-note = { $query }의 새 에피소드가 자동으로 다운로드돼요.
 find-plan-on-desk = { $name }의 라이브러리로 다운로드해요.
 find-follow-new = 새 에피소드 구독
-find-follow-new-note = 방영되는 대로 자동으로 다운로드해요.
+find-follow-new-note = 방영되는 대로 자동으로 다운로드돼요.
+find-roll-title = 미리 받기
+find-roll-on = 지금 { $count }화를 다운로드하고, 한 화를 다 보면 다음 화를 시작해요.
+find-roll-on-delete = 지금 { $count }화를 다운로드하고, 한 화를 다 보면 다음 화를 시작해요. 본 에피소드는 자동으로 삭제돼요.
+find-roll-off = 선택한 에피소드를 한꺼번에 다운로드해요.
 find-replace = 가진 항목 교체
-find-replace-note = 이 휴대전화에 있는 에피소드를 선택한 것으로 다시 받아 덮어써요.
+find-replace-note = 선택한 에피소드를 다시 다운로드해 이 휴대전화에 있는 것을 덮어써요.
 find-go = { $mode ->
     [replace] { common-episodes } 받고 교체
     [subscribe] { common-episodes } 받고 구독
@@ -741,7 +760,7 @@ find-download-to = 다운로드 위치
 find-this-phone = 이 휴대전화
 find-your-computer = 내 컴퓨터
 find-desk-asking = { $name }에 요청 중...
-find-desk-silent = { $name }에서 응답이 없어요. 이 휴대전화를 고르거나 켜져 있을 때 다시 시도하세요.
+find-desk-silent = { $name }이(가) 응답하지 않아요. 이 휴대전화를 고르거나, 온라인일 때 다시 시도하세요.
 find-sending-to = { $name }에 전송 중...
 
 ## The release list
@@ -752,7 +771,7 @@ find-get = 받기
 find-get-all = { $count }개 모두 받기
 find-subscribe = 구독
 find-back-step = 한 단계 뒤로
-find-narrow-placeholder = 좁히기, 제외는 -단어
+find-narrow-placeholder = 필터, 제외는 -단어
 find-best-fit-searches = 최적 검색어: { $query }
 find-fact-batch = 일괄
 find-fact-seeds = 시드 { $count }
@@ -788,7 +807,7 @@ find-downloading = { $count ->
 }
 find-not-added = 추가 안 됨: { $error }
 find-not-subscribed = 구독하지 못했어요: { $error }
-find-desk-refused = { $name }에서 받지 못했어요: { $error }
+find-desk-refused = { $name }이(가) 거부했어요: { $error }
 find-desk-not-subscribed = { $name }에서 구독하지 못했어요: { $error }
 
 ## Player
@@ -822,7 +841,7 @@ player-android-only = 플레이어는 Android에서만 실행돼요
 ## Player: delays
 
 player-delay-title = 지연
-player-delay-note = 탭할 때마다 0.1초씩 움직여요. 다음 파일까지 유지돼요.
+player-delay-note = 탭할 때마다 0.1초씩 움직여요. 다음 에피소드에서 초기화돼요.
 phone-player-delay-seconds = { $value }초
 player-sub-delay-now = 자막 지연 { $value }
 player-audio-delay-now = 오디오 지연 { $value }
@@ -866,12 +885,12 @@ subs-position = 위치
 subs-position-helper = 100은 아래쪽 가장자리예요. 숫자가 작을수록 자막이 화면 위로 올라가요.
 subs-style-title = 스타일
 subs-styled = 스타일 자막
-subs-styled-as-made = 스타일(ASS) 파일은 제작자가 정한 모양 그대로 보여요.
-subs-styled-mine = 아래 내 스타일이 모든 파일에 적용돼요. 사인과 가라오케가 깨질 수 있어요.
+subs-styled-as-made = 스타일(ASS) 자막은 제작된 그대로 표시돼요.
+subs-styled-mine = 아래 내 스타일이 모든 파일을 덮어써요. 사인과 가라오케가 깨질 수 있어요.
 subs-styled-size-only = 스타일 자막 파일은 모양을 유지하고 내 크기만 따라요. 일반 파일은 내 스타일을 따라요.
 subs-mode-as-made = 원본
 subs-mode-size-only = 크기만
-subs-mode-mine = 내 설정
+subs-mode-mine = 사용자 지정
 subs-font = 글꼴
 subs-font-bad = Noto Sans처럼 글꼴 이름을 입력하세요.
 subs-bold = 굵게
@@ -879,14 +898,14 @@ subs-colour = 글자 색
 subs-colour-bad = #ffcc00 같은 색을 입력하세요.
 subs-outline = 윤곽선
 subs-outline-bad-width = 너비는 0 이상의 숫자예요.
-subs-outline-bad-colour = #000000처럼 색을 입력하세요.
+subs-outline-bad-colour = #000000 같은 색을 입력하세요.
 subs-outline-helper = 너비, 그다음 색.
 subs-shadow = 그림자
 subs-shadow-bad = 0 이상의 숫자예요. 0은 그림자 없음.
 subs-shadow-helper = 그림자가 떨어지는 거리, 0이면 없음.
 subs-box = 배경 상자
 subs-box-helper = 자막 뒤에 깔리는 어두운 상자예요. 0이면 없애요.
-subs-reset-title = 처음 상태로
+subs-reset-title = 자막 스타일 재설정
 subs-reset-helper = 크기, 글꼴, 색상, 윤곽선, 상자, 위치를 기본값으로 되돌려요.
 subs-reset = 초기화
 
@@ -896,11 +915,11 @@ stream-quality-auto = 자동
 stream-quality-original = 원본
 stream-app-starting = 앱이 아직 시작 중이에요
 stream-no-computer = 아직 컴퓨터가 없어요. 더보기에서 추가하세요.
-stream-off-on-host = { $host }에서 스트리밍이 꺼져 있어요. 그 기기의 설정, 휴대전화 앱에서 에피소드 스트리밍을 켜세요.
+stream-off-on-host = { $host }에서 스트리밍이 꺼져 있어요. 그 기기의 설정, 계정(휴대전화 앱)에서 에피소드 스트리밍을 켜세요.
 stream-cannot-stream = { $host }의 Anibeam 버전 { $version }에서는 아직 스트리밍할 수 없어요. 그 기기에서 업데이트하세요.
-stream-no-session = 상대 기기가 세션을 주지 않았어요
+stream-no-session = 상대 기기가 스트림 세션을 반환하지 않았어요
 stream-answer-unreadable = 응답을 읽지 못했어요: { $why }
-stream-answered-status = { $name }의 응답: { $status }
+stream-answered-status = { $name } 응답 HTTP { $status }
 
 ## Stats
 
@@ -955,7 +974,7 @@ backup-export-helper = 폴더, 매칭, 시청 기록을 담은 파일 하나예�
 backup-private = 비공개 데이터 포함
 backup-private-helper = AniList와 MyAnimeList 로그인 정보, 시청 기록, 환경설정을 추가해요. 로그인 정보는 일반 텍스트로 저장되니 파일을 다른 사람에게 보이지 마세요.
 backup-restore = 백업에서 복원
-backup-restore-helper = 백업을 이 라이브러리로 읽어 와요. 디스크에 있는 내용이 우선이고, 파일은 나머지를 채워요.
+backup-restore-helper = 백업을 이 라이브러리로 복원해요. 백업의 매칭과 설정이 우선하고, 이 휴대전화에서는 아무것도 삭제되지 않아요.
 backup-done = 백업했어요. 파일은 저장한 위치에 있어요.
 backup-not-saved = 저장되지 않았어요. 아무것도 쓰지 않았어요.
 backup-starting = Anibeam이 아직 시작 중이에요. 잠시 후 다시 시도하세요.
@@ -988,12 +1007,8 @@ backup-sum-views = 시청 기록 { $views }개와 완료한 에피소드 { $epis
 backup-sum-resume = { $count ->
    *[other] 이어보기 지점 { $count }개 병합
 }
-backup-sum-accounts = { $count ->
-   *[other] 목록 계정 { $count }개 가져옴
-}
-backup-sum-fixes = { $count ->
-   *[other] 파일 { $count }개에 직접 만든 수정이 적용돼요.
-}
+backup-sum-accounts = 목록 계정 { $count }개 가져옴
+backup-sum-fixes = 파일 { $count }개에 저장된 수정을 적용했어요.
 backup-sum-missing = { $count ->
    *[other] 폴더 { $count }개를 이 휴대전화에서 찾지 못했어요.
 }
@@ -1007,7 +1022,7 @@ activity-copied = 복사됨
 activity-clear-every-line = 모두 지우기
 activity-fold = 접기
 activity-no-problems = 문제 없음. 모두 잘 됐어요.
-activity-nothing-yet = 아직 보고할 내용이 없어요. Anibeam이 한 일이 여기에 표시돼요.
+activity-nothing-yet = 아직 보고할 내용이 없어요. Anibeam의 활동이 여기에 표시돼요.
 activity-time-today = %H:%M:%S
 activity-time-other = %-m월 %-d일 %H:%M
 
@@ -1047,27 +1062,28 @@ fmt-bytes-tb = { $value } TB
 ## Talking to the computer (companion client.rs, sync.rs, address.rs)
 
 client-not-found = 휴대전화가 { $host } 이름을 찾을 수 없어요. Tailscale이 연결돼 있나요?
-client-timeout = { $host }에서 응답이 없어요. 전원이 켜져 있고 양쪽 모두 Tailscale에 연결돼 있나요?
-client-connect-failed = { $host }에 연결할 수 없어요. 전원이 켜져 있고 양쪽 모두 Tailscale에 연결돼 있나요?
-client-refused = { $host } 컴퓨터는 켜져 있지만 Anibeam이 닫혀 있거나 공유하지 않아요. 그 컴퓨터에서 Anibeam을 열고 설정, 휴대전화 앱에서 Tailscale로 공유를 켜세요.
+client-timeout = { $host }이(가) 응답하지 않았어요. 켜져 있고 두 기기 모두 Tailscale에 연결돼 있나요?
+client-connect-failed = { $host }에 연결할 수 없어요. 켜져 있고 두 기기 모두 Tailscale에 연결돼 있나요?
+client-refused = { $host }은(는) 켜져 있지만 그 기기의 Anibeam이 닫혀 있거나 공유하지 않아요. 그 기기에서 Anibeam을 열고 설정, 계정에서 Tailscale로 공유를 켜세요.
 client-no-route = { $host } 경로가 없어요. Tailscale이 연결돼 있나요?
 client-invalid-input = { $host }에 연결하지 못했어요
 client-unreachable = { $host }에 연결하지 못했어요: { $why }
 client-cannot-find = 휴대전화가 { $host } 이름을 찾을 수 없어요. Tailscale이 연결돼 있나요?
-client-broke-off = { $host }의 응답이 중간에 끊겼어요: { $why }
-client-answered = { $host } 응답: { $path }, 상태 { $status }
-client-not-anibeam-status = Anibeam이 아닌 무언가가 응답했어요 ({ $host } 응답: { $path }, 상태 { $status })
-client-not-anibeam-hello = Anibeam이 아닌 무언가가 응답했어요 (Anibeam의 인사 응답이 아니에요)
-client-not-anibeam-name = Anibeam이 아닌 무언가가 응답했어요 (자기 이름: { $name })
-client-too-new = 호스트 API 버전 { $host_api }, 이 앱이 읽는 버전 { $app_api }. 앱을 업데이트하세요.
-client-snapshot-unreadable = 스냅샷을 읽지 못했어요: { $why }
+client-broke-off = { $host }과(와)의 연결이 끊겼어요: { $why }
+client-answered = { $host } 응답: { $path }, HTTP { $status }
+client-not-anibeam-status = 무언가 응답했지만 Anibeam이 아니에요({ $host } 응답: { $path }, HTTP { $status })
+client-not-anibeam-hello = 무언가 응답했지만 Anibeam이 아니에요(예상하지 못한 응답)
+client-not-anibeam-name = 무언가 응답했지만 Anibeam이 아니에요(자신을 { $name }(으)로 밝혀요)
+client-too-new = 호스트는 API { $host_api }를 쓰지만 이 앱은 { $app_api }만 지원해요. 앱을 업데이트하세요.
+client-snapshot-unreadable = 라이브러리 스냅샷을 읽지 못했어요: { $why }
 client-probe-unreadable = 파일 정보를 읽지 못했어요: { $why }
-client-peers-unreadable = Anibeam 목록을 읽지 못했어요: { $why }
+client-peers-unreadable = 기기 목록을 읽지 못했어요: { $why }
 sync-save-failed = 스냅샷을 저장하지 못했어요: { $why }
 address-https = 컴퓨터의 Anibeam은 Tailscale에서 일반 http로 응답해요. https://를 빼세요.
 address-empty = 호스트 이름이나 주소를 입력하세요. 예: my-computer:8790.
 address-ipv6-close = IPv6 주소에는 닫는 ]가 필요해요.
 address-ipv6-port = 포트는 ] 뒤에 쓰세요. 예: [fd7a::1]:8790.
+address-ipv6-brackets = IPv6 주소는 [fd7a::1]:8790처럼 대괄호로 감싸세요.
 address-bad-host = 호스트 이름이 올바르지 않아요: "{ $text }"
 address-bad-port = 포트가 올바르지 않아요: "{ $port }"
 
@@ -1083,17 +1099,17 @@ clib-format-music = 뮤직
 ## Search sites and repos
 
 repos-by-hand-title = 직접 추가
-repos-by-hand-note = 어떤 저장소에도 없는 사이트용이에요. 검색어가 들어갈 자리에 { "{query}" }가 있는 피드면 무엇이든 되고, Jackett나 Prowlarr 피드도 돼요. 주소에 든 키나 토큰은 이 휴대전화의 비밀 저장소로 옮겨져요.
+repos-by-hand-note = 어떤 소스 목록에도 없는 사이트용이에요. 검색어가 들어갈 자리에 { "{query}" }가 있는 피드면 무엇이든 되고, Jackett나 Prowlarr 피드도 돼요. 주소에 든 키나 토큰은 이 휴대전화의 비밀 저장소로 옮겨져요.
 repos-name-placeholder = 이름
 repos-url-placeholder = https://...{ "{query}" }...
 repos-index-placeholder = https://.../index.json
 repos-add-site = 사이트 추가
-repos-add-title = 저장소 추가
-repos-add-note = 저장소 인덱스 주소를 붙여넣으세요. 저장하기 전에 Anibeam이 서명을 확인하고 키를 보여줘요.
-repos-add-repo = 저장소 추가
-repos-trust-title = 저장소를 신뢰할까요?
+repos-add-title = 소스 목록 추가
+repos-add-note = 소스 목록 인덱스 주소를 붙여넣으세요. 저장하기 전에 Anibeam이 서명을 확인하고 키를 보여줘요.
+repos-add-repo = 소스 목록 추가
+repos-trust-title = 이 소스 목록을 신뢰할까요?
 repos-fingerprint = 키 지문
-repos-trust-warning = 저장소의 사이트가 검색 요청이 가는 곳을 정해요. 신뢰하는 사람의 저장소만 믿으세요.
+repos-trust-warning = 이 목록의 소스가 검색 요청이 가는 곳을 정해요. 신뢰하는 사람의 소스 목록만 신뢰하세요.
 repos-trust = 신뢰
 repos-open-link = { $url } 열기
 repos-saving = 저장 중...
@@ -1102,11 +1118,11 @@ repos-update = 업데이트
 repos-edit-note = 주소에 입력한 키나 토큰은 이 휴대전화의 비밀 저장소로 옮겨져요.
 repos-edit-note-keys = 주소의 { "{key}" }는 그대로 두세요. 값은 이 휴대전화에 보관돼요.
 repos-change-its = { $keys } 변경
-repos-check-repos = 저장소에서 새 사이트 확인
-repos-check-sites = 사이트 확인
+repos-check-repos = 소스 목록 업데이트 확인
+repos-check-sites = 소스 확인
 repos-add-site-label = 사이트 직접 추가
 repos-needs-before-search = 검색하려면 { $labels } 필요
-repos-no-longer-offered = 저장소에서 더 이상 제공하지 않아요
+repos-no-longer-offered = 소스 목록에서 더 이상 제공하지 않아요
 repos-update-host = 업데이트하면 { $host }에 요청을 보내요
 repos-tap-change-custom = 탭해서 이름이나 주소 변경
 repos-tap-change-keys = 탭해서 { $labels } 변경
@@ -1114,12 +1130,8 @@ repos-line-custom = { $host }  { $kind }  직접 추가
 repos-update-to = v{ $version } 업데이트
 repos-add-its-value = 값 추가
 repos-asks-for = { $labels } 입력 필요
-repos-preview-line = { $count ->
-   *[other] 사이트 { $count }개, 서명됨
-}
-repos-preview-trusted = { $count ->
-   *[other] 사이트 { $count }개, 서명됨, 이미 신뢰함
-}
+repos-preview-line = 소스 { $count }개, 서명됨
+repos-preview-trusted = 소스 { $count }개, 서명됨, 이미 신뢰함
 repos-ask-kept-empty = 이 휴대전화에만 보관돼요. 비워 두면 저장된 값을 유지해요.
 repos-ask-kept-never = 이 휴대전화에만 보관되고, 라이브러리나 내보내기에는 들어가지 않아요.
 repos-ask-new-host = 새 버전은 이 값을 { $host }에 보내서 다시 물어봐요.
@@ -1138,6 +1150,18 @@ dl-batch-files = { $count ->
    *[other] 일괄, 파일 { $count }개
 }
 dl-batch-tag = 일괄
+dl-roll-line = { $watched ->
+    [0] { $ahead }화 미리 받기: { $total }화 중 { $next }~{ $through }화
+   *[other] { $ahead }화 미리 받기: { $total }화 중 { $next }~{ $through }화, { $watched }화 시청
+    }
+dl-roll-more = { $count }화 더 받기
+dl-roll-all = 모두 받기
+dl-roll-all-ask = { $count ->
+    [1] 남은 에피소드를 다운로드할까요?
+   *[other] 남은 에피소드 { $count }개를 모두 다운로드할까요?
+    }
+dl-roll-keep = 계속 미리 받기
+dl-roll-ahead = { $count }화 앞
 dl-downloading-count = { $count ->
    *[other] { $count }개 다운로드 중
 }
@@ -1183,9 +1207,9 @@ disk-delete-finished-title = { $count ->
 disk-delete-watched-title = { $count ->
    *[other] 시청한 에피소드 { $count }개를 삭제할까요? ({ $size })
 }
-disk-delete-finished-body = { $names }. 제공처에서 완결로 표시했고 모든 에피소드를 시청한 작품만 해당돼요. 아직 방영 중이거나 종영 여부가 추정인 작품은 남아요. 번외를 포함해 해당 작품의 모든 파일이 이 휴대전화에서 삭제돼요. 다운로드 기록도 사라져서 다시 받을 수 있어요.
-disk-delete-watched-body = 모든 작품에서 시청한 모든 에피소드가 대상이에요. 아직 안 본 에피소드와 번외는 남아요. 파일과 자막이 이 휴대전화에서 영구 삭제돼요.
-disk-no-finished = 끝까지 시청한 완결 작품이 없어요
+disk-delete-finished-body = { $names }. 완결로 표시됐고 모든 에피소드를 시청한 작품만 해당돼요. 방영 중이거나 확인되지 않은 작품은 남아요. 번외를 포함해 모든 파일이 이 휴대전화에서 삭제되고, 다운로드도 제거되므로 다시 다운로드할 수 있어요.
+disk-delete-watched-body = 모든 작품에서 시청한 모든 에피소드예요. 안 본 에피소드와 번외는 남아요. 파일과 자막은 이 휴대전화에서 영구 삭제돼요.
+disk-no-finished = 끝까지 본 완결 작품이 없어요
 disk-nothing-watched = 이 휴대전화에 시청한 항목이 없어요
 disk-deleted = { $count ->
    *[other] 에피소드 { $count }개 삭제됨, { $size }
@@ -1320,7 +1344,7 @@ dates-tile-guess = ≈ { $date }
 dates-summary-none = 지정한 것 없음
 dates-summary-ends = { $episode }화에서 완결
 dates-summary-record = { $count }화는 { $site } 날짜
-dates-summary-record-unnamed = { $count }화는 기록상 날짜
+dates-summary-record-unnamed = { $count }화는 작품 정보 날짜
 dates-summary-set = { $count }화는 직접 지정
 dates-summary-guessed = { $count }화는 매주로 추정
 dates-told-one = { $episode }화
@@ -1330,7 +1354,7 @@ dates-told-due = { $episodes } { $when } 후 공개
 dates-told-ends = { $episode }화에서 완결
 dates-told-season-ends = 시즌 { $season }: { $episode }화에서 완결
 dates-told-by-you = { $told }, 직접 지정
-dates-told-gave-way = 직접 지정한 { $count }화는 더 이상 적용되지 않아요
+dates-told-gave-way = 에피소드 수를 { $count }개로 설정했지만 더 이상 적용되지 않아요
 
 ## The series page
 
@@ -1368,6 +1392,7 @@ mark-unwatched-from = { $episode }화부터 시청 안 함
 mark-not-connected = { $reason } 더보기, 계정에서 로그인하세요.
 series-not-tracked = 추적 안 함
 series-not-tracked-on-phone = 추적 안 함, 이 휴대전화에 { $count }화
+host-progress = { $name }의 진행 상황
 
 ## The player
 

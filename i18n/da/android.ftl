@@ -57,7 +57,7 @@ lang-name-zh-CN = Kinesisk (forenklet)
 ## Introduktion
 
 onb-welcome-title = Anibeam
-onb-welcome-note = Din anime på denne telefon. Find en serie, se hvem der har den, download den, og hold dine lister ajour.
+onb-welcome-note = Din anime på denne telefon. Find serier, download afsnit, og hold dine lister synkroniseret.
 onb-language-title = Sprog
 onb-language-note = Anibeam bruger telefonens sprog, medmindre du vælger et andet. Du kan ændre det senere under Mere.
 onb-lists-title = Dine lister
@@ -65,19 +65,19 @@ onb-lists-note = Log ind, så det du ser her tæller på AniList eller MyAnimeLi
 onb-wifi-title = Kun Wi-Fi
 onb-wifi-note = Afsnit fylder meget. Anibeam downloader kun på Wi-Fi, medmindre du siger andet.
 onb-storage-title = Lager
-onb-storage-note = En grænse for, hvor meget Anibeam må downloade. Den reserverer ingenting: pladsen er fri, indtil afsnit fylder den.
+onb-storage-note = Sætter en grænse for, hvor meget Anibeam kan downloade. Der reserveres ingen plads på forhånd: lageret er frit, indtil afsnit bliver downloadet.
 onb-notify-title = Notifikationer
 onb-notify-note = Mens afsnit downloades, viser en notifikation, hvor langt de er, og en anden fortæller, når et er klar til at se. Downloads kører uanset.
-onb-sites-title = Søgesider
-onb-sites-note = Anibeam kommer uden noget at søge i. Et repo er en signeret liste over sider, der kan søges i. Indsæt et repos adresse, tjek dets nøgle, og installer de sider, du vil have. Du kan gøre det senere under Mere.
+onb-sites-title = Kildelister
+onb-sites-note = Anibeam kommer uden downloadkilder. En kildeliste er et signeret katalog over sider, der kan søges i. Indsæt dens adresse, tjek dens nøgle, og installer de kilder, du vil have. Du kan gøre det senere under Mere.
 onb-computer-title = Din computer
-onb-computer-note = Anibeam på en computer kan dele sit bibliotek med denne telefon over Tailscale: dens serier vises under Bibliotek, og deres afsnit afspilles her. Skriv dens Tailscale-navn og port, og tryk Test. Ingen computer? Lad feltet stå tomt og start; Mere har det senere.
+onb-computer-note = Anibeam på en computer kan dele sit bibliotek med denne telefon over Tailscale, så dens serier vises under Bibliotek og kan afspilles her. Skriv dens Tailscale-navn og port, og tryk på Test. Ingen computer? Lad feltet stå tomt, og tryk på Start; du kan sætte det op senere under Mere.
 onb-wifi-only = Kun på Wi-Fi
-onb-wifi-on = Til. Mobildata spørger først.
+onb-wifi-on = Til. Anibeam spørger, før mobildata bruges.
 onb-wifi-off = Fra. Downloads bruger også mobildata.
 onb-storage-caption = 18 GB er cirka 12 afsnit. Træk det hvorhen som helst op til telefonens fulde lager.
 onb-use-cap = Brug grænsen
-onb-cap-on = Til. Ved { $cap } downloader Anibeam ikke mere, før du sletter afsnit.
+onb-cap-on = Til. Ved { $cap } starter Anibeam ingen nye downloads, før du sletter afsnit.
 onb-cap-off = Fra. Anibeam downloader, indtil telefonen er fuld.
 onb-start = Start
 onb-continue = Fortsæt
@@ -104,7 +104,7 @@ look-size-normal = Normal
 look-size-large = Stor
 look-size-larger = Større
 look-size-largest = Størst
-look-text-size-note = Hvor stor teksten er overalt i Anibeam, oven i telefonens egen størrelse.
+look-text-size-note = Tekststørrelse overalt i Anibeam, skaleret oven på telefonens systemindstilling.
 
 ## Vinduet: faner og ark over alle sider
 
@@ -133,7 +133,7 @@ more-search-hits = { $count ->
    *[other] { $count } indstillinger
 }
 more-search-tap = Tryk for at gå dertil
-more-search-hint = Prøv et enklere ord: lager, Wi-Fi, tracker, side, computer.
+more-search-hint = Prøv søgeord som lager, Wi-Fi, tracker, side eller computer.
 more-accounts = Konti
 more-streaming = Streaming
 more-subtitles = Undertekster
@@ -155,22 +155,22 @@ more-dl-status-mobile-cap = Wi-Fi og mobildata, grænse på { $cap }
 more-stream-status-auto = Auto, 720p på mobildata eller relay
 more-stream-status-original = Originalfilen, hver gang
 more-stream-status-converted = Konverteret til { $quality }
-more-sites-status-none = Intet repo
+more-sites-status-none = Ingen kildeliste endnu
 more-sites-status-on = { $sites ->
-    [one] 1 side til
-   *[other] { $sites } sider til
+    [one] 1 kilde til
+   *[other] { $sites } kilder til
 }
 more-sites-status-on-from = { $sites ->
-    [one] 1 side til
-   *[other] { $sites } sider til
+    [one] 1 kilde til
+   *[other] { $sites } kilder til
 }, { $repos ->
-    [one] fra 1 repo
-   *[other] fra { $repos } repos
+    [one] fra 1 liste
+   *[other] fra { $repos } lister
 }
 more-conn-status-unchecked = Ikke tjekket endnu
-more-conn-status-ok = Alle trin gik igennem
+more-conn-status-ok = Alle tjek bestået
 more-conn-status-failed = { $total ->
-    *[other] { $failed } af { $total } trin fejlede
+    *[other] { $failed } af { $total } tjek fejlede
 }
 more-computer-status-none = Ikke forbundet endnu
 more-icon-default = Standard
@@ -188,7 +188,7 @@ more-stats-status-empty = Et år med anime
 
 ## Mere: afsnittenes egne indstillinger
 
-more-accounts-note = Det du ser her opdaterer dine lister, og fremgang derfra vises på dine serier.
+more-accounts-note = Afsnit, du ser her, opdaterer dine lister, og din fremgang fra listerne vises i dit bibliotek.
 more-storage = Lager
 more-storage-capped = Grænse på { $cap }
 more-storage-no-cap = Ubegrænset
@@ -196,12 +196,37 @@ more-storage-used = brugt af afsnit
 more-storage-cap-caption = grænse
 more-storage-free = ledigt på telefonen
 more-set-storage-cap = Lagergrænse
-more-storage-cap-on = Ved { $cap } downloades der ikke mere, før du sletter afsnit.
+more-set-rolling = Løbende downloads
+more-roll-note-over = { $count ->
+    [one] Over { $count } afsnit
+   *[other] Over { $count } afsnit
+}
+more-roll-note-asked = Når du beder om det
+more-roll-big = Slå til for lange serier
+more-roll-big-help = { $count ->
+    [one] Alt over { $count } afsnit downloades automatisk nogle få ad gangen. Du kan stadig downloade det hele på én gang fra Downloads.
+   *[other] Alt over { $count } afsnit downloades automatisk nogle få ad gangen. Du kan stadig downloade det hele på én gang fra Downloads.
+}
+more-roll-ahead = Afsnit foran
+more-roll-ahead-help = Hvor mange der forbliver downloadet efter det, du er nået til. 12 er omkring en sæson.
+more-roll-over = Løbende for serier over
+more-roll-over-help = Downloads med flere afsnit end dette hentes nogle få ad gangen.
+more-roll-watched = Sete afsnit
+more-roll-delete = Slet
+more-roll-keep-all = Behold alle
+more-roll-delete-help = Slettes automatisk, når du kommer videre, så kun de kommende afsnit ligger på telefonen.
+more-roll-keep-all-help = Alle filer bliver på telefonen, efter du har set dem.
+more-roll-behind = Sete afsnit at beholde
+more-roll-behind-help = { $count ->
+    [0] Når du ser et afsnit færdigt, slettes det forrige.
+   *[other] Sete afsnit, der beholdes bag det, du lige har set færdigt. Med { $count } sletter afsnit { $episode } afsnit 1, når du ser det færdigt.
+}
+more-storage-cap-on = Ved { $cap } starter Anibeam ingen nye downloads, før du sletter afsnit.
 more-storage-cap-off = Fra: Anibeam downloader, indtil telefonen er fuld.
 more-network = Netværk
 more-network-wifi = Kun Wi-Fi
 more-network-mobile = Wi-Fi og mobildata
-more-wifi-on = Til. Downloads venter på Wi-Fi; mobildata spørger først.
+more-wifi-on = Til. Downloads venter på Wi-Fi, og Anibeam spørger, før mobildata bruges.
 more-set-stream-quality = Streamingkvalitet
 more-stream-question = Hvordan et afsnit fra din computer afspilles her.
 more-stream-auto-note = Auto afspiller filen, som den er, på Wi-Fi, og konverteret til 720p på mobildata, eller når Tailscale når din computer via et relay.
@@ -210,17 +235,17 @@ more-stream-converted-note = Konverteres på din computer til { $quality }. Brug
 more-set-feeds = Dine egne feeds
 more-feeds-note = Søges før siderne
 more-set-check = Tjek forbindelsen
-more-check-note = Tester hvert trin mellem telefonen og søgesiderne: at finde dem, at nå dem og en sikker forbindelse.
+more-check-note = Tester hvert trin mellem telefonen og dine downloadkilder: DNS-opslag, forbindelse og HTTPS.
 more-check-copy = Kopier resultaterne
 more-set-computer = Anibeam på din computer
 more-computer-note = Dens bibliotek vises under Bibliotek, og dens afsnit afspilles her. Et navn som my-computer eller en adresse som 100.64.0.1.
 more-computer-placeholder = my-computer:8790
 more-subs-note = Det hvert afsnit på denne telefon starter med. Et afsnit streamet fra din computer starter med computerens indstillinger.
 more-icon-note = Ikonet på din startskærm og i appoversigten.
-more-icon-line-note = Stregtegning låner din baggrunds farver, som dine andre Material You-ikoner.
+more-icon-line-note = Stregtegning bruger din baggrunds farver, som andre Material You-ikoner.
 more-icon-moved-note = Nogle launchere fjerner ikonet fra startskærmen, når det skifter. Det bliver i appoversigten; træk det tilbage derfra.
 more-set-whats-new = Nyheder
-more-set-onboarding = Opsæt igen
+more-set-onboarding = Kør opsætningen igen
 more-update-out = Anibeam { $version } er udkommet
 more-update-download = Download
 more-about-status-update = Der er en ny version
@@ -234,6 +259,7 @@ host-synced = Synket { $when }.
 host-last-try = Sidste forsøg { $when }: { $error }
 host-asking = Spørger...
 host-reached = Fik forbindelse til { $host }, Anibeam { $version }.
+host-reached-for = Nåede { $host }, Anibeam { $version }, { $name }s fremgang.
 host-saved = Gemt. Synkroniserer...
 host-none = Ingen computer. Telefonen holder sig til sit eget bibliotek.
 acct-signed-in-as = Logget ind som { $name }
@@ -256,6 +282,7 @@ lib-note-phone = { $count ->
    *[other] Denne telefon, { $count } serier
 }
 lib-note-remote = { $device }, synkroniseret { $when }
+lib-note-remote-for = { $device }, { $name }s fremgang, synkroniseret { $when }
 lib-empty-search = Ingen resultater for “{ $query }”.
 lib-empty-phone = Intet på denne telefon endnu.
 lib-empty-remote = Den enhed har intet i sit bibliotek.
@@ -276,7 +303,7 @@ airing-other-season = Andre
 airing-hidden = { $count ->
     *[other] { $count } skjult som uinteressante
 }
-airing-plan-needs-tracker = Planlæg kræver AniList eller MAL. Log ind under Mere, Konti.
+airing-plan-needs-tracker = Planlæg kræver AniList eller MAL. Log ind under Mere > Konti.
 airing-plan-failed = Planlægningen gik ikke igennem: { $error }
 list-watching = Ser nu
 list-planning = Planlagt
@@ -284,8 +311,8 @@ list-completed = Færdig
 list-paused = På pause
 list-dropped = Droppet
 list-repeating = Genser
-more-check-all-ok = Alle trin gik igennem.
-more-check-failed = { $failed } af { $total } trin fejlede. Et skærmbillede af listen viser hvilke.
+more-check-all-ok = Alle tjek bestået.
+more-check-failed = { $failed } af { $total } tjek fejlede. Et skærmbillede af listen viser hvor.
 more-check-row = { $step }  { $ms } ms
 more-check-copied = Kopieret. Indsæt det i en besked.
 more-version = Anibeam til Android { $version } (build { $build })
@@ -317,6 +344,7 @@ more-set-subs-style = Undertekststil
 more-words-anilist = anilist tracker log ind login konto forbind liste fremgang
 more-words-mal = mal myanimelist tracker log ind login konto forbind liste fremgang
 more-words-storage-cap = plads disk grænse gb fuld lager slet størrelse
+more-words-rolling = løbende rulle lang serie afsnit foran slet set behold bagud samlet plads rolling
 more-words-wifi = wifi wi-fi mobil mobildata netværk
 more-words-notifications = notifikation besked advarsel fremgang tilladelse underretning tillad
 more-words-stream-quality = auto original 1080p 720p 480p konverter data computer afspil
@@ -462,8 +490,8 @@ phone-watched = Set
 phone-not-watched = Ikke set endnu
 phone-progress = { $watched } af { $total } set, { $count } på telefonen
 phone-on-this-phone = { $count } på telefonen
-phone-play-film = Afspil filmen
-phone-resume-film = Fortsæt filmen
+phone-play-film = Afspil film
+phone-resume-film = Fortsæt film
 phone-play-episode = Afspil afsnit { $n }
 phone-resume-episode = Fortsæt afsnit { $n }
 phone-about-date = omkring { $date }
@@ -476,7 +504,7 @@ show-status-completed = Færdig
 show-status-paused = På pause
 show-status-dropped = Droppet
 show-status-repeating = Genser
-show-status-now = { $label }, nu
+show-status-now = { $label } (nu)
 phone-show-add-to-list = Føj til liste
 phone-show-your-score = Din karakter { $score }
 show-rate = Bedøm
@@ -592,6 +620,7 @@ inspect-holds = { $count ->
 
 phone-notes-title = Nyheder
 notes-got-it = Forstået
+notes-github = Fuld ændringslog på GitHub
 
 ## Flyt listen til en tracker
 
@@ -599,7 +628,7 @@ move-lists-label = Lister på denne telefon
 move-title = Flyt din liste til { $site }
 move-here = På denne telefon: { $list }
 move-there = På { $site } nu: { $list }
-move-later-hint = Senere: Mere, Konti
+move-later-hint = Senere: Mere > Konti
 move-not-now = Ikke nu
 move-nothing = Intet
 move-not-on-list = Ikke på din liste
@@ -627,8 +656,8 @@ move-moved = { $count ->
    *[other] Flyttede { $count } serier til { $site }
 }
 move-failed = { $count ->
-    [one] { $site } tog ikke imod { $count } serie; se aktivitetsloggen
-   *[other] { $site } tog ikke imod { $count } serier; se aktivitetsloggen
+    [one] Kunne ikke flytte { $count } serie til { $site }; se aktivitetsloggen
+   *[other] Kunne ikke flytte { $count } serier til { $site }; se aktivitetsloggen
 }
 
 ## Downloads: find (søgning, serier, kilder, udgivelser)
@@ -646,9 +675,9 @@ find-lens-downloaded = Hentet
 find-lens-with-count = { $lens } { $count }
 find-what-to-get = At hente
 find-lens-list-line = Ser nu og Planlagt på din liste. Åbn en for at hente dens afsnit.
-find-lens-gaps-line = Sendte afsnit, der ikke er på denne telefon. Åbn en serie for at se, hvem der har dem.
+find-lens-gaps-line = Sendte afsnit, der ikke er på denne telefon. Åbn en serie for at søge efter dem.
 find-lens-airing-line = Nye afsnit, der stadig kommer, de nærmeste først.
-find-lens-following-line = Abonnementerne: nye afsnit downloades af sig selv. Åbn et for at stoppe det.
+find-lens-following-line = Abonnementer: nye afsnit downloades automatisk. Åbn et for at stoppe med at følge.
 find-lens-downloaded-line = Hvad denne telefon har downloadet, en serie ad gangen.
 
 find-lens-gaps-empty = Ingen huller: hver serie, du er begyndt på, har sine sendte afsnit her.
@@ -657,7 +686,7 @@ find-lens-following-empty = Ingen abonnementer endnu. Åbn en serie og slå Føl
 find-lens-downloaded-empty = Intet downloadet endnu.
 find-list-empty = Intet på din liste endnu. Søg efter en serie ovenfor og tilføj den.
 find-list-reading = Læser din liste...
-find-list-signed-out = Log ind på AniList under Mere, Konti, så vises din liste her.
+find-list-signed-out = Log ind på AniList under Mere > Konti for at se din liste her.
 find-list-failed = Din liste kunne ikke læses: { $error }
 
 find-aired = sendt
@@ -679,18 +708,18 @@ find-list-status-watching = På din liste: Ser nu
 find-list-status-already = Allerede på din liste
 find-going-planning = { $title } sættes på Planlagt.
 find-already-listed = { $title } er allerede på din liste.
-find-plan-needs-tracker = At føje til din liste kræver AniList eller MAL. Log ind under Mere, Konti.
+find-plan-needs-tracker = At føje til din liste kræver AniList eller MAL. Log ind under Mere > Konti.
 find-plan-failed = Ikke føjet til din liste: { $error }
 find-show-gone = Den serie er ikke længere i biblioteket på denne telefon.
 
 ## Serier mens du skriver
 
 find-shows = Serier
-find-suggesting = Spørger AniList...
-find-suggest-tap = Tryk på en for at se, hvem der har den. Retur søger i udgivelsesnavne.
-find-suggest-none = Ingen serie med det navn. Retur søger i udgivelsesnavne i stedet.
-find-suggest-hint = Serier dukker op, mens du skriver. Retur søger i udgivelsesnavne.
-find-suggest-failed = AniList kunne ikke spørges: { $error }
+find-suggesting = Søger på AniList...
+find-suggest-tap = Tryk på en serie for at søge i kilderne. Tryk på Retur for at søge i udgivelsesnavne.
+find-suggest-none = Ingen serie med det navn. Tryk på Retur for at søge i udgivelsesnavne i stedet.
+find-suggest-hint = Serier dukker op, mens du skriver. Tryk på Retur for at søge i udgivelsesnavne.
+find-suggest-failed = Kunne ikke nå AniList: { $error }
 find-library-line = I dit bibliotek
 find-library-line-none = I dit bibliotek, ingen af { $total } på denne telefon
 find-library-line-some = I dit bibliotek, { $here } af { $total } på denne telefon
@@ -732,20 +761,20 @@ find-stop-failed = Stoppet blev ikke færdigt: { $error }
 find-where = Hvor den fås
 find-where-pick = Vælg en kilde for at se, hvad den har.
 find-where-nothing = Intet downloades, før du siger til.
-find-source-idle = Spørg
+find-source-idle = Tryk for at søge
 find-source-trying = Prøver { $name }
 find-source-searching = Søger
 find-source-silent = Svarer ikke
-find-no-sites-title = Ingen søgesider endnu
-find-no-sites-body = Tilføj et repo med søgesider, eller et eget feed, under Mere.
+find-no-sites-title = Ingen downloadkilder endnu
+find-no-sites-body = Tilføj en kildeliste eller et eget feed under Mere.
 find-open-more = Åbn Mere
 find-pick-source-title = Vælg en kilde
-find-pick-source-body = Dens udgivelser vises her som et gitter, en terning pr. afsnit.
+find-pick-source-body = Udgivelser vises her i et gitter, ét felt pr. afsnit.
 find-releases = { $count ->
     [one] { $count } udgivelse
    *[other] { $count } udgivelser
 }
-find-unreachable = { $host } kunne ikke nås. Nogle netværk og lande blokerer udgivelsessider; Anibeam kommer allerede uden om blokeringer på navne, så her blokeres selve siden, eller siden er nede. Et VPN kommer uden om det, eller prøv en anden kilde.
+find-unreachable = Kunne ikke nå { $host }. Nogle netværk blokerer udgivelsessider; Anibeam kommer allerede uden om DNS-blokeringer, så siden er måske blokeret direkte eller nede. Prøv et VPN eller en anden kilde.
 find-the-source = Kilden
 
 find-has = Hvad den har
@@ -757,16 +786,26 @@ find-on-this-phone = På denne telefon
 find-on-computer = På { $name }
 
 find-plan-no-releases = Denne kilde har ingen udgivelser af denne serie.
-find-plan-nothing-picked = Intet valgt: tryk på en række eller dens terninger.
+find-plan-nothing-picked = Intet valgt: tryk på en række eller enkelte afsnit.
 find-plan-line = { $episodes } fra { $groups }, { $size }
 find-plan-skipped = { $count ->
-    [one] { $count } afsnit, du allerede har, er udeladt. Slå Erstat til for at hente det igen.
-   *[other] Afsnit, du allerede har, er udeladt. Slå Erstat til for at hente dem igen.
+    [one] { $count } afsnit, du allerede har, springes over. Slå Erstat til for at downloade det igen.
+   *[other] Afsnit, du allerede har, springes over. Slå Erstat til for at downloade dem igen.
 }
-find-plan-follow-note = Nye afsnit fra { $query } downloades af sig selv.
+find-plan-follow-note = Nye afsnit fra { $query } downloades automatisk.
 find-plan-on-desk = De downloades på { $name }, ind i dens bibliotek.
 find-follow-new = Følg nye afsnit
-find-follow-new-note = De downloades af sig selv, efterhånden som de sendes.
+find-follow-new-note = De downloades automatisk, efterhånden som de sendes.
+find-roll-title = Løbende downloads
+find-roll-on = { $count ->
+    [one] { $count } afsnit downloades nu, og når du ser det færdigt, starter det næste.
+   *[other] { $count } afsnit downloades nu, og hvert afsnit, du ser færdigt, starter det næste.
+}
+find-roll-on-delete = { $count ->
+    [one] { $count } afsnit downloades nu, og når du ser det færdigt, starter det næste. Sete afsnit slettes automatisk.
+   *[other] { $count } afsnit downloades nu, og hvert afsnit, du ser færdigt, starter det næste. Sete afsnit slettes automatisk.
+}
+find-roll-off = Alle valgte afsnit downloades på én gang.
 find-replace = Erstat det, du har
 find-replace-note = Downloader de valgte afsnit igen oven på dem på denne telefon.
 find-go = { $mode ->
@@ -784,7 +823,7 @@ find-download-to = Download til
 find-this-phone = Denne telefon
 find-your-computer = Din computer
 find-desk-asking = Spørger { $name }...
-find-desk-silent = { $name } svarer ikke. Vælg Denne telefon, eller prøv igen, når den er tændt.
+find-desk-silent = { $name } svarer ikke. Vælg Denne telefon, eller prøv igen, når den er online.
 find-sending-to = Sender til { $name }...
 
 ## Udgivelseslisten
@@ -795,7 +834,7 @@ find-get = Hent
 find-get-all = Hent alle { $count }
 find-subscribe = Abonnér
 find-back-step = Et trin tilbage
-find-narrow-placeholder = Indsnævr, eller -ord for at udelade
+find-narrow-placeholder = Filtrer, eller -ord for at udelukke
 find-best-fit-searches = Bedste match søger: { $query }
 find-fact-batch = pakke
 find-fact-seeds = { $count } seedere
@@ -833,7 +872,7 @@ find-downloading = { $count ->
 }
 find-not-added = Ikke tilføjet: { $error }
 find-not-subscribed = Ikke abonneret: { $error }
-find-desk-refused = { $name } tog ikke imod det: { $error }
+find-desk-refused = { $name } afviste det: { $error }
 find-desk-not-subscribed = Ikke abonneret på { $name }: { $error }
 
 ## Afspiller
@@ -867,7 +906,7 @@ player-android-only = afspilleren kører kun på Android
 ## Afspiller: forsinkelser
 
 player-delay-title = Forsinkelse
-player-delay-note = Hvert tryk flytter den 0,1 s. Indtil næste fil.
+player-delay-note = Hvert tryk flytter 0,1 s. Nulstilles ved næste afsnit.
 phone-player-delay-seconds = { $value } s
 player-sub-delay-now = Undertekstforsinkelse { $value }
 player-audio-delay-now = Lydforsinkelse { $value }
@@ -911,12 +950,12 @@ subs-position = Placering
 subs-position-helper = 100 ligger ved bunden. Lavere tal løfter linjerne op i billedet.
 subs-style-title = Stil
 subs-styled = Stilede undertekster
-subs-styled-as-made = Stilede (ASS) filer ser ud præcis, som deres skabere har sat dem.
-subs-styled-mine = Din stil nedenfor bruges på alle filer. Skilte og karaoke kan gå i stykker.
+subs-styled-as-made = Stilede (ASS) undertekster vises præcis, som de er lavet.
+subs-styled-mine = Din stil nedenfor overstyrer alle filer. Skilte og karaoke kan gå i stykker.
 subs-styled-size-only = Stilede undertekstfiler beholder deres udseende og bruger din størrelse. Almindelige filer bruger din stil.
 subs-mode-as-made = Original
 subs-mode-size-only = Størrelse
-subs-mode-mine = Mine
+subs-mode-mine = Overstyr
 subs-font = Skrift
 subs-font-bad = Skriv et skriftnavn, fx Noto Sans.
 subs-bold = Fed
@@ -924,15 +963,15 @@ subs-colour = Tekstfarve
 subs-colour-bad = Skriv en farve som #ffcc00.
 subs-outline = Kontur
 subs-outline-bad-width = Bredden er et tal, 0 eller mere.
-subs-outline-bad-colour = Skriv farven som #000000.
+subs-outline-bad-colour = Skriv en farve som #000000.
 subs-outline-helper = Dens bredde, så dens farve.
 subs-shadow = Skygge
 subs-shadow-bad = Et tal, 0 eller mere. 0 betyder ingen skygge.
 subs-shadow-helper = Hvor langt skyggen falder, 0 for ingen.
 subs-box = Baggrundsboks
 subs-box-helper = En mørk boks bag linjerne. 0 udelader den.
-subs-reset-title = Fra start
-subs-reset-helper = Sætter størrelse, skrift, farver, kontur, boks og placering tilbage, som de var.
+subs-reset-title = Nulstil undertekststil
+subs-reset-helper = Nulstiller størrelse, skrift, farver, kontur, boks og placering til standard.
 subs-reset = Nulstil
 
 ## Streaming
@@ -941,11 +980,11 @@ stream-quality-auto = Auto
 stream-quality-original = Original
 stream-app-starting = Appen starter stadig
 stream-no-computer = Ingen computer endnu. Tilføj din under Mere.
-stream-off-on-host = Streaming er slået fra på { $host }. Slå Stream afsnit til dér under Indstillinger, Telefon-app.
+stream-off-on-host = Streaming er slået fra på { $host }. Slå Stream afsnit til dér under Indstillinger > Konti (Telefon-app).
 stream-cannot-stream = { $host } kører Anibeam { $version }, som ikke kan streame endnu. Opdater den dér.
-stream-no-session = Den anden enhed gav ingen session
-stream-answer-unreadable = Svaret kunne ikke læses: { $why }
-stream-answered-status = { $name } svarede { $status }
+stream-no-session = Den anden enhed gav ingen streamsession
+stream-answer-unreadable = Kunne ikke læse svaret: { $why }
+stream-answered-status = { $name } svarede med HTTP { $status }
 
 ## Statistik
 
@@ -1002,7 +1041,7 @@ backup-export-helper = Én fil med dine mapper, matches og det, du har set.
 backup-private = Medtag private data
 backup-private-helper = Tilføjer login til AniList og MyAnimeList, visningshistorik og præferencer. Login gemmes som ren tekst, så hold filen for dig selv.
 backup-restore = Gendan fra en backup
-backup-restore-helper = Læser en backup ind i dette bibliotek. Det, der ligger på disken, vinder; filen udfylder resten.
+backup-restore-helper = Gendanner en backup i dette bibliotek. Backuppens matches og indstillinger vinder; intet på denne telefon slettes.
 backup-done = Backup lavet. Filen ligger, hvor du gemte den.
 backup-not-saved = Ikke gemt. Intet blev skrevet.
 backup-starting = Anibeam starter stadig. Prøv igen om lidt.
@@ -1051,12 +1090,12 @@ backup-sum-resume = { $count ->
    *[other] { $count } genoptagelsespunkter flettet
 }
 backup-sum-accounts = { $count ->
-    [one] { $count } listekonto hentet ind
-   *[other] { $count } listekonti hentet ind
+    [one] { $count } listekonto importeret
+   *[other] { $count } listekonti importeret
 }
 backup-sum-fixes = { $count ->
-    [one] { $count } fil tager en rettelse, du lavede.
-   *[other] { $count } filer tager en rettelse, du lavede.
+    [one] Anvendte gemte rettelser på { $count } fil.
+   *[other] Anvendte gemte rettelser på { $count } filer.
 }
 backup-sum-missing = { $count ->
     [one] { $count } mappe blev ikke fundet på denne telefon.
@@ -1072,7 +1111,7 @@ activity-copied = Kopieret
 activity-clear-every-line = Ryd alle linjer
 activity-fold = Luk
 activity-no-problems = Ingen problemer. Alt virkede.
-activity-nothing-yet = Intet at rapportere endnu. Det, Anibeam gør for dig, vises her.
+activity-nothing-yet = Intet at rapportere endnu. Anibeams aktivitet vises her.
 activity-time-today = %H:%M:%S
 activity-time-other = %-d. %b %H:%M
 
@@ -1112,27 +1151,28 @@ fmt-bytes-tb = { $value } TB
 ## Samtale med computeren (companion client.rs, sync.rs, address.rs)
 
 client-not-found = { $host } er ikke et navn, telefonen kan finde. Er Tailscale forbundet?
-client-timeout = { $host } svarede ikke. Er den tændt, og er Tailscale forbundet på begge?
-client-connect-failed = Kunne ikke nå { $host }. Er den tændt, og er Tailscale forbundet på begge?
-client-refused = { $host } er tændt, men Anibeam dér er lukket eller deler ikke. Åbn Anibeam på den, og slå Del via Tailscale til under Indstillinger, Telefon-app.
+client-timeout = { $host } svarede ikke. Er den tændt, og er Tailscale forbundet på begge enheder?
+client-connect-failed = Kunne ikke nå { $host }. Er den tændt, og er Tailscale forbundet på begge enheder?
+client-refused = { $host } er tændt, men Anibeam dér er lukket eller deler ikke. Åbn Anibeam på den, og slå Del via Tailscale til under Indstillinger > Konti.
 client-no-route = Ingen rute til { $host }. Er Tailscale forbundet?
 client-invalid-input = Kunne ikke oprette forbindelse til { $host }
 client-unreachable = Kunne ikke nå { $host }: { $why }
 client-cannot-find = Telefonen kan ikke finde { $host }. Er Tailscale forbundet?
-client-broke-off = Svaret fra { $host } blev afbrudt: { $why }
-client-answered = { $host } svarede { $status } på { $path }
-client-not-anibeam-status = Noget svarede, men det er ikke Anibeam ({ $host } svarede { $status } på { $path })
-client-not-anibeam-hello = Noget svarede, men det er ikke Anibeam (dets svar er ikke Anibeams hello)
+client-broke-off = Forbindelsen til { $host } blev afbrudt: { $why }
+client-answered = { $host } svarede med HTTP { $status } på { $path }
+client-not-anibeam-status = Noget svarede, men det er ikke Anibeam ({ $host } svarede med HTTP { $status } på { $path })
+client-not-anibeam-hello = Noget svarede, men det er ikke Anibeam (uventet svar)
 client-not-anibeam-name = Noget svarede, men det er ikke Anibeam (det kalder sig { $name })
-client-too-new = Værten taler API { $host_api }; denne app læser { $app_api }. Opdater appen.
-client-snapshot-unreadable = Øjebliksbilledet kunne ikke læses: { $why }
-client-probe-unreadable = Filens detaljer kunne ikke læses: { $why }
-client-peers-unreadable = Listen over Anibeams kunne ikke læses: { $why }
+client-too-new = Værten bruger API { $host_api }, men denne app understøtter kun { $app_api }. Opdater appen.
+client-snapshot-unreadable = Kunne ikke læse øjebliksbilledet af biblioteket: { $why }
+client-probe-unreadable = Kunne ikke læse filens detaljer: { $why }
+client-peers-unreadable = Kunne ikke læse listen over enheder: { $why }
 sync-save-failed = Kunne ikke gemme øjebliksbilledet: { $why }
 address-https = Anibeam på din computer svarer på almindelig http over Tailscale; fjern https://.
 address-empty = Skriv værtens navn eller adresse, for eksempel my-computer:8790.
 address-ipv6-close = En IPv6-adresse skal have sin afsluttende ].
 address-ipv6-port = Sæt porten efter ], som [fd7a::1]:8790.
+address-ipv6-brackets = Sæt en IPv6-adresse i kantede parenteser, som [fd7a::1]:8790.
 address-bad-host = “{ $text }” er ikke et værtsnavn.
 address-bad-port = “{ $port }” er ikke en port.
 
@@ -1148,17 +1188,17 @@ clib-format-music = Musik
 ## Søgesider og repos
 
 repos-by-hand-title = Tilføj en manuelt
-repos-by-hand-note = Til en side, intet repo har. Ethvert feed med { "{query}" } der, hvor søgningen skal stå, også Jackett- eller Prowlarr-feeds. En nøgle eller token i adressen flyttes til denne telefons hemmelige lager.
+repos-by-hand-note = Til en side, ingen kildeliste har. Ethvert feed med { "{query}" } der, hvor søgningen skal stå, også Jackett- eller Prowlarr-feeds. En nøgle eller token i adressen flyttes til denne telefons hemmelige lager.
 repos-name-placeholder = Navn
 repos-url-placeholder = https://...{ "{query}" }...
 repos-index-placeholder = https://.../index.json
 repos-add-site = Tilføj side
-repos-add-title = Tilføj et repo
-repos-add-note = Indsæt adressen på et repos indeks. Anibeam tjekker dets signatur og viser dig dets nøgle, før noget gemmes.
-repos-add-repo = Tilføj repo
-repos-trust-title = Stol på dette repo?
+repos-add-title = Tilføj en kildeliste
+repos-add-note = Indsæt adressen på en kildelistes indeks. Anibeam tjekker dens signatur og viser dig dens nøgle, før noget gemmes.
+repos-add-repo = Tilføj kildeliste
+repos-trust-title = Stol på denne kildeliste?
 repos-fingerprint = Nøglens fingeraftryk
-repos-trust-warning = Dets sider afgør, hvor dine søgninger går hen. Stol kun på et repo fra nogen, du stoler på.
+repos-trust-warning = Dens kilder afgør, hvor dine søgninger går hen. Stol kun på kildelister fra folk, du stoler på.
 repos-trust = Stol på
 repos-open-link = Åbn { $url }
 repos-saving = Gemmer...
@@ -1166,26 +1206,26 @@ repos-install = Installer
 repos-update = Opdater
 repos-edit-note = En nøgle eller token skrevet i adressen flyttes til denne telefons hemmelige lager.
 repos-edit-note-keys = Lad hver { "{key}" } stå i adressen, som den er; dens værdi gemmes på denne telefon.
-repos-change-its = Skift dens { $keys }
-repos-check-repos = Tjek repos for nye sider
-repos-check-sites = Tjek siderne
+repos-change-its = Skift { $keys }
+repos-check-repos = Tjek kildelister for opdateringer
+repos-check-sites = Tjek kilder
 repos-add-site-label = Tilføj en side manuelt
 repos-needs-before-search = Skal have sin { $labels }, før den søger
-repos-no-longer-offered = Tilbydes ikke længere af sit repo
+repos-no-longer-offered = Tilbydes ikke længere af sin kildeliste
 repos-update-host = Opdateringen sender forespørgsler til { $host }
 repos-tap-change-custom = Tryk for at ændre dens navn eller adresse
 repos-tap-change-keys = Tryk for at ændre dens { $labels }
-repos-line-custom = { $host }  { $kind }  tilføjet af dig
+repos-line-custom = { $host }  { $kind }  tilføjet manuelt
 repos-update-to = Opdater til v{ $version }
 repos-add-its-value = Tilføj dens værdi
 repos-asks-for = Beder om din { $labels }
 repos-preview-line = { $count ->
-    [one] { $count } side, signeret
-   *[other] { $count } sider, signeret
+    [one] { $count } kilde, signeret
+   *[other] { $count } kilder, signeret
 }
 repos-preview-trusted = { $count ->
-    [one] { $count } side, signeret, allerede betroet
-   *[other] { $count } sider, signeret, allerede betroet
+    [one] { $count } kilde, signeret, allerede betroet
+   *[other] { $count } kilder, signeret, allerede betroet
 }
 repos-ask-kept-empty = Gemmes kun på denne telefon. Et felt, der lades tomt, beholder det gemte.
 repos-ask-kept-never = Gemmes kun på denne telefon, aldrig i biblioteket eller en eksport.
@@ -1206,6 +1246,18 @@ dl-batch-files = { $count ->
    *[other] Pakke, { $count } filer
 }
 dl-batch-tag = Pakke
+dl-roll-line = { $watched ->
+    [0] Holder { $ahead } klar: afsnit { $next } til { $through } af { $total }
+   *[other] Holder { $ahead } klar: afsnit { $next } til { $through } af { $total }, { $watched } set
+}
+dl-roll-more = Hent { $count } mere
+dl-roll-all = Hent alle
+dl-roll-all-ask = { $count ->
+    [one] Download det resterende afsnit?
+   *[other] Download alle { $count } resterende afsnit?
+}
+dl-roll-keep = Fortsæt løbende
+dl-roll-ahead = { $count } foran
 dl-downloading-count = { $count ->
     [one] { $count } downloader
    *[other] { $count } downloader
@@ -1258,9 +1310,9 @@ disk-delete-watched-title = Slet { $count ->
     [one] { $count } set afsnit
    *[other] { $count } sete afsnit
 }, { $size }?
-disk-delete-finished-body = { $names }. Kun serier, som udbyderen siger er afsluttet, med alle afsnit set; en serie, der stadig sendes, eller hvis slutning er et gæt, bliver. Hver fil fra dem slettes fra denne telefon, også ekstraer. Deres downloads forsvinder også, så de kan downloades igen.
-disk-delete-watched-body = Hvert afsnit, du har set, i hver serie. Afsnit, du ikke har set endnu, og ekstraer bliver. Filerne og deres undertekster slettes fra denne telefon for altid.
-disk-no-finished = Ingen afsluttet serie er set helt til ende
+disk-delete-finished-body = { $names }. Kun serier, der er markeret som afsluttede, med alle afsnit set; serier, der stadig sendes eller ikke er bekræftet afsluttede, beholdes. Alle deres filer (også ekstraer) slettes fra denne telefon, og deres downloads fjernes, så de kan downloades igen.
+disk-delete-watched-body = Hvert afsnit, du har set, i alle serier. Usete afsnit og ekstraer beholdes. Filer og undertekster slettes permanent fra denne telefon.
+disk-no-finished = Ingen afsluttede serier er set helt til ende
 disk-nothing-watched = Intet set ligger på denne telefon
 disk-deleted = Slettede { $count ->
     [one] { $count } afsnit
@@ -1405,8 +1457,8 @@ dates-summary-record =
     }
 dates-summary-record-unnamed =
     { $count ->
-        [one] { $count } dateret af kilden
-       *[other] { $count } dateret af kilden
+        [one] { $count } fra metadata
+       *[other] { $count } fra metadata
     }
 dates-summary-set =
     { $count ->
@@ -1427,8 +1479,8 @@ dates-told-season-ends = Sæson { $season } slutter ved afsnit { $episode }
 dates-told-by-you = { $told }, sat af dig
 dates-told-gave-way =
     { $count ->
-        [one] Du satte { $count } afsnit; det gælder ikke længere
-       *[other] Du satte { $count } afsnit; de gælder ikke længere
+        [one] Du satte { $count } afsnit, hvilket ikke længere gælder
+       *[other] Du satte { $count } afsnit, hvilket ikke længere gælder
     }
 
 ## Seriens fakta
@@ -1465,13 +1517,14 @@ mark-menu-unwatched = Markér som uset herfra
 mark-menu-cancel = Annuller
 mark-watched-up-to = Set til og med afsnit { $episode }
 mark-unwatched-from = Uset fra afsnit { $episode }
-mark-not-connected = { $reason } Log ind under Mere, Konti.
+mark-not-connected = { $reason } Log ind under Mere > Konti.
 series-not-tracked = Ikke tracket
 series-not-tracked-on-phone =
     { $count ->
         [one] Ikke tracket, { $count } afsnit på denne telefon
        *[other] Ikke tracket, { $count } afsnit på denne telefon
     }
+host-progress = { $name }s fremgang
 
 ## Afspiller
 player-speed-not-while-casting = Ikke under cast

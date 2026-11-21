@@ -33,7 +33,7 @@ scan-summary-found = { $count ->
 scan-summary-found-need = { $count ->
     [one] { $count } serie
    *[other] { $count } series
-} gevonden, { $recognised } herkend, { $need } hebben jou nodig
+} gevonden, { $recognised } herkend, { $need } te koppelen
 scan-summary-episodes = { $count ->
     [one] { $count } aflevering
    *[other] { $count } afleveringen
@@ -42,12 +42,12 @@ scan-summary-episodes-watched = { $count ->
     [one] { $count } aflevering
    *[other] { $count } afleveringen
 } op schijf, { $watched } al gekeken op { $tracker }.
-scan-summary-title = Je map is binnen
+scan-summary-title = Map toegevoegd
 scan-summary-count-found = gevonden
 scan-summary-count-recognised = herkend
-scan-summary-count-need = jij nodig
+scan-summary-count-need = te koppelen
 scan-summary-later = Later
-scan-summary-match = Koppel de { $count }
+scan-summary-match = { $count } koppelen
 scan-summary-open-library = Bibliotheek openen
 
 ## UpdateNotice
@@ -59,13 +59,13 @@ update-notice-ready = Anibeam { $version } staat klaar
 update-notice-failed = De update is mislukt
 update-notice-on-aur = Anibeam { $version } staat in de AUR
 update-notice-in-repo = Anibeam { $version } staat in de { $manager }-repo
-update-notice-out = Anibeam { $version } is uit
-update-notice-out-titled = Anibeam { $version } “{ $title }” is uit
+update-notice-out = Anibeam { $version } is beschikbaar
+update-notice-out-titled = Anibeam { $version } “{ $title }” is beschikbaar
 update-notice-progress = { $percent }%  ·  { $got } van { $total } MB
-update-notice-restart-hint = Herstart nu, of hij opent de volgende keer
+update-notice-restart-hint = Herstart nu, of de update volgt de volgende keer dat je Anibeam opent
 update-notice-from-source = Deze kopie is uit de broncode gebouwd: pull en bouw opnieuw
-update-notice-no-download = Geen download voor deze computer
-update-notice-install-hint = Bijwerken installeert hem en herstart Anibeam
+update-notice-no-download = Geen download beschikbaar voor deze computer
+update-notice-install-hint = Installeert de update en herstart Anibeam
 update-notice-retry = Opnieuw
 update-notice-update = Bijwerken
 update-notice-restart = Herstarten
@@ -78,6 +78,7 @@ update-notice-later = Later
 
 whats-new-title = Wat is nieuw
 whats-new-got-it = Begrepen
+whats-new-github = Volledige changelog op GitHub
 
 ## ActivityDrawer
 
@@ -105,7 +106,7 @@ activity-drawer-copy-tip = Klik om de regel te kopiëren
 activity-drawer-fold = Inklappen
 activity-drawer-empty-technical = Nog niets gelogd.
 activity-drawer-empty-problems = Geen problemen. Alles werkte.
-activity-drawer-empty = Nog niets te melden. Wat Anibeam voor je doet verschijnt hier.
+activity-drawer-empty = Nog niets te melden. De activiteit van Anibeam verschijnt hier.
 
 ## ActivityColumn
 
@@ -122,8 +123,8 @@ activity-column-name-episode = { $title }, aflevering { $number }
 activity-column-title = Activiteit
 activity-column-down = omlaag
 activity-column-up = omhoog
-activity-column-not-connected = { $client } is niet gekoppeld, dus hier beweegt niets.
-activity-column-connect-again = Opnieuw koppelen
+activity-column-not-connected = { $client } is niet gekoppeld, dus Anibeam kan de downloads ervan niet tonen.
+activity-column-connect-again = Opnieuw verbinden
 activity-column-downloading = Nu aan het downloaden
 activity-column-fewer = Minder
 activity-column-more = En nog { $count }
@@ -134,7 +135,7 @@ activity-column-today-empty = Zoekopdrachten, downloads en nieuwe abonnementen v
 activity-column-stopping = Stoppen
 activity-column-starting = Starten
 activity-column-start-tip = Downloaden starten
-activity-column-stop-tip = Downloaden stoppen; wat er al is blijft
+activity-column-stop-tip = Downloaden stoppen; wat al gedownload is blijft bewaard
 activity-column-cancelling = Annuleren
 activity-column-cancel-all-tip = Deze downloads annuleren
 activity-column-cancel-tip = Deze download annuleren
@@ -163,18 +164,18 @@ frame-did-not-work = Dat werkte niet.
 frame-could-not-open = Anibeam kon dat niet openen. Kopieer het en open het zelf.
 frame-copy = Kopieer
 frame-copied = Gekopieerd
-frame-status-refused = { $tracker } nam het niet aan
-frame-status-refused-why = { $tracker } nam het niet aan: { $why }
-frame-lists-refused = { $tracker } nam { $count ->
+frame-status-refused = { $tracker } weigerde de update
+frame-status-refused-why = { $tracker } weigerde de update: { $why }
+frame-lists-refused = Kon { $count ->
     [one] 1 serie
    *[other] { $count } series
-} niet aan; zie het activiteitenlog
+} niet naar { $tracker } verhuizen; zie het activiteitenlog
 frame-lists-moved = { $count ->
     [one] 1 serie
    *[other] { $count } series
 } naar { $tracker } verhuisd
-frame-notes-refused = { $tracker } nam je notities niet aan
-frame-notes-refused-why = { $tracker } nam je notities niet aan: { $why }
+frame-notes-refused = { $tracker } kon je notities niet opslaan
+frame-notes-refused-why = { $tracker } kon je notities niet opslaan: { $why }
 frame-notes-saved = Notities opgeslagen
 frame-connected = Gekoppeld met { $tracker } als { $user }
 frame-sign-in-stopped = Het inloggen bij { $tracker } stopte voordat het klaar was.
@@ -200,7 +201,7 @@ frame-list-home-not-carried = Bewaard op dit apparaat: je tracker heeft deze ser
 frame-list-home-offline = Bewaard op dit apparaat tot je AniList of MyAnimeList koppelt
 frame-moving-to = Naar { $list } zetten
 frame-moved-to = Naar { $list } gezet
-frame-plan-added = { $title } komt op je Gepland-lijst
+frame-plan-added = { $title } wordt aan je Gepland-lijst toegevoegd
 frame-plan-listed = { $title } staat al op je lijst
 frame-delete-watched = { $kind ->
     [film] Gekeken films wissen
@@ -247,7 +248,7 @@ frame-delete-extras = { $count ->
 }
 frame-delete-and = { $first } en { $second }
 frame-delete-heading = { $what } van { $title } wissen?
-frame-delete-base = De bestanden en hun ondertitels gaan naar de prullenbak, dus je kunt ze daar terughalen. Hun torrents verdwijnen uit de torrentclient, zodat ze opnieuw gedownload kunnen worden.
+frame-delete-base = De bestanden en hun ondertitels worden naar de prullenbak verplaatst, dus je kunt ze daar terughalen. Hun torrents worden uit de torrentclient verwijderd, zodat ze opnieuw gedownload kunnen worden.
 frame-delete-confirm = Naar prullenbak
 frame-delete-done = { $what } van { $title } naar de prullenbak verplaatst
 frame-delete-watched-done = { $count ->
@@ -255,10 +256,10 @@ frame-delete-watched-done = { $count ->
    *[other] { $count } afleveringen
 }, { $size }, naar de prullenbak verplaatst
 frame-delete-nothing = Niets te wissen
-frame-fix-not-drafted = Hersteld. Het issue kon niet worden opgesteld
-frame-fix-agent = Hersteld. { $agent } kijkt ernaar, en het issue opent als het klaar is
+frame-fix-not-drafted = Hersteld, maar het issue kon niet worden opgesteld
+frame-fix-agent = Hersteld. { $agent } kijkt ernaar, en het issue opent zodra het klaar is
 frame-fix-opening = Hersteld. Het issue wordt geopend
-frame-fix-not-saved = Het herstel is niet opgeslagen: { $error }
+frame-fix-not-saved = Kon het herstel niet opslaan: { $error }
 frame-fix-undone = { $count ->
     [one] { $count } bestand wordt
    *[other] { $count } bestanden worden
@@ -300,8 +301,8 @@ home-week-late = { $count ->
    *[other] { $count } afleveringen zijn laat
 }
 home-week-waiting = { $count ->
-    [one] { $count } aflevering uit om te kijken
-   *[other] { $count } afleveringen uit om te kijken
+    [one] { $count } aflevering klaar om te kijken
+   *[other] { $count } afleveringen klaar om te kijken
 }
 home-week-coming = { $count ->
     [one] { $count } aflevering in de komende zeven dagen
@@ -330,7 +331,7 @@ home-tile-to-watch = { $count } te kijken
 home-day-nothing = Niets
 home-now = Nu { $time }
 home-continue = Verder kijken
-home-continue-fact = { $count } series om mee verder te gaan
+home-continue-fact = { $count } series bezig
 home-on-hold = In de wacht
 home-on-hold-fact = { $count } series om naar terug te keren
 home-hero-open = { $title } openen
@@ -347,7 +348,7 @@ home-hero-play = Speel aflevering { $number }
 home-hero-resume-unnumbered = Aflevering hervatten
 home-hero-play-unnumbered = Aflevering afspelen
 home-downloaded = Recent gedownload
-home-downloaded-fact = { $count } series met nieuwe bestanden deze twee weken
+home-downloaded-fact = { $count } series met nieuwe bestanden in de afgelopen 2 weken
 home-week = Deze week
 home-week-show-empty = Lege dagen tonen
 home-week-hide-empty = Lege dagen verbergen
@@ -361,8 +362,8 @@ home-recommended-scope = Aanbevolen uit
 home-recommended-all = Alles
 home-recommended-in-library = In bibliotheek
 home-recommended-on-list = Op lijst
-home-recommended-none-library = Niets in je bibliotheek valt nog aan te raden. Alles vindt series die je nog niet hebt.
-home-recommended-none-list = Niets op je lijsten valt nog aan te raden. Alles vindt series die niet op je lijsten staan.
+home-recommended-none-library = Niets meer aan te raden in je bibliotheek. Kies Alles om series te zien die je nog niet hebt.
+home-recommended-none-list = Niets meer aan te raden van je lijsten. Kies Alles om series te zien die niet op je lijsten staan.
 home-catch-up = Bijkijken
 home-catch-up-fact = { $count } series met afleveringen die wachten
 home-fresh = Begin iets nieuws
@@ -386,9 +387,9 @@ onboarding-step-lists = Je lijst
 onboarding-step-downloads = Downloads
 onboarding-step-ready = Klaar
 onboarding-scan-reading = De map lezen
-onboarding-scan-found = { $count } series gevonden. Ga verder wanneer je wilt; de rest vult zichzelf aan.
+onboarding-scan-found = { $count } series gevonden. Je kunt verder wanneer je wilt; de rest wordt vanzelf aangevuld.
 onboarding-scan-starter-empty = Je nieuwe map is voorlopig leeg. Series die je erin zet verschijnen hier vanzelf.
-onboarding-scan-no-video = Geen videobestanden gevonden. Controleer of het de juiste map is.
+onboarding-scan-no-video = Geen videobestanden gevonden. Controleer of je de juiste map hebt gekozen.
 onboarding-scan-your-shows = je series
 onboarding-scan-looking-up = { $what } opzoeken
 onboarding-scan-looking-up-tally = { $what } opzoeken, { $posters } van { $count } gevonden
@@ -397,7 +398,7 @@ onboarding-scan-posters-tally = Posters ophalen, { $posters } van { $count } gev
 onboarding-scan-seasons = Verwante seizoenen zoeken
 onboarding-scan-seasons-tally = Verwante seizoenen zoeken, { $posters } van { $count } gevonden
 onboarding-choose-folder = Kies je animemap
-onboarding-about = Een minuut instellen. Je bibliotheek maakt zichzelf af.
+onboarding-about = Duurt een minuut. Je bibliotheek wordt op de achtergrond verder gescand.
 onboarding-step-later = Later
 onboarding-skip-setup = Overslaan
 onboarding-title-welcome = Welkom bij Anibeam
@@ -406,53 +407,53 @@ onboarding-title-lists = Koppel je animelijst
 onboarding-title-downloads = Zo werken downloads
 onboarding-title-ready = Je bent klaar
 onboarding-title-later = { $count ->
-    [1] Klaar, één ding voor later
-    [2] Klaar, twee dingen voor later
-    [3] Klaar, drie dingen voor later
-   *[other] Klaar, { $count } dingen voor later
+    [1] Klaar, nog 1 ding voor later
+    [2] Klaar, nog 2 dingen voor later
+    [3] Klaar, nog 3 dingen voor later
+   *[other] Klaar, nog { $count } dingen voor later
 }
 onboarding-body-welcome = Anibeam houdt je anime op één plek. Het vindt de series op je schijf, speelt ze hier af en houdt AniList of MyAnimeList bij terwijl je kijkt.
-onboarding-body-library = Kies de map waarin je je series bewaart. Elke map daarin wordt een serie, met poster, afleveringen en waar je bleef. Anibeam leest de map alleen. Het verplaatst of hernoemt nooit een bestand.
-onboarding-body-lists = Log één keer in, en elke aflevering die je hier afkijkt wordt op je lijst gemarkeerd, zonder iets te typen. Het inloggen gebeurt in je browser, dus Anibeam ziet je wachtwoord nooit.
-onboarding-body-downloads = Volg een serie op de pagina Downloads en elke nieuwe aflevering komt in je bibliotheek zodra hij uitkomt. Daarvoor zijn twee dingen nodig: een plek om te zoeken en een torrentclient om op te halen.
-onboarding-body-ready = Alles hier kun je later wijzigen in Instellingen, en Instellingen, Over start deze introductie opnieuw.
+onboarding-body-library = Kies de map waarin je je series bewaart. Elke submap wordt een serie met poster, afleveringen en kijkvoortgang. Anibeam leest je map alleen en verplaatst of hernoemt nooit bestanden.
+onboarding-body-lists = Log één keer in en elke aflevering die je afkijkt wordt vanzelf op je lijst gemarkeerd. Inloggen gebeurt in je browser, dus Anibeam ziet je wachtwoord nooit.
+onboarding-body-downloads = Volg een serie op de pagina Downloads en nieuwe afleveringen worden in je bibliotheek gedownload zodra ze uitkomen. Daarvoor zijn twee dingen nodig: een bron om te doorzoeken en een torrentclient om mee te downloaden.
+onboarding-body-ready = Je kunt dit later allemaal wijzigen in Instellingen, of deze installatie opnieuw doorlopen via Instellingen > Over.
 onboarding-skip-step = Nu overslaan
 onboarding-get-started = Aan de slag
 onboarding-open-app = Anibeam openen
 onboarding-continue = Verder
 onboarding-payoff-library = Je bibliotheek
 onboarding-payoff-library-line = Posters, afleveringen en wat er hierna komt, voor elke serie in je mappen.
-onboarding-payoff-plays = Speelt hier af
-onboarding-payoff-plays-line = Ondertitels, intro overslaan, en het onthoudt waar je stopte.
+onboarding-payoff-plays = Ingebouwde speler
+onboarding-payoff-plays-line = Ondertitels, intro overslaan en verder kijken waar je was gebleven.
 onboarding-payoff-list = Je lijst, gesynct
 onboarding-payoff-list-line = Kijk een aflevering af en hij telt mee op AniList of MyAnimeList.
-onboarding-payoff-episodes = Afleveringen komen binnen
-onboarding-payoff-episodes-line = Volg een serie en elke nieuwe aflevering komt in je bibliotheek.
+onboarding-payoff-episodes = Automatische downloads
+onboarding-payoff-episodes-line = Volg een serie en nieuwe afleveringen worden in je bibliotheek gedownload zodra ze uitkomen.
 onboarding-films-too = Een map met films werkt ook: noem hem Movies.
 onboarding-choose-folder-button = Map kiezen
 onboarding-no-folder = Ik heb nog geen map
-onboarding-starter-where = Dat maakt een map Anime in { $dir } en gebruikt die.
+onboarding-starter-where = Maakt een map Anime in { $dir } en voegt die toe.
 onboarding-add-another = Nog een map toevoegen
 onboarding-shelf-more = meer
 onboarding-preview-show = Je serie
 onboarding-preview-finished = Aflevering 3 hier afgekeken
 onboarding-preview-on-list = Op je lijst: 3 gekeken
-onboarding-preview-set-by = Door Anibeam ingesteld zodra de aftiteling begint
+onboarding-preview-set-by = Vanzelf bijgewerkt als je een aflevering afkijkt
 onboarding-lists-connected = Gekoppeld. Wat je hier kijkt telt nu mee op je lijst.
-onboarding-lists-no-account = Nog geen account? Beide zijn gratis, en één is genoeg. Je kunt altijd ontkoppelen in Instellingen, Accounts.
-onboarding-search-title = Een plek om te zoeken
+onboarding-lists-no-account = Nog geen account? Beide zijn gratis, en je hebt er maar één nodig. Je kunt altijd ontkoppelen in Instellingen > Accounts.
+onboarding-search-title = Downloadbronnen
 onboarding-search-ready = { $count ->
     [one] { $count } bron klaar om te doorzoeken.
    *[other] { $count } bronnen klaar om te doorzoeken.
 }
-onboarding-fetch-title = Wie haalt op
+onboarding-fetch-title = Torrentclient
 onboarding-fetch-auto = Laat Anibeam het regelen
 onboarding-fetch-recommended = Aanbevolen
-onboarding-fetch-auto-line = Anibeam brengt zijn eigen qBittorrent mee en draait die stil op de achtergrond. Niets te installeren, niets in te vullen.
+onboarding-fetch-auto-line = Anibeam heeft een ingebouwde qBittorrent en draait die stil op de achtergrond. Niets extra in te stellen.
 onboarding-fetch-existing = Ik gebruik al qBittorrent
-onboarding-fetch-existing-line = Anibeam koppelt met de qBittorrent die je al draait. Je vult daarna het adres en de login in bij Instellingen.
+onboarding-fetch-existing-line = Anibeam koppelt met de qBittorrent die je al draait. Na de installatie vul je het adres en de login in bij Instellingen.
 onboarding-ready-library = Bibliotheek
-onboarding-ready-library-none = Nog geen map. Die staat in Instellingen, Bibliotheek wanneer je wilt.
+onboarding-ready-library-none = Nog geen map. Je kunt er altijd een toevoegen in Instellingen > Bibliotheek.
 onboarding-ready-library-series = { $count ->
     [one] { $count } map
    *[other] { $count } mappen
@@ -467,7 +468,7 @@ onboarding-ready-library-scanning = { $count ->
 }, scannen
 onboarding-ready-lists = Je lijst
 onboarding-ready-lists-as = { $tracker }, als { $user }
-onboarding-ready-lists-none = Nog niet gekoppeld. Dat staat in Instellingen, Accounts wanneer je wilt.
+onboarding-ready-lists-none = Nog niet gekoppeld. Je kunt altijd koppelen in Instellingen > Accounts.
 onboarding-ready-downloads = Downloads
 onboarding-ready-downloads-state = { $sources ->
     [0] Nog geen bronnen
@@ -475,11 +476,11 @@ onboarding-ready-downloads-state = { $sources ->
    *[other] { $sources } bronnen
 }, { $client ->
     [own] je eigen qBittorrent.
-   *[bundled] de eigen qBittorrent van Anibeam.
+   *[bundled] de ingebouwde qBittorrent van Anibeam.
 } { $next ->
     [ready] Alles klaar.
-    [opens] Instellingen, Downloads opent hierna.
-   *[sources] Voeg een bronlijst toe om te zoeken.
+    [opens] Instellingen > Downloads opent hierna.
+   *[sources] Voeg een bronlijst toe om te beginnen met zoeken.
 }
 onboarding-ready-set-up = Nu instellen
 
@@ -524,8 +525,8 @@ fix-keep = Correctie houden
 fix-leave-as-read = Laat dit bestand zoals het gelezen wordt
 fix-read-by-name = Lees dit bestand weer op naam
 fix-report = Issue melden op GitHub
-fix-report-body = Opent een ingevuld issue dat jij verstuurt. Het is openbaar en noemt deze bestanden.
-fix-report-body-agent = Opent een ingevuld issue dat jij verstuurt. Het is openbaar en noemt deze bestanden. { $agent } kijkt er eerst naar.
+fix-report-body = Opent een vooraf ingevuld issue dat je kunt nakijken en versturen. Het is openbaar en bevat deze bestandsnamen.
+fix-report-body-agent = Opent een vooraf ingevuld issue dat je kunt nakijken en versturen. Het is openbaar en bevat deze bestandsnamen. { $agent } kijkt er eerst naar.
 fix-close-unapplied =
     { $count ->
         [one] Sluiten zonder { $count } correctie toe te passen?
@@ -550,7 +551,7 @@ match-found-anilist-season = Gevonden op AniList, seizoen { $season }
 match-found-mal = Gevonden op MyAnimeList
 match-sites-and = { $first } en { $next }
 match-matched-on = Gekoppeld op { $sites }
-match-provider-silent = { $provider } antwoordde niet
+match-provider-silent = { $provider } reageerde niet
 match-title-walk = Koppelen, { $walk }
 match-title = Koppelen
 match-skip = Overslaan
@@ -611,14 +612,14 @@ watching-connect-body = Koppel het en deze pagina toont de series die je op AniL
 watching-connect-waiting = Wachten op de browser
 watching-connect-anilist = AniList koppelen
 watching-load-failed-title = De kijklijst is niet geladen
-watching-load-failed-body = AniList was niet bereikbaar. De lijst komt terug bij de volgende vernieuwing.
+watching-load-failed-body = Kon AniList niet bereiken. De lijst wordt bij de volgende vernieuwing opnieuw geladen.
 watching-planning-failed-title = De planlijst is niet geladen
-watching-planning-failed-body = De cache kon niet worden gelezen. Probeer het opnieuw, of hij komt terug bij de volgende vernieuwing.
+watching-planning-failed-body = Kon de opgeslagen lijst niet lezen. Probeer het opnieuw, of wacht op de volgende vernieuwing.
 watching-planning-empty-title = Niets op je planlijst
-watching-planning-empty-body = Later kijken bij Nu uitgezonden, of Gepland in het lijstmenu van een serie, zet een serie hier.
+watching-planning-empty-body = Klik op Later kijken bij Nu uitgezonden, of kies Gepland in het lijstmenu van een serie, om hier een serie toe te voegen.
 watching-airing-now = Nu uitgezonden
 watching-empty-title = Niets op je kijklijst
-watching-empty-body = Zet een serie op Kijken op AniList en hij komt hier.
+watching-empty-body = Zet een serie op Kijken op AniList en hij verschijnt hier.
 watching-open-anilist = AniList openen
 
 ## LibraryPage.qml
@@ -630,8 +631,8 @@ library-hidden =
     }
 library-hidden-sync-stops =
     { $count ->
-        [one] { $count } serie verborgen, en de trackersync stopt
-       *[other] { $count } series verborgen, en de trackersync stopt
+        [one] { $count } serie verborgen, en de trackersync is gepauzeerd
+       *[other] { $count } series verborgen, en de trackersync is gepauzeerd
     }
 library-unhidden =
     { $count ->
@@ -757,19 +758,19 @@ library-none-in-tab-body = Je bibliotheek heeft hier nog niets van. Alles toont 
 library-all-filtered-body = Alles in je bibliotheek is uit deze weergave gefilterd.
 library-clear-search = Zoekopdracht wissen
 library-show-all = Alles tonen
-library-picked = { $count } gekozen
+library-picked = { $count } geselecteerd
 library-pick-all = Alles
-library-pick-all-tip = Kies elke getoonde kaart (Ctrl+A)
+library-pick-all-tip = Alle zichtbare kaarten selecteren (Ctrl+A)
 library-unhide = Tonen
 library-hide = Verbergen
 library-rate = Score
-library-rate-tip = Eén score voor elke keuze, op elke gekoppelde tracker
+library-rate-tip = Eén score voor elke geselecteerde serie, op alle gekoppelde trackers
 library-needs-tracker = Vraagt om een gekoppelde tracker en een gekoppelde serie
 library-move-to-list = Naar lijst
 library-rescan = Opnieuw scannen
 library-find-match = Koppeling zoeken
-library-find-match-tip = Zoek voor elke keuze zonder koppeling
-library-all-matched = Elke keuze is gekoppeld
+library-find-match-tip = Zoek een koppeling voor elke selectie zonder koppeling
+library-all-matched = Elke geselecteerde serie is al gekoppeld
 
 ## MetadataPage.qml
 
@@ -801,8 +802,8 @@ metadata-walk-position = { $at } van { $total }
 metadata-walk-done = Dat was de laatste
 metadata-walk-left =
     { $count ->
-        [one] Nog één onder Moet gekoppeld
-       *[other] Nog { $count } onder Moet gekoppeld
+        [one] Nog 1 onder Niet herkend
+       *[other] Nog { $count } onder Niet herkend
     }
 metadata-countdown-days = { $days }d { $hours }u
 metadata-countdown-hours = { $hours }u { $minutes }m
@@ -837,10 +838,10 @@ metadata-count =
 metadata-search-placeholder = Titels filteren
 metadata-find-rest = Zoek de rest
 metadata-find-rest-started = De mappen opzoeken die Anibeam nog niet kent
-metadata-find-rest-tip = Zoekt elke map op die Anibeam nog niet kent, op elke site voor serie-info in de volgorde die Instellingen aangeeft
+metadata-find-rest-tip = Zoekt elke map zonder koppeling op bij de metadatasites, in de volgorde uit Instellingen
 metadata-refresh-all = Alles vernieuwen
-metadata-refresh-all-started = De info van elke serie bijwerken
-metadata-refresh-all-tip = Haalt de info van elke herkende serie opnieuw op
+metadata-refresh-all-started = Info van elke serie bijwerken
+metadata-refresh-all-tip = Haalt de metadata van elke herkende serie opnieuw op
 metadata-crawling = Franchiselinks zoeken
 metadata-crawl-progress = { $done } van { $total }
 metadata-load-failed-title = Serie-info is niet geladen
@@ -866,7 +867,7 @@ metadata-refreshing = { $title } vernieuwen
 metadata-refresh-tip = Haal de info van deze serie opnieuw op
 metadata-forget-armed = Weghalen
 metadata-forget-confirm-tip = Klik nogmaals om deze serie en de kijkgeschiedenis uit Anibeam te halen
-metadata-forget-tip = De map staat niet meer op de schijf: haal deze serie en de geschiedenis uit Anibeam
+metadata-forget-tip = De map staat niet meer op de schijf: verwijder deze serie en de geschiedenis uit Anibeam
 
 ## AiringPage.qml
 
@@ -926,13 +927,13 @@ airing-planned-already-one = { $title } staat al op je lijst
 airing-planned-already-all = Ze staan al allemaal op je lijst
 airing-planned =
     { $count ->
-        [one] { $count } serie komt op je Gepland-lijst
-       *[other] { $count } series komen op je Gepland-lijst
+        [one] { $count } serie wordt aan je Gepland-lijst toegevoegd
+       *[other] { $count } series worden aan je Gepland-lijst toegevoegd
     }
 airing-planned-some-already =
     { $count ->
-        [one] { $count } serie komt op je Gepland-lijst, { $already } stonden er al op
-       *[other] { $count } series komen op je Gepland-lijst, { $already } stonden er al op
+        [one] { $count } serie wordt aan je Gepland-lijst toegevoegd ({ $already } stonden er al op)
+       *[other] { $count } series worden aan je Gepland-lijst toegevoegd ({ $already } stonden er al op)
     }
 airing-play-next = Volgende afspelen
 airing-plan-to-watch = Later kijken
@@ -961,22 +962,22 @@ airing-out-fewer = Minder
 airing-out-all = Alle { $count }
 airing-sort = Sorteren
 airing-load-failed-title = AniList was niet bereikbaar
-airing-load-failed-body = De series die lopen komen van AniList. Ze komen terug bij de volgende vernieuwing.
-airing-reading-title = Lezen wat er loopt
+airing-load-failed-body = Lopende series komen van AniList. Ze verschijnen weer bij de volgende vernieuwing.
+airing-reading-title = Lopende series laden
 airing-nothing-now = Er loopt nu niets
 airing-nothing-for = Niets op tv in { $season }
-airing-nothing-read = Nog niets gelezen
-airing-reading-body = Elke serie die loopt, van AniList. De eerste keer duurt dit een paar seconden.
-airing-nothing-body = AniList heeft nog geen series voor dit seizoen. Vernieuwen leest het opnieuw, of kies een ander seizoen.
-airing-nothing-read-body = Vernieuwen leest elke lopende serie van AniList.
-airing-hides-empty-title = Door je filters blijft hier niets over
+airing-nothing-read = Nog niets geladen
+airing-reading-body = Elke serie die dit seizoen loopt, van AniList. De eerste keer duurt dit een paar seconden.
+airing-nothing-body = AniList heeft nog geen series voor dit seizoen. Klik op Vernieuwen om opnieuw te kijken, of kies een ander seizoen.
+airing-nothing-read-body = Klik op Vernieuwen om lopende series van AniList te laden.
+airing-hides-empty-title = Alles hier wordt door je filters verborgen
 airing-lists-empty-title = Niets hier staat op je lijsten
 airing-library-empty-title = Niets hier staat in je bibliotheek
-airing-hides-empty-body = Elke serie hier staat op je lijsten of in je bibliotheek, en die heb je verborgen.
-airing-lists-empty-body = Later kijken op een kaart zet hem op je lijst.
-airing-library-empty-body = Afleveringen ophalen op een kaart downloadt hem in je bibliotheek.
+airing-hides-empty-body = Elke serie hier staat op je lijsten of in je bibliotheek, en die filters verbergen ze.
+airing-lists-empty-body = Klik op Later kijken op een kaart om hem op je lijst te zetten.
+airing-library-empty-body = Klik op Afleveringen ophalen op een kaart om hem in je bibliotheek te downloaden.
 airing-show-everything = Alles tonen
-airing-picked = { $count } gekozen
+airing-picked = { $count } geselecteerd
 airing-undo = Ongedaan maken
 
 ## EpisodeRow.qml
@@ -1091,13 +1092,13 @@ show-detail-taken-adding-line = De regel neemt { $taken } van de { $releases ->
         [one] hem toe.
        *[other] ze toe.
     }
-show-detail-feed-holds-nothing = De feed bevat nog niets. Releases die passen worden gedownload zodra ze erin verschijnen.
-show-detail-nothing-fits = Nog niets in de feed past bij de regel. Releases die passen worden gedownload zodra ze verschijnen.
+show-detail-feed-holds-nothing = De feed heeft nog geen releases. Passende releases worden vanzelf gedownload zodra ze verschijnen.
+show-detail-nothing-fits = Nog niets in de feed past bij de regel. Passende releases worden vanzelf gedownload zodra ze verschijnen.
 show-detail-complete = Compleet
 show-detail-open-in-library = Openen in bibliotheek
 show-detail-feed-finds-nothing = Deze feed vindt niets
-show-detail-feed-empty-query = Hij vraagt { $source } om “{ $query }”, en dat geeft niets, dus niets nieuws bereikt de regel. Een kortere zoekopdracht geeft meestal wel antwoord; de woorden die wegvallen kunnen in de regel blijven.
-show-detail-feed-empty = Hij vraagt { $source }, en dat geeft niets, dus niets nieuws bereikt de regel. Een kortere zoekopdracht geeft meestal wel antwoord; de woorden die wegvallen kunnen in de regel blijven.
+show-detail-feed-empty-query = Hij zoekt op { $source } naar “{ $query }”, en dat gaf geen resultaten, dus niets nieuws kan bij de regel passen. Een kortere zoekopdracht geeft meestal wel resultaten; de weggelaten woorden kunnen in de regel blijven.
+show-detail-feed-empty = Hij zoekt op { $source }, en dat gaf geen resultaten, dus niets nieuws kan bij de regel passen. Een kortere zoekopdracht geeft meestal wel resultaten; de weggelaten woorden kunnen in de regel blijven.
 show-detail-feed-empty-earlier = qBittorrent toont nog wat een eerdere versie van deze feed vond.
 show-detail-repairing = Herstellen
 show-detail-repair = Herstel
@@ -1139,9 +1140,9 @@ show-detail-torrents-moving =
         [one] { $count } wordt nu gedownload; de balken vullen zich gaandeweg.
        *[other] { $count } worden nu gedownload; de balken vullen zich gaandeweg.
     }
-show-detail-torrents-held = Wat de client voor deze map heeft.
+show-detail-torrents-held = Torrents in de client voor deze map.
 show-detail-torrents-waiting = Wachten tot qBittorrent toevoegt wat de regel neemt.
-show-detail-torrents-none = De client heeft niets voor deze map.
+show-detail-torrents-none = Geen torrents in de client voor deze map.
 
 ## SeriesPage.qml
 
@@ -1178,16 +1179,16 @@ series-delete-done =
 series-delete-picked =
     { $kind ->
         [film] { $count ->
-            [one] { $count } film gekozen.
-           *[other] { $count } films gekozen.
+            [one] { $count } film geselecteerd.
+           *[other] { $count } films geselecteerd.
         }
         [episode] { $count ->
-            [one] { $count } aflevering gekozen.
-           *[other] { $count } afleveringen gekozen.
+            [one] { $count } aflevering geselecteerd.
+           *[other] { $count } afleveringen geselecteerd.
         }
        *[file] { $count ->
-            [one] { $count } bestand gekozen.
-           *[other] { $count } bestanden gekozen.
+            [one] { $count } bestand geselecteerd.
+           *[other] { $count } bestanden geselecteerd.
         }
     }
 series-delete-move-picked =
@@ -1206,20 +1207,20 @@ series-delete-move-picked =
         }
     }
 series-delete-click = Klik op de bestanden om te wissen.
-series-delete-where = Ze gaan naar de prullenbak, waar je ze terug kunt halen. Wat je keek blijft bijgehouden.
+series-delete-where = Ze worden naar de prullenbak verplaatst, zodat je ze kunt terughalen. Wat je keek blijft bijgehouden.
 series-delete-move = Naar de prullenbak
-series-pick-none = Niets kiezen
-series-pick-all = Alles kiezen
+series-pick-none = Niets selecteren
+series-pick-all = Alles selecteren
 series-rescan-started = Opnieuw scannen gestart
 series-rated = Score { $score }
 series-rated-cleared = Score gewist
 series-score-not-saved = Kon de score niet opslaan.
-series-still-downloading-plays = { $episode } wordt nog gedownload. Hij speelt zodra de download klaar is.
+series-still-downloading-plays = { $episode } wordt nog gedownload. Hij speelt af zodra de download klaar is.
 series-open-downloads = Downloads openen
 series-format-series = Serie
-series-tracker-refused = { $tracker } nam het niet aan
-series-tracker-refused-why = { $tracker } nam het niet aan: { $why }
-series-tracker-check-accounts = { $list }. Controleer de verbinding in Instellingen, onder Accounts.
+series-tracker-refused = { $tracker } weigerde de update
+series-tracker-refused-why = { $tracker } weigerde de update: { $why }
+series-tracker-check-accounts = { $list }. Controleer de verbinding in Instellingen > Accounts.
 series-watched-up-to = Gekeken tot { $episode }
 series-unwatched-from = Ongekeken vanaf { $episode }
 series-undo = Ongedaan maken
@@ -1269,7 +1270,7 @@ series-downloading-episodes =
     }
 series-count-season-ends = Seizoen { $season } eindigt bij aflevering { $number }
 series-count-ends = Eindigt bij aflevering { $number }
-series-count-gave-way = Je stelde { $count } afleveringen in; dat geldt niet meer
+series-count-gave-way = Je stelde { $count } afleveringen in, en dat geldt niet meer
 series-count-set-by-you = { $line }, door jou ingesteld
 series-change = Wijzigen
 series-get-episodes = Afleveringen ophalen
@@ -1318,7 +1319,7 @@ series-match = Koppelen
 series-not-matched = Nog niet gekoppeld, dus geen poster, samenvatting of bijhouden. Zoek de serie-info op AniList of TVmaze.
 series-naming-title = Namen die passen
 series-naming-body = De map is de titel van de serie, zoals AniList hem schrijft, met het seizoen erachter als het niet het eerste is. Elk bestand bevat het afleveringsnummer.
-series-fix-how-files-read = Corrigeer hoe bestanden lezen
+series-fix-how-files-read = Corrigeer hoe bestanden worden gelezen
 series-characters = Personages
 series-related = Verwant
 series-related-filling = Wordt nog aangevuld vanuit AniList.
@@ -1373,12 +1374,12 @@ get-show-go-replace-subscribe =
 get-show-subscribe = Abonneren op nieuwe afleveringen
 get-show-nothing-new = Niets nieuws op te halen
 get-show-pick-episode = Kies een aflevering
-get-show-replace-off = Uit. De keuzes voor { $episodes } worden weggelaten, omdat de bibliotheek ze heeft. Zet dit aan om ze te vervangen.
-get-show-replace-on = De bestanden die je hebt voor { $episodes } gaan naar de prullenbak zodra de nieuwe klaar zijn.
+get-show-replace-off = Uit. Geselecteerde bestanden voor { $episodes } worden overgeslagen, omdat ze al in je bibliotheek staan. Zet aan om ze te vervangen.
+get-show-replace-on = Bestaande bestanden voor { $episodes } worden naar de prullenbak verplaatst zodra de nieuwe downloads klaar zijn.
 get-show-replace-on-the-way =
     { $count ->
-        [one] { $episodes } wordt nu gedownload: die download wordt geannuleerd en wat hij schreef gaat naar de prullenbak.
-       *[other] { $episodes } worden nu gedownload: die download wordt geannuleerd en wat hij schreef gaat naar de prullenbak.
+        [one] { $episodes } wordt nu gedownload: die download wordt geannuleerd en de half gedownloade bestanden gaan naar de prullenbak.
+       *[other] { $episodes } worden nu gedownload: die downloads worden geannuleerd en de half gedownloade bestanden gaan naar de prullenbak.
     }
 get-show-kind-on-demand = Gestart als een zoekopdracht het nodig heeft
 get-show-kind-rss-search = RSS-zoeken
@@ -1450,17 +1451,17 @@ get-show-batch-episodes =
         [one] { $count } aflevering, één torrent
        *[other] { $count } afleveringen, één torrent
     }
-get-show-nothing-new-picked = Niets nieuws gekozen
-get-show-nothing-picked = Niets gekozen
+get-show-nothing-new-picked = Niets nieuws geselecteerd
+get-show-nothing-picked = Niets geselecteerd
 get-show-pick-provider = Kies een bron
 get-show-plan-line = { $episodes } van { $groups } op { $source }.
 get-show-and = { $first } en { $second }
 get-show-library-has =
     { $count ->
-        [one] De bibliotheek heeft { $episodes }. Zet hieronder Huidige afleveringen vervangen aan om hem te vervangen.
-       *[other] De bibliotheek heeft { $episodes }. Zet hieronder Huidige afleveringen vervangen aan om ze te vervangen.
+        [one] Je bibliotheek heeft { $episodes } al. Zet hieronder Huidige afleveringen vervangen aan om hem te vervangen.
+       *[other] Je bibliotheek heeft { $episodes } al. Zet hieronder Huidige afleveringen vervangen aan om ze te vervangen.
     }
-get-show-together = samen
+get-show-together = totaal
 get-show-torrents-unit =
     { $count ->
         [one] torrent
@@ -1468,21 +1469,21 @@ get-show-torrents-unit =
     }
 get-show-replace = Huidige afleveringen vervangen
 get-show-sequential = Op volgorde downloaden
-get-show-sequential-on = Aan: elke nieuwe torrent haalt zijn stukken vanaf het begin, dus de eerste afleveringen zijn eerst klaar en je kunt kijken terwijl de rest komt. In totaal iets trager.
+get-show-sequential-on = Aan: elke nieuwe torrent haalt zijn stukken vanaf het begin, dus de eerste afleveringen zijn eerst klaar en je kunt kijken terwijl de rest downloadt. In totaal iets trager.
 get-show-sequential-off = Uit: de client haalt stukken in de volgorde die de swarm aanbiedt.
-get-show-rolling = Houd de volgende paar klaar
-get-show-rolling-on = Aan: { $count } afleveringen downloaden nu, en elke aflevering die je afkijkt start de volgende.
-get-show-rolling-on-delete = Aan: { $count } afleveringen downloaden nu, en elke aflevering die je afkijkt start de volgende. Gekeken afleveringen gaan van de schijf.
-get-show-rolling-off = Uit: elke gekozen aflevering downloadt tegelijk.
+get-show-rolling = Doorlopende downloads
+get-show-rolling-on = Aan: { $count } afleveringen worden nu gedownload, en elke aflevering die je afkijkt start de volgende.
+get-show-rolling-on-delete = Aan: { $count } afleveringen worden nu gedownload, en elke aflevering die je afkijkt start de volgende. Gekeken afleveringen worden vanzelf gewist.
+get-show-rolling-off = Uit: elke geselecteerde aflevering downloadt tegelijk.
 get-show-follow-off = Uit: nieuwe afleveringen verschijnen hier als gaten, en er downloadt niets vanzelf.
 get-show-follow-no-feed = { $source } heeft geen feed om te volgen, dus nieuwe afleveringen kunnen daar niet vanzelf van downloaden.
 get-show-follow-pick-group = Kies eerst een groep: een abonnement volgt één groep en kwaliteit.
-get-show-follow-batch-only = { $group } heeft hier alleen de batch, dus er is geen feed met losse afleveringen om op te abonneren.
-get-show-follow-on = Aan: een feed voor { $feed } op { $source }. Elke nieuwe aflevering downloadt zodra hij verschijnt.
+get-show-follow-batch-only = { $group } heeft hier alleen een batch, dus er is geen feed met losse afleveringen om op te abonneren.
+get-show-follow-on = Aan: een feed voor { $feed } op { $source }. Nieuwe afleveringen worden vanzelf gedownload zodra ze verschijnen.
 get-show-confirm =
     { $count ->
-        [one] { $episodes } wordt nu gedownload. Vervangen annuleert die download en verplaatst wat hij schreef naar de prullenbak.
-       *[other] { $episodes } worden nu gedownload. Vervangen annuleert die download en verplaatst wat hij schreef naar de prullenbak.
+        [one] { $episodes } wordt nu gedownload. Vervangen annuleert die download en verplaatst de half gedownloade bestanden naar de prullenbak.
+       *[other] { $episodes } worden nu gedownload. Vervangen annuleert die downloads en verplaatst de half gedownloade bestanden naar de prullenbak.
     }
 get-show-confirm-go = Annuleren en vervangen
 get-show-state-error = Fout
@@ -1507,7 +1508,7 @@ get-show-stopping = Stoppen
 get-show-starting = Starten
 get-show-stop = Stop
 get-show-start-tip = Opnieuw beginnen met downloaden
-get-show-stop-tip = Downloaden stoppen; wat er al is blijft
+get-show-stop-tip = Downloaden stoppen; wat al gedownload is blijft bewaard
 get-show-cancelling = Annuleren
 get-show-cancel-tip = Annuleer deze download en verplaats wat hij schreef naar de prullenbak
 get-show-episode-order = Op afleveringsvolgorde downloaden
@@ -1580,8 +1581,8 @@ start-source-starting = Starten
 search-progress-why-helper = Anibeam start zijn zoekhulp; dit duurt een seconde of twee.
 search-progress-why-starting = { $endpoint } loopt via een hulp die start als een zoekopdracht hem nodig heeft. De eerste zoekopdracht wacht erop, tot { $seconds } seconden; de volgende slaan dit over.
 search-progress-why-reading = De releases in groepen verdelen en vergelijken met de bibliotheek.
-search-progress-why-ondemand = Een hulp leest { $endpoint } opnieuw voor elke nieuwe zoekopdracht, wat meestal tien tot twintig seconden duurt.
-search-progress-why-slow = { $endpoint } antwoordt nu traag.
+search-progress-why-ondemand = Een hulp doorzoekt { $endpoint } opnieuw voor elke nieuwe zoekopdracht, wat meestal 10 tot 20 seconden duurt.
+search-progress-why-slow = { $endpoint } reageert nu traag.
 search-progress-why-usual = Dit duurt meestal een seconde of twee.
 search-progress-why-and-slow = { $why } Dit duurt langer dan normaal; annuleer om een andere bron te proberen.
 search-progress-searching = Zoeken
@@ -1600,8 +1601,8 @@ release-table-col-seeders = Seeders
 release-table-col-leechers = Leechers
 release-table-col-downloads = Downloads
 release-table-col-released = Uitgebracht
-release-table-tick-all = Elke release aanvinken
-release-table-untick-all = Elke release uitvinken
+release-table-tick-all = Alle releases selecteren
+release-table-untick-all = Alle releases deselecteren
 release-table-on-disk = Op schijf
 release-table-other-on-disk = Andere release op schijf
 release-table-season-batch = Batch seizoen { $season }
@@ -1634,20 +1635,20 @@ downloads-delete-finished-menu =
     }
 downloads-titles-and = { $list } en { $last }
 downloads-titles-more = { $list } en nog { $count }
-downloads-delete-finished-none = Geen afgelopen serie is helemaal gekeken
+downloads-delete-finished-none = Geen afgelopen series zijn helemaal gekeken
 downloads-delete-watched-none = Niets gekeken staat op schijf
 downloads-delete-finished-heading =
     { $count ->
         [one] { $count } afgelopen serie wissen, { $size }?
        *[other] { $count } afgelopen series wissen, { $size }?
     }
-downloads-delete-finished-base = { $titles }. Alleen series die volgens de bron zijn afgelopen, met elke aflevering gekeken; een serie die nog loopt, of waarvan het einde een gok is, blijft. Elk bestand ervan gaat naar de prullenbak, extra's ook. Hun torrents verdwijnen ook uit { $client }, zodat ze opnieuw gedownload kunnen worden.
+downloads-delete-finished-base = { $titles }. Alleen series die als afgelopen gemarkeerd zijn, met elke aflevering gekeken; lopende of onbevestigde series blijven. Al hun bestanden (ook extra's) worden naar de prullenbak verplaatst, en hun torrents worden uit { $client } verwijderd, zodat ze opnieuw gedownload kunnen worden.
 downloads-delete-watched-heading =
     { $count ->
         [one] { $count } gekeken aflevering wissen, { $size }?
        *[other] { $count } gekeken afleveringen wissen, { $size }?
     }
-downloads-delete-watched-base = Elke aflevering die je hebt gekeken, in elke serie. Afleveringen die je nog niet keek en extra's blijven. De bestanden en hun ondertitels gaan naar de prullenbak, dus je kunt ze daar terughalen. Hun torrents verdwijnen ook uit { $client }, zodat ze opnieuw gedownload kunnen worden.
+downloads-delete-watched-base = Elke aflevering die je hebt gekeken, in alle series. Ongekeken afleveringen en extra's blijven. Bestanden en ondertitels worden naar de prullenbak verplaatst, zodat je ze kunt terughalen. Hun torrents worden uit { $client } verwijderd, zodat ze opnieuw gedownload kunnen worden.
 downloads-move-to-trash = Naar prullenbak
 downloads-remove-group-torrents =
     { $count ->
@@ -1670,12 +1671,12 @@ downloads-gap-then-not-downloaded = { $runs } niet gedownload
 downloads-trying-query = { $query } proberen
 downloads-client-settings = Instellingen torrentclient
 downloads-error-unknown = Er ging iets mis. Probeer het opnieuw.
-downloads-search-all-off = Elke bron staat uit. Zet er een aan om te zoeken.
+downloads-search-all-off = Alle bronnen staan uit. Zet er een aan om te zoeken.
 downloads-turn-on = { $name } aanzetten
-downloads-search-no-sources = Er zijn nog geen bronnen om te doorzoeken. Voeg een bronlijst toe in Instellingen, onder Downloads.
+downloads-search-no-sources = Nog geen zoekbronnen. Voeg een bronlijst toe in Instellingen > Downloads.
 downloads-no-sources = Nog geen bronnen om te doorzoeken
 downloads-search-none-started = Geen bron kon de zoekopdracht starten. Probeer het zo opnieuw.
-downloads-auto-resolution = Verfijnd tot { $resolution }, de scherpste die er is
+downloads-auto-resolution = Verfijnd tot { $resolution }, de hoogste beschikbare
 downloads-search-one-failed = Zoeken op { $name } werkte niet. Probeer het opnieuw, of doorzoek een andere bron.
 downloads-search-all-failed = Geen van de bronnen kon zoeken. Probeer het zo opnieuw.
 downloads-narrowing-on = Verfijnen op { $name }
@@ -1683,9 +1684,9 @@ downloads-refine-zero = Dan blijft er niets over, dus de lijst blijft zoals hij 
 downloads-refine-no-match = Geen release past bij die term.
 downloads-refine-empty = Typ een term om op te verfijnen.
 downloads-refine-no-change = Dat verandert niets.
-downloads-movie-tick-one = Vink één release aan en druk dan op Downloaden als film.
+downloads-movie-tick-one = Selecteer één release en klik dan op Downloaden als film.
 downloads-group-downloading = Downloaden
-downloads-group-downloading-line = Nu bezig; Activiteit rechts heeft de details.
+downloads-group-downloading-line = Nu bezig; zie Activiteit rechts voor details.
 downloads-group-seeding = Seeden
 downloads-group-seeding-line = Gedownload en nog aan het delen.
 downloads-group-done = Klaar
@@ -1739,17 +1740,17 @@ downloads-files-torrents = wat de torrents downloadden
 downloads-files-torrents-remote = wat de torrents downloadden, gewist door { $client }
 downloads-files-folder-and = { $folder } en { $torrents }
 downloads-unsubscribe-heading = Abonnement op { $title } opzeggen?
-downloads-unsubscribe-base = De feed en downloadregel verdwijnen uit { $client }, dus er komt niets nieuws binnen.
+downloads-unsubscribe-base = De feed en downloadregel worden uit { $client } verwijderd, dus er worden geen nieuwe afleveringen gedownload.
 downloads-unsubscribe-complete-heading = Alle { $count } complete series opzeggen?
-downloads-unsubscribe-complete-base = Hun feeds en downloadregels verdwijnen uit { $client }. Elke aflevering ervan staat in de bibliotheek.
+downloads-unsubscribe-complete-base = Hun feeds en downloadregels worden uit { $client } verwijderd. Al hun afleveringen staan al in je bibliotheek.
 downloads-files-folders-and-torrents = hun mappen en wat hun torrents downloadden
 downloads-one-at-a-time = Ze gaan één voor één; de pagina toont elke stap.
 downloads-subscription-stays = { $base } Het abonnement blijft.
 downloads-cancel-heading = { $title } annuleren?
 downloads-cancel-group-base =
     { $count ->
-        [one] De download stopt en verdwijnt uit { $client }.
-       *[other] De { $count } downloads stoppen en verdwijnen uit { $client }.
+        [one] De download stopt en wordt uit { $client } verwijderd.
+       *[other] De { $count } downloads stoppen en worden uit { $client } verwijderd.
     }
 downloads-files-so-far-it = wat hij tot nu toe heeft gedownload
 downloads-files-so-far-they = wat ze tot nu toe hebben gedownload
@@ -1758,16 +1759,16 @@ downloads-keep-downloading = Blijf downloaden
 downloads-remove-heading = { $title } weghalen?
 downloads-remove-group-base =
     { $count ->
-        [one] De torrent verdwijnt uit { $client }; de bestanden blijven tenzij je hieronder aanvinkt.
-       *[other] De { $count } torrents verdwijnen uit { $client }; de bestanden blijven tenzij je hieronder aanvinkt.
+        [one] De torrent wordt uit { $client } verwijderd; de bestanden blijven tenzij je hieronder het vakje aanvinkt.
+       *[other] De { $count } torrents worden uit { $client } verwijderd; de bestanden blijven tenzij je hieronder het vakje aanvinkt.
     }
 downloads-remove-detail-base =
     { $count ->
-        [one] De { $count } torrent verdwijnt uit { $client }; de bestanden blijven tenzij je hieronder aanvinkt.
-       *[other] De { $count } torrents verdwijnen uit { $client }; de bestanden blijven tenzij je hieronder aanvinkt.
+        [one] De { $count } torrent wordt uit { $client } verwijderd; de bestanden blijven tenzij je hieronder het vakje aanvinkt.
+       *[other] De { $count } torrents worden uit { $client } verwijderd; de bestanden blijven tenzij je hieronder het vakje aanvinkt.
     }
 downloads-remove-broken-heading = De torrents van alle { $count } series met ontbrekende bestanden weghalen?
-downloads-remove-broken-base = Hun { $count } torrents verdwijnen uit { $client }. Ze wijzen naar mappen die er niet zijn, dus er wordt geen bestand aangeraakt; abonnementen blijven.
+downloads-remove-broken-base = Hun { $count } torrents worden uit { $client } verwijderd. Hun mappen ontbreken, dus er wordt geen bestand aangeraakt; abonnementen blijven.
 downloads-remove-torrent-heading = Deze torrent weghalen?
 downloads-files-it-downloaded = wat hij downloadde
 downloads-cancel-torrent-heading = Deze download annuleren?
@@ -1776,11 +1777,11 @@ downloads-cancel-many-heading =
         [one] { $count } download annuleren?
        *[other] { $count } downloads annuleren?
     }
-downloads-cancel-many-base = Elke download van deze serie stopt en verdwijnt uit { $client }.
+downloads-cancel-many-base = Alle downloads van deze serie stoppen en worden uit { $client } verwijderd.
 downloads-cancel-all = Alles annuleren
 downloads-summary-connecting = Verbinden.
 downloads-summary-client-on = { $client } { $version } is gekoppeld.
-downloads-summary-client-off = { $client } is niet gekoppeld. Controleer het adres en wachtwoord in Instellingen, onder Downloads.
+downloads-summary-client-off = { $client } is niet gekoppeld. Controleer het adres en wachtwoord in Instellingen > Downloads.
 downloads-summary-native = Anibeam doorzoekt je bronnen zelf.
 downloads-summary-native-with = Anibeam doorzoekt je bronnen zelf. { $client }
 downloads-summary-starting = Downloads starten.
@@ -1818,16 +1819,16 @@ downloads-activity-hide = Activiteit verbergen
 downloads-activity = Activiteit
 downloads-moving =
     { $count ->
-        [one] { $count } download bezig
-       *[other] { $count } downloads bezig
+        [one] { $count } actieve download
+       *[other] { $count } actieve downloads
     }
 downloads-back = Terug naar Downloads
 downloads-chip-search-ready = Zoeken klaar
 downloads-chip-search-starting = Zoeken start
 downloads-chip-search-off = Zoeken uit
-downloads-chip-answers-at = { $summary } Het antwoordt op { $url }.
-downloads-chip-helper-missing = De zoekhulp is niet geïnstalleerd. Klik voor de Downloads-instellingen, die zeggen hoe je hem toevoegt
-downloads-chip-helper-failed = De zoekhulp is gestopt. Opnieuw verbinden start hem weer; de Downloads-instellingen zeggen wat er misging
+downloads-chip-answers-at = { $summary } Luistert op { $url }.
+downloads-chip-helper-missing = De zoekhulp is niet geïnstalleerd. Klik om Instellingen > Downloads te openen voor de installatie-instructies
+downloads-chip-helper-failed = De zoekhulp is gestopt. Klik op Opnieuw verbinden om hem te herstarten, of kijk in Instellingen > Downloads voor details
 downloads-chip-open-settings = Downloads-instellingen openen
 downloads-chip-client-on = { $client } { $version }
 downloads-chip-client-off = { $client } uit
@@ -1838,7 +1839,7 @@ downloads-connecting = Verbinden
 downloads-reconnect = Opnieuw verbinden
 downloads-search-placeholder = Zoek een serie, of een releasenaam
 downloads-search-go-tip = Zoek releasenamen op { $names }
-downloads-search-go-off = Elke bron staat uit.
+downloads-search-go-off = Alle bronnen staan uit.
 downloads-suggest-airing =
     { $predicted ->
         [yes] Loopt, aflevering { $episode } verwacht over { $time }
@@ -1929,10 +1930,10 @@ downloads-strip-other-on-disk =
 downloads-strip-both = { $first }; { $second }.
 downloads-tick-missing =
     { $count ->
-        [one] De { $count } ontbrekende aflevering aanvinken
-       *[other] De { $count } ontbrekende afleveringen aanvinken
+        [one] De { $count } ontbrekende aflevering selecteren
+       *[other] De { $count } ontbrekende afleveringen selecteren
     }
-    .tip = Voor elke aflevering die de bibliotheek hier niet heeft, de release met de meeste seeders
+    .tip = Selecteert voor elke ontbrekende aflevering de release met de meeste seeders
 downloads-open-in-library = Openen in bibliotheek
 downloads-not-this-show = Niet deze serie
 downloads-no-releases = Geen releases
@@ -1940,13 +1941,13 @@ downloads-no-releases-body = Niets op { $name } past bij “{ $query }”. Een a
 downloads-try-source = Probeer { $name }
 downloads-ticked =
     { $count ->
-        [one] { $count } release aangevinkt
-       *[other] { $count } releases aangevinkt
+        [one] { $count } release geselecteerd
+       *[other] { $count } releases geselecteerd
     }
-downloads-nothing-ticked = Niets aangevinkt
-downloads-ticked-size = { $size } samen.
-downloads-tick-hint = Vink releases aan in de tabel, of download ze allemaal.
-downloads-tick-all = Alles aanvinken
+downloads-nothing-ticked = Niets geselecteerd
+downloads-ticked-size = { $size } totaal.
+downloads-tick-hint = Selecteer releases in de tabel, of download ze allemaal.
+downloads-tick-all = Alles selecteren
 downloads-working = Bezig
 downloads-download-ticked =
     { $count ->
@@ -1956,9 +1957,9 @@ downloads-download-ticked =
 downloads-download-shown = De { $count } getoonde downloaden
 downloads-download-all = Alle { $count } downloaden
 downloads-download-movie = Downloaden als film
-    .tip = Eén aangevinkte release, rechtstreeks naar de filmmap
+    .tip = Eén geselecteerde release, direct in de filmmap opgeslagen
 downloads-subscribe = Abonneren
-downloads-subscribe-body = Nieuwe releases die bij deze zoekopdracht passen worden gedownload zodra ze verschijnen, in de map die hier staat.
+downloads-subscribe-body = Nieuwe releases die bij deze zoekopdracht passen worden vanzelf gedownload in de map die hier staat.
 downloads-name-placeholder = Uit de eerste release gehaald
 downloads-subscribe-search = Abonneren op deze zoekopdracht
 downloads-subscribe-no-feed = Hier is geen feed om op te abonneren
@@ -1968,12 +1969,12 @@ downloads-preview-from = Van { $host }
 downloads-preview-from-named = Van { $host } ({ $name })
 downloads-preview-must = Moet { $terms } bevatten
 downloads-preview-must-not = Mag { $terms } niet bevatten
-downloads-helper-changed = Downloads staat op een hulp die niet antwoordt
+downloads-helper-changed = Downloads is ingesteld op een zoekhulp die niet reageert
 downloads-helper-missing = Deze kopie van Anibeam kwam zonder downloads
 downloads-helper-failed = Downloads kon niet starten
-downloads-helper-changed-body = Zoeken en downloaden lopen via een klein hulpprogramma. Instellingen wijzen naar een ander dan dat van Anibeam zelf, en dat antwoordt niet. Schakel terug en het start vanzelf.
-downloads-helper-missing-body = Hij is gebouwd zonder het hulpprogramma waarmee zoeken en downloaden werken. De installers op de releasepagina hebben het wel. Instellingen, Downloads zegt hoe je het aan deze kopie toevoegt.
-downloads-helper-failed-body = Het hulpprogramma waarmee zoeken en downloaden werken stopte voordat het klaar was. Opnieuw starten lost dit meestal op.
+downloads-helper-changed-body = Zoeken en downloaden lopen via een klein hulpprogramma. Instellingen wijzen nu naar een andere hulp dan de ingebouwde van Anibeam, en die reageert niet. Schakel terug om de hulp van Anibeam vanzelf te starten.
+downloads-helper-missing-body = Deze build bevat het hulpprogramma voor zoeken en downloaden niet. De officiële installers op de releasepagina hebben het wel, of kijk in Instellingen > Downloads om het in te stellen.
+downloads-helper-failed-body = Het hulpprogramma voor zoeken en downloaden stopte voordat het klaar was. Opnieuw starten lost dit meestal op.
 downloads-helper-use-own = Die van Anibeam gebruiken
 downloads-helper-start-again = Opnieuw starten
 downloads-helper-show-how = Laat zien hoe
@@ -1983,11 +1984,11 @@ downloads-lens-airing-count = Loopt  { $count }
 downloads-lens-following-count = Gevolgd  { $count }
 downloads-lens-downloaded-count = Gedownload  { $count }
 downloads-lens-gaps = Gaten in je bibliotheek
-downloads-lens-gaps-line = Uitgezonden afleveringen die niet op schijf staan. Open een serie om te zien wie ze heeft.
+downloads-lens-gaps-line = Uitgezonden afleveringen die niet op je schijf staan. Open een serie om ze te zoeken.
 downloads-lens-gaps-none = Er ontbreekt niets: elke uitgezonden aflevering van elke serie staat op schijf.
 downloads-lens-airing-line = Series in je bibliotheek met afleveringen die nog komen. Open er een om hem te volgen.
 downloads-lens-airing-none = Niets in je bibliotheek loopt
-downloads-lens-airing-none-body = Een serie komt hier zodra hij in je bibliotheek staat en er nog afleveringen komen. Nu uitgezonden toont alles wat loopt.
+downloads-lens-airing-none-body = Series verschijnen hier zodra ze in je bibliotheek staan en er nog afleveringen komen. Kijk bij Nu uitgezonden voor alles wat nu loopt.
 downloads-airing-now = Nu uitgezonden
 downloads-lens-following = Gevolgd
 downloads-card-next =
@@ -2030,7 +2031,7 @@ downloads-on-disk-line = In je bibliotheek zonder torrent in { $client }, de gro
 downloads-nothing-downloaded = Niets gedownload
 downloads-nothing-downloaded-body = Wat je downloadt of waarop je abonneert verschijnt hier, per serie.
 downloads-client-off-title = { $client } is niet gekoppeld
-downloads-client-off-body = Controleer of hij draait en verbind opnieuw. Het adres en wachtwoord staan in Instellingen, onder Downloads.
+downloads-client-off-body = Controleer of hij draait en verbind dan opnieuw. Het adres en wachtwoord vind je in Instellingen > Downloads.
 downloads-connect-again = Opnieuw verbinden
 downloads-view-grid = Raster
 downloads-view-list = Lijst
@@ -2060,7 +2061,7 @@ track-picker-off = Uit
 roll-controls-window = { $ahead } klaar houden: afleveringen { $next } t/m { $through } van { $total }
 roll-controls-window-watched = { $ahead } klaar houden: afleveringen { $next } t/m { $through } van { $total }, { $watched } gekeken
 roll-controls-more = Nog { $count } ophalen
-roll-controls-more-tip = Download de volgende afleveringen nu. Anibeam houdt de volgende paar weer klaar zodra je bij bent.
+roll-controls-more-tip = Download de volgende afleveringen nu. Doorlopende downloads gaan verder zodra je bij bent.
 roll-controls-fewer-tip = Houd er één minder klaar
 roll-controls-ahead = { $count } vooruit
 roll-controls-further-tip = Houd er één meer klaar
@@ -2163,7 +2164,7 @@ endpoint-repos-panel-fields-changed = De velden zijn veranderd.
 endpoint-repos-panel-needs-fields = Heeft { $fields } nodig voordat het zoekt.
 endpoint-repos-panel-no-longer-offered = Wordt niet meer aangeboden door de bronlijst.
 endpoint-repos-panel-update-requests-to = De update stuurt verzoeken naar { $host }.
-endpoint-repos-panel-unreadable = Deze lijst kon niet worden gelezen. Lijsten vernieuwen probeert het opnieuw.
+endpoint-repos-panel-unreadable = Kon deze bronlijst niet lezen. Klik op Lijsten vernieuwen om het opnieuw te proberen.
 endpoint-repos-panel-checking = Controleren
 endpoint-repos-panel-add = Toevoegen
 endpoint-repos-panel-fingerprint = Vingerafdruk sleutel  { $fingerprint }
@@ -2212,7 +2213,7 @@ schedule-tile-last = Laatste
 schedule-tile-out = Uit
 schedule-ends-at = Eindigt bij aflevering { $number }
 schedule-dated-by-site = { $count } gedateerd door { $site }
-schedule-dated-by-record = { $count } gedateerd door het item
+schedule-dated-by-record = { $count } uit metadata
 schedule-set-by-you = { $count } door jou ingesteld
 schedule-guessed-weekly = { $count } wekelijks geschat
 schedule-nothing-set = Nog niets ingesteld
@@ -2262,8 +2263,8 @@ show-anilist-score = AniList { $score }
 show-forecast = { $percent }% voor jou
 show-because-you-watched = Omdat je keek
 show-hidden-loved = { $count ->
-    [one] Er zit een verborgen tag achter die je geweldig vindt
-   *[other] Er zitten { $count } verborgen tags achter die je geweldig vindt
+    [one] Past bij een verborgen tag die je meestal leuk vindt
+   *[other] Past bij { $count } verborgen tags die je meestal leuk vindt
 }
 show-you-gave-it = Je gaf het een { $score }
 show-story = Verhaal
@@ -2283,7 +2284,7 @@ connect-finish-in-browser = Rond af in je browser
 connect-signed-in-anilist = Ingelogd als { $account }. Je lijst staat op de pagina Kijken.
 connect-signed-in-mal = Ingelogd als { $account }. Afleveringen worden daar gemarkeerd terwijl je kijkt.
 connect-setup-lead = { $name } logt Anibeam in via een eigen app van jou. Dat kost één keer ongeveer een minuut.
-connect-page-open = De inlogpagina van { $name } staat open in je browser. Keur Anibeam daar goed en dit sluit vanzelf.
+connect-page-open = De inlogpagina van { $name } staat open in je browser. Keur Anibeam daar goed en dit venster sluit vanzelf.
 connect-page-opening = De inlogpagina van { $name } openen in je browser.
 connect-open-watching = Kijken openen
 connect-done = Klaar
@@ -2303,7 +2304,7 @@ connect-step-paste-id-anilist = AniList noemt het Client ID: het getal op de pag
 connect-step-paste-id-mal = MyAnimeList noemt het Client ID: de lange tekenreeks op de pagina van je nieuwe app.
 connect-client-id = Client ID
 connect-client-secret-web = Client secret (alleen voor web-apps)
-connect-step-connect-body = De browser opent, { $name } vraagt je in te loggen en Anibeam goed te keuren, en Anibeam vangt het antwoord op.
+connect-step-connect-body = Je browser opent zodat je kunt inloggen bij { $name } en Anibeam kunt goedkeuren.
 
 ## SettingsPage
 
@@ -2348,7 +2349,7 @@ settings-find-title-language =
 settings-find-mode =
     .words = donker licht systeem thema nacht
 settings-find-colours-from =
-    .words = terminal bureaublad systeem thema bron kitty
+    .words = kleur kleuren terminal bureaublad systeem thema bron kitty
 settings-find-dark-theme =
     .words = kleurenschema base16
 settings-find-light-theme =
@@ -2394,7 +2395,7 @@ settings-find-styled =
 settings-find-font =
     .words = lettertype
 settings-find-text-colour =
-    .words = kleur
+    .words = kleur kleuren
 settings-find-outline =
     .words = rand omlijning
 settings-find-background =
@@ -2414,7 +2415,7 @@ settings-find-torrent-client =
 settings-find-search-helper =
     .words = anirss rss feeds token commando server geavanceerd
 settings-find-next-few =
-    .words = doorlopend afleveringen vooruit wissen gekeken houden schijfruimte
+    .words = doorlopend afleveringen vooruit wissen gekeken houden bewaren schijfruimte
 settings-find-unsubscribe =
     .words = opzeggen feeds afgelopen
 settings-find-last-search =
@@ -2458,10 +2459,10 @@ settings-downloads-title = Downloads
 settings-downloads-anirss-ready = Draait, versie { $version } op { $url }.
 settings-downloads-anirss-starting = De zoekhulp starten.
 settings-downloads-anirss-missing = De zoekhulp is niet geïnstalleerd. Installeer Anibeam opnieuw, of geef je eigen anirss op bij Commando.
-settings-downloads-anirss-failed = De zoekhulp is gestopt. Opnieuw proberen start hem; Details zegt wat hij meldde.
+settings-downloads-anirss-failed = De zoekhulp is gestopt. Klik op Opnieuw proberen om hem te herstarten, of open Details om de foutmelding te zien.
 settings-downloads-anirss-idle = Nog niet gestart. Hij start de eerste keer dat je zoekt op de pagina Downloads.
 settings-downloads-torrent-trying = { $client } proberen.
-settings-downloads-torrent-answered = { $client } { $version } antwoordde.
+settings-downloads-torrent-answered = Verbonden met { $client } { $version }.
 settings-downloads-torrent-failed = { $client } kon niet verbinden. Controleer adres en wachtwoord en test opnieuw.
 settings-downloads-torrent-untried = Nog niet geprobeerd.
 settings-downloads-password-saved = Er is hier een wachtwoord voor deze client opgeslagen.
@@ -2470,7 +2471,7 @@ settings-downloads-password-none = Geen wachtwoord opgeslagen. Onnodig als de cl
 settings-downloads-mismatch = De zoekhulp praat met { $helperUrl } terwijl Anibeam met { $url } praat. Een zoekhulp die je zelf draait leest het adres uit zijn eigen config.toml, dus hier van client wisselen verplaatst hem niet.
 settings-downloads-torrent-title = Torrentclient
 settings-downloads-which-client = Welke client
-settings-downloads-pick-for-me = Kies voor mij
+settings-downloads-pick-for-me = Auto
 settings-downloads-my-own = Mijn eigen
 settings-downloads-built-in = Ingebouwd
 settings-downloads-saved-clients = Bewaarde clients
@@ -2490,7 +2491,7 @@ settings-downloads-save-to-pick = Downloads opslaan in
 settings-downloads-connection = Verbinding
 settings-downloads-open-config = Config openen
 settings-downloads-details = Details
-settings-downloads-details-torrent = { $client } zei dit toen Anibeam het probeerde.
+settings-downloads-details-torrent = Fout gemeld door { $client }.
 settings-downloads-test-trying = Proberen
 settings-downloads-test-save = Opslaan en testen
 settings-downloads-test = Testen
@@ -2503,18 +2504,18 @@ settings-downloads-runs-sidecar = Anibeam draait het
 settings-downloads-runs-remote = Ik draai het
 settings-downloads-command = Commando
 settings-downloads-key = Sleutel
-settings-downloads-details-anirss = De zoekhulp zei dit toen hij stopte.
+settings-downloads-details-anirss = Details van de zoekhulp.
 settings-downloads-starting = Starten
 settings-downloads-reconnect = Opnieuw verbinden
 settings-downloads-save-first = Sla eerst je wijzigingen op
-settings-downloads-roll-title = Houd de volgende paar klaar
-settings-downloads-roll-big = Voor lange series
+settings-downloads-roll-title = Doorlopende downloads
+settings-downloads-roll-big = Vanzelf aan voor lange series
 settings-downloads-roll-ahead = Afleveringen vooruit
 settings-downloads-unit-episodes = afleveringen
-settings-downloads-roll-over = Lang betekent meer dan
+settings-downloads-roll-over = Doorlopend bij series langer dan
 settings-downloads-roll-watched = Gekeken afleveringen
 settings-downloads-keep-all = Alles houden
-settings-downloads-keep-behind = Achter houden
+settings-downloads-keep-behind = Gekeken afleveringen bewaren
 settings-downloads-subscriptions-title = Abonnementen en zoekopdrachten
 settings-downloads-last-search = Laatste zoekopdracht houden
 settings-downloads-prune = Afgelopen series opzeggen
@@ -2549,7 +2550,7 @@ settings-developer-peak = Piek
 settings-developer-heap = Heap
 settings-developer-files-mapped = Gemapte bestanden
 settings-developer-threads = Threads
-settings-developer-give-back = Geheugen teruggeven
+settings-developer-give-back = Geheugen vrijmaken
 settings-developer-released = { $before } naar { $after }
 settings-developer-free-now = Nu vrijmaken
 settings-developer-images-total = Afbeeldingen sinds de start
@@ -2571,8 +2572,8 @@ settings-developer-load-no-images = { $page }, geen afbeeldingen
 settings-developer-offscreen-of = { $offscreen } van { $total }
 settings-developer-loads-empty = Open een pagina en hij verschijnt hier.
 settings-developer-load-images-off = { $page }, afbeeldingen uit
-settings-developer-load-frames = { $frames } frames getekend tijdens het laden, het langste gat tussen twee { $gap }.
-settings-developer-load-frames-timed-out = { $frames } frames getekend tijdens het laden, het langste gat tussen twee { $gap }. Na 15 s gestopt met wachten op de afbeeldingen.
+settings-developer-load-frames = { $frames } frames getekend tijdens het laden; het langste gat tussen frames was { $gap }.
+settings-developer-load-frames-timed-out = { $frames } frames getekend tijdens het laden; het langste gat tussen frames was { $gap }. Na 15 s gestopt met wachten op afbeeldingen.
 settings-developer-built = Gebouwd
 settings-developer-settled = Klaar
 settings-developer-core-data = Data van de core
@@ -2641,22 +2642,22 @@ key-help-key-ctrl-q = Ctrl+Q
 key-help-play-pause = Afspelen of pauzeren
 key-help-seek-5 = 5 s spoelen
 key-help-seek-10 = 10 s spoelen
-key-help-skip = Intro of outro overslaan, anders 90 s
+key-help-skip = Intro of outro overslaan, of 90 s verder
 key-help-frame-step = Eén frame terug of vooruit
 key-help-speed = Langzamer of sneller, in stappen van 0,25
 key-help-normal-speed = Normale snelheid
 key-help-volume = Volume 5 omhoog of omlaag
 key-help-mute = Dempen
-key-help-subtitles-toggle = Ondertitels uit en weer aan
+key-help-subtitles-toggle = Ondertitels aan/uit
 key-help-subtitle-delay = Ondertitelvertraging 100 ms eerder of later
 key-help-audio-delay = Audiovertraging 100 ms eerder of later
 key-help-hold-speed = 2× snelheid zolang ingedrukt
 key-help-screenshot = Screenshot opslaan in Pictures
 key-help-episode = Volgende of vorige aflevering
 key-help-chapter = Vorig of volgend hoofdstuk
-key-help-start-end = Het begin, of de outro
+key-help-start-end = Naar het begin of de outro
 key-help-fullscreen = Volledig scherm
-key-help-escape-player = Sluit wat open is, anders volledig scherm verlaten, anders de speler verlaten
+key-help-escape-player = Sluit wat open is, of verlaat volledig scherm, of verlaat de speler
 key-help-toggle-list = Deze lijst tonen of verbergen
 key-help-library-search = Bibliotheek en zoeken
 key-help-search-page = Deze pagina doorzoeken
@@ -2664,21 +2665,21 @@ key-help-activity = Activiteit
 key-help-settings = Instellingen
 key-help-quit = Afsluiten
 key-help-forward = Vooruit
-key-help-escape-app = Sluit wat open is, anders terug
+key-help-escape-app = Sluit wat open is, of ga terug
 key-help-context-menu = Het rechtsklikmenu
-key-help-pick-card = Kies een kaart, om op meerdere te werken
-key-help-pick-range = Kies elke kaart tot en met deze
-key-help-pick-all = Kies elke getoonde kaart
+key-help-pick-card = Selecteer een kaart om op meerdere te werken
+key-help-pick-range = Alle kaarten tot en met deze selecteren
+key-help-pick-all = Alle zichtbare kaarten selecteren
 
 ## SettingsAboutTab
 
 settings-about-title = Over
 settings-about-update-failed = De update is niet afgerond. Probeer het opnieuw, of haal hem van de releasepagina.
 settings-about-update-ready = { $version } staat klaar om te installeren.
-settings-about-update-command = { $version } is uit. Werk bij met { $command }
+settings-about-update-command = { $version } is beschikbaar. Werk bij met { $command }
 settings-about-update-progress = { $headline }  ·  { $detail }
-settings-about-update-source = { $version } is uit. Deze kopie is uit de broncode gebouwd: pull en bouw opnieuw.
-settings-about-update-elsewhere = { $version } is uit, zonder download voor deze computer.
+settings-about-update-source = { $version } is beschikbaar. Deze kopie is uit de broncode gebouwd: pull en bouw opnieuw.
+settings-about-update-elsewhere = { $version } is beschikbaar, zonder installer voor deze computer.
 settings-about-version = Versie
 settings-about-build = Anibeam { $build }
 settings-about-whats-new = Wat is nieuw
@@ -2703,7 +2704,7 @@ settings-playback-skipping = Overslaan
 settings-playback-skip-intros = Intro's overslaan
 settings-playback-skip-outros = Outro's overslaan
 settings-playback-next-episode = Volgende aflevering
-settings-playback-name-next = Volgende aflevering bij naam
+settings-playback-name-next = Titel volgende aflevering tonen
 settings-playback-languages = Talen
 settings-playback-subtitle-languages = Ondertiteltalen
 settings-playback-audio-languages = Audiotalen
@@ -2718,7 +2719,7 @@ discord-ask-wants = { $name } wil meekijken
 discord-ask-start-room = Kamer starten
 discord-ask-let-in = Binnenlaten
 discord-ask-no = Nee
-settings-playback-discord-blocked = Geweigerd op Discord
+settings-playback-discord-blocked = Geblokkeerd op Discord
 room-panel-discord = Op Discord
 room-panel-discord-open = Open
 room-panel-discord-invite = Alleen op uitnodiging
@@ -2773,7 +2774,7 @@ settings-accounts-days-unit = dagen
 settings-phone-title = Telefoonapp
 settings-phone-online = Online
 settings-phone-offline = Offline
-settings-phone-untrusted = Krijgt niets van deze computer
+settings-phone-untrusted = Geen toegang tot deze computer
 settings-phone-share = Delen via Tailscale
 settings-phone-stream = Afleveringen streamen
 settings-phone-host-service = Hostdienst
@@ -2781,7 +2782,7 @@ settings-phone-not-running = Draait niet
 settings-phone-running = Draait
 settings-phone-copy-command = Commando kopiëren
 settings-phone-command-copied = Commando gekopieerd
-settings-phone-nobody = Krijgt niets: Tailscale noemt er geen persoon bij
+settings-phone-nobody = Geen toegang: Tailscale meldt geen gebruiker voor dit apparaat
 settings-phone-people = Personen
 settings-phone-own-profile = Profiel van deze computer
 settings-phone-person-own-devices =
@@ -2813,7 +2814,7 @@ settings-help-report = Probleem melden
 ## SettingsPlaybackTab: subtitles
 
 settings-subtitles-title = Ondertitels
-settings-subtitles-reset-done = Ondertitels zien er weer uit zoals eerst
+settings-subtitles-reset-done = Ondertitelstijl teruggezet naar standaard
 settings-subtitles-size-place = Grootte en plek
 settings-subtitles-size = Grootte
 settings-subtitles-position = Positie
@@ -2821,7 +2822,7 @@ settings-subtitles-style = Stijl
 settings-subtitles-styled = Opgemaakte ondertitels
 settings-subtitles-as-made = Origineel
 settings-subtitles-size-only = Alleen grootte
-settings-subtitles-mine = Eigen
+settings-subtitles-mine = Overschrijven
 settings-subtitles-font = Lettertype
 settings-subtitles-font-invalid = Typ een lettertypenaam, zoals Noto Sans.
 settings-subtitles-bold = Vet
@@ -2829,11 +2830,11 @@ settings-subtitles-text-colour = Tekstkleur
 settings-subtitles-colour-invalid = Typ een kleur zoals #ffcc00.
 settings-subtitles-outline = Omlijning
 settings-subtitles-outline-invalid = De breedte is een getal, 0 of meer.
-settings-subtitles-outline-colour-invalid = Typ de kleur zoals #000000.
+settings-subtitles-outline-colour-invalid = Typ een kleur zoals #000000.
 settings-subtitles-shadow = Schaduw
 settings-subtitles-shadow-invalid = Een getal, 0 of meer. 0 betekent geen schaduw.
 settings-subtitles-box = Achtergrondvak
-settings-subtitles-start-over = Opnieuw beginnen
+settings-subtitles-start-over = Ondertitelstijl terugzetten
 settings-subtitles-reset = Herstellen
 
 ## SettingsAboutTab: storage and backup
@@ -2872,13 +2873,13 @@ settings-data-summary-resume-points =
     }
 settings-data-summary-accounts =
     { $count ->
-        [one] { $count } lijstaccount overgenomen
-       *[other] { $count } lijstaccounts overgenomen
+        [one] { $count } lijstaccount geïmporteerd
+       *[other] { $count } lijstaccounts geïmporteerd
     }
 settings-data-summary-fixes =
     { $count ->
-        [one] { $count } bestand neemt een correctie van jou over.
-       *[other] { $count } bestanden nemen een correctie van jou over.
+        [one] Opgeslagen correcties toegepast op { $count } bestand.
+       *[other] Opgeslagen correcties toegepast op { $count } bestanden.
     }
 settings-data-summary-unavailable =
     { $count ->
@@ -2983,7 +2984,7 @@ settings-appearance-mode = Modus
 settings-appearance-mode-dark = Donker
 settings-appearance-mode-light = Licht
 settings-appearance-mode-system = Systeem
-settings-appearance-colours-from = Kleuren van
+settings-appearance-colours-from = Kleurbron
 settings-appearance-from-desktop = Bureaublad
 settings-appearance-from-theme = Thema
 settings-appearance-dark-theme = Donker thema
@@ -3005,10 +3006,10 @@ settings-appearance-poster-size = Postergrootte
 settings-appearance-poster-small = Klein
 settings-appearance-poster-medium = Middel
 settings-appearance-poster-large = Groot
-settings-appearance-out-now = Nu uit in Uitzending
+settings-appearance-out-now = Stijl van "Nu uit" bij Nu uitgezonden
 settings-appearance-out-now-cards = Kaarten
 settings-appearance-out-now-list = Lijst
-settings-appearance-out-now-grid = Nu uit-kaarten
+settings-appearance-out-now-grid = Rastergrootte "Nu uit"
 settings-appearance-grid = { $columns } × { $rows }
 settings-appearance-reduce-motion = Minder beweging
 
@@ -3101,7 +3102,7 @@ recommended-no-list-title = Nog niets om van te leren
 recommended-never-fitted-title = Je series rangschikken
 recommended-nothing-left-title = Hier is niets meer
 recommended-no-scores-body = Aanbevelingen leren van de scores op je lijst. Geef een paar series een score op AniList en ze verschijnen hier.
-recommended-no-list-body = Koppel AniList in Instellingen of houd een lijst bij op dit apparaat; je scores sturen deze pagina.
+recommended-no-list-body = Koppel AniList in Instellingen, of houd een lokale lijst bij op dit apparaat, voor aanbevelingen op basis van je scores.
 recommended-never-fitted-body = Het eerste rangschikken leest AniList een minuut of twee. Het loopt op de achtergrond.
 recommended-nothing-left-library-body = Alles in je bibliotheek dat past is gekeken. Alles vindt series die je nog niet hebt.
 recommended-nothing-left-body = Alles op je lijsten dat past is gekeken. Alles vindt series die niet op je lijsten staan.
@@ -3125,7 +3126,7 @@ move-lists-head-here = Op deze computer
 move-lists-head-tracker = Nu op { $site }
 move-lists-nothing = Niets
 move-lists-not-on-list = Niet op je lijst
-move-lists-later-hint = Later: Instellingen, Accounts
+move-lists-later-hint = Later: Instellingen > Accounts
 move-lists-not-now = Niet nu
 move-lists-move =
     { $count ->
@@ -3217,8 +3218,8 @@ remove-also-torrents =
         [one] Ook de torrent weghalen
        *[other] Ook de { $count } torrents weghalen
     }
-remove-torrents-go-with-files = Met de bestanden gaan ook de torrents weg.
-remove-torrents-files-stay = Ze verdwijnen uit de client; de bestanden blijven.
+remove-torrents-go-with-files = Met de bestanden worden ook hun torrents verwijderd.
+remove-torrents-files-stay = Verwijdert ze uit de client en bewaart de bestanden.
 remove-also-files = Ook de bestanden wissen
 remove-files-default-where = wat de torrents downloadden
 remove-files-detail-rule = Verplaatst { $where } naar de prullenbak en haalt de torrents weg.
@@ -3250,8 +3251,8 @@ recommended-hover-anilist-score = AniList { $score }
 recommended-hover-forecast = { $percent }%
 recommended-hover-hidden-tags =
     { $count ->
-        [one] Een verborgen tag die je geweldig vindt
-       *[other] { $count } verborgen tags die je geweldig vindt
+        [one] Past bij een verborgen tag die je leuk vindt
+       *[other] Past bij { $count } verborgen tags die je leuk vindt
     }
 recommended-hover-because = Omdat je keek
 
@@ -3379,58 +3380,58 @@ fmt-episode-span = Afleveringen { $first } t/m { $through }
 
 problem-report = Probeer het opnieuw. Blijft het gebeuren, meld het dan vanuit het activiteitenlog.
 problem-try-later = Probeer het later opnieuw.
-problem-helper-unreachable = De zoekhulp antwoordde niet.
+problem-helper-unreachable = De zoekhulp reageerde niet.
 problem-helper-unauthorized = De zoekhulp weigerde de login.
 problem-helper-not-running = De zoekhulp draait niet.
 problem-helper-missing = De zoekhulp is niet geïnstalleerd.
 problem-helper-failed = De zoekhulp kon dat niet doen.
 problem-helper-no-login = De zoekhulp kan niet inloggen bij de torrentclient.
-problem-helper-no-login-next = Sla het wachtwoord van de torrentclient op in Instellingen, onder Downloads.
-problem-torrent-unreachable = De torrentclient antwoordde niet.
+problem-helper-no-login-next = Sla het wachtwoord van de torrentclient op in Instellingen > Downloads.
+problem-torrent-unreachable = De torrentclient reageerde niet.
 problem-torrent-unauthorized = De torrentclient weigerde de login.
 problem-torrent-not-running = De torrentclient draait niet.
 problem-torrent-missing = De torrentclient is niet geïnstalleerd.
 problem-torrent-failed = De torrentclient kon dat niet doen.
-problem-downloads-unreachable-next = Controleer of hij draait en of het adres klopt in Instellingen, onder Downloads.
-problem-downloads-unauthorized-next = Controleer de gebruikersnaam en het wachtwoord in Instellingen, onder Downloads.
-problem-downloads-not-running-next = Start hem vanuit Instellingen, onder Downloads.
-problem-downloads-missing-next = Instellingen, onder Downloads, zegt hoe je hem instelt.
+problem-downloads-unreachable-next = Controleer of hij draait en of het adres klopt in Instellingen > Downloads.
+problem-downloads-unauthorized-next = Controleer de gebruikersnaam en het wachtwoord in Instellingen > Downloads.
+problem-downloads-not-running-next = Start hem vanuit Instellingen > Downloads.
+problem-downloads-missing-next = Open Instellingen > Downloads om hem in te stellen.
 problem-trash = { -app-name } kon de bestanden niet naar de prullenbak verplaatsen.
 problem-trash-next = Controleer of de bestanden van jou zijn en de schijf niet alleen-lezen is.
 problem-source-list = Die bronlijst werkte niet.
-problem-source-list-next = Controleer het adres in Instellingen, onder Downloads, Bronlijsten.
-problem-remote-unreachable = { $name } antwoordde niet.
+problem-source-list-next = Controleer het adres in Instellingen > Downloads > Bronlijsten.
+problem-remote-unreachable = { $name } reageerde niet.
 problem-remote-unreachable-next = De site is misschien offline. Probeer het later opnieuw, of doorzoek een andere bron.
-problem-remote-unauthorized = { $name } weigerde de sleutel die het kreeg.
-problem-remote-unauthorized-next = Wijzig de sleutel in Instellingen, onder Downloads, Bronlijsten.
+problem-remote-unauthorized = { $name } weigerde de sleutel.
+problem-remote-unauthorized-next = Werk de sleutel bij in Instellingen > Downloads > Bronlijsten.
 problem-remote-failed = { $name } kon dat niet doen.
 problem-remote-failed-next = Probeer het later opnieuw, of doorzoek een andere bron.
 problem-provider-sign-in = { $name } weigerde de login van { -app-name }.
-problem-provider-sign-in-next = Koppel het opnieuw in Instellingen, onder Accounts.
-problem-provider-turned-away = { $name } wees { -app-name } af.
+problem-provider-sign-in-next = Koppel het opnieuw in Instellingen > Accounts.
+problem-provider-turned-away = { $name } weigerde { -app-name } toegang.
 problem-provider-busy = { $name } heeft het nu druk.
 problem-provider-busy-next = Wacht een minuut en probeer het dan opnieuw.
-problem-provider-no-answer = { $name } antwoordde niet.
+problem-provider-no-answer = { $name } reageerde niet.
 problem-provider-no-answer-next = Controleer je internetverbinding en probeer het opnieuw.
 problem-provider-trouble = { $name } heeft nu problemen.
 problem-provider-trouble-next = Probeer het over een paar minuten opnieuw.
 problem-provider-rejected = { $name } accepteerde dat niet.
 problem-not-found = { -app-name } kon dat niet meer vinden.
-problem-not-found-next = Het is misschien weggehaald. Probeer het opnieuw om de pagina vers te laden.
+problem-not-found-next = Het is misschien verwijderd. Probeer de pagina opnieuw te laden.
 problem-invalid-next = Controleer het en probeer het opnieuw.
 problem-unavailable = Die map is nu niet bereikbaar.
-problem-unavailable-next = Sluit de schijf aan of controleer de map in Instellingen, onder Bibliotheek.
+problem-unavailable-next = Sluit de schijf aan of controleer de map in Instellingen > Bibliotheek.
 problem-not-connected = { $tracker } is niet gekoppeld.
-problem-not-connected-next = Koppel het in Instellingen, onder Accounts.
+problem-not-connected-next = Koppel het in Instellingen > Accounts.
 problem-io = { -app-name } kon een bestand niet lezen of schrijven.
 problem-io-next = Controleer of de schijf ruimte heeft en de map van jou is, en probeer het opnieuw.
 problem-storage = { -app-name } kon je bibliotheek niet opslaan.
 problem-storage-next = Controleer of de schijf ruimte heeft en probeer het opnieuw.
-problem-keyring = De wachtwoordopslag van het systeem antwoordde niet.
+problem-keyring = De wachtwoordopslag van het systeem reageerde niet.
 problem-keyring-next = Ontgrendel de sleutelbos van je bureaublad en probeer het opnieuw.
 problem-unsupported = { -app-name } kan dat hier nog niet.
 problem-version = Deze back-up komt van een nieuwere { -app-name }.
-problem-version-next = Werk { -app-name } bij in Instellingen, onder Over, en importeer opnieuw.
+problem-version-next = Werk { -app-name } bij in Instellingen > Over, en importeer opnieuw.
 problem-internal = Er ging iets mis binnen { -app-name }.
 problem-downloading-next = Hij speelt zodra de download klaar is.
 problem-refused-hidden = Die serie is verborgen.
@@ -3498,17 +3499,17 @@ door-not-a-torrent-action = { $value } is geen torrentactie
 
 ## apps/linux/src/bridge/shell.rs: de startmap bij de eerste start en de updatemelding
 
-shell-starter-folder-failed = Kon { $folder } niet maken: { $error }
-shell-update-gone = { -app-name } { $version } wordt niet meer aangeboden
+shell-starter-folder-failed = Kon { $folder } niet aanmaken: { $error }
+shell-update-gone = { -app-name } { $version } is niet meer beschikbaar
 
 ## Watch together (#846)
 
 onboarding-step-together = Samen kijken
 onboarding-title-together = Kijk met vrienden
-onboarding-body-together = Start een kamer vanuit de speler en stuur de code. Iedereen speelt zijn eigen kopie van de aflevering, en afspelen, pauzeren en spoelen blijven voor jullie allemaal gelijk.
+onboarding-body-together = Start een kamer vanuit de speler en deel de code. Iedereen speelt zijn eigen kopie van de aflevering, terwijl afspelen, pauzeren en spoelen gelijk blijven.
 onboarding-ready-together = Samen kijken
-onboarding-ready-together-as = In kamers zien anderen je als { $name }.
-onboarding-ready-together-none = Nog geen naam. Het kamerpaneel vraagt erom de eerste keer.
+onboarding-ready-together-as = Anderen zien je als { $name }.
+onboarding-ready-together-none = Nog geen naam. Daar wordt naar gevraagd als je voor het eerst een kamer start of binnengaat.
 onboarding-together-you = Jij
 onboarding-together-code = Kamercode
 onboarding-together-episode = Frieren · Aflevering 3
@@ -3529,11 +3530,11 @@ room-name-bad = Die naam werkt niet. Gebruik 1 tot 32 tekens.
 room-error-not-found = Geen kamer met die code. Controleer hem bij wie hem stuurde; de kamer is misschien gesloten.
 room-error-full = Die kamer is vol. Er passen 10 mensen in een kamer.
 room-error-unreachable = Kon de kamerserver niet bereiken. Controleer je verbinding en probeer het opnieuw.
-room-error-refused = De kamerserver weigerde dit. Probeer het over een minuut opnieuw.
-room-error-proto = Die kamer draait op een nieuwere versie van kamers. Werk { -app-name } bij om mee te doen.
+room-error-refused = De kamerserver weigerde het verzoek. Probeer het over een minuut opnieuw.
+room-error-proto = Die kamer gebruikt een nieuwere versie van Samen kijken. Werk { -app-name } bij om mee te doen.
 room-error-not-in-room = Je zit niet meer in die kamer. Start er een of doe opnieuw mee.
 room-error-bad-code = Een kamercode is 6 letters en cijfers, zoals K7QM2X.
-room-error-bad-relay = De kamerserver in Instellingen, Afspelen is geen webadres. Pas het daar aan en probeer het opnieuw.
+room-error-bad-relay = De kamerserver in Instellingen > Afspelen is geen geldig webadres. Pas het daar aan en probeer het opnieuw.
 room-error-cannot-fetch = De host kan deze aflevering nu niet delen. Probeer het opnieuw als die weer in de kamer is.
 room-error-needs-episode = Die kamerserver heeft een aflevering nodig om een kamer te starten. Start hem vanuit de speler.
 room-panel-title = Samen kijken
@@ -3548,7 +3549,7 @@ room-panel-start = Een kamer starten
 room-panel-or-join = Of doe mee met een code
 room-panel-join-label = Kamercode
 room-panel-join = Meedoen
-room-panel-you-are = Je bent { $name }
+room-panel-you-are = Zichtbaar als { $name }
 room-panel-change-name = Wijzigen
 room-panel-code-label = Kamercode
 room-panel-copy = Link kopiëren
@@ -3578,7 +3579,7 @@ room-panel-searching = Zoeken
 room-panel-failed = Niet gelukt
 room-panel-percent = { $percent }%
 room-panel-left = nog { $time }
-room-panel-nothing-picked = Nog niets gekozen
+room-panel-nothing-picked = Nog niets geselecteerd
 room-panel-this-episode = Deze aflevering
 room-panel-whole-show = Hele serie
 # The host's ready gate (#922): how many in the room have the episode open

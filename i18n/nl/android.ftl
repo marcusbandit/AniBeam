@@ -57,27 +57,27 @@ lang-name-zh-CN = Chinees (vereenvoudigd)
 ## Introductie
 
 onb-welcome-title = Anibeam
-onb-welcome-note = Je anime op deze telefoon. Zoek een serie, zie wie hem heeft, download hem en houd je lijsten bij.
+onb-welcome-note = Je anime op deze telefoon. Zoek series, download afleveringen en houd je lijsten bij.
 onb-language-title = Taal
-onb-language-note = Anibeam spreekt de taal van je telefoon, tenzij je een andere kiest. Je kunt dit later wijzigen onder Meer.
+onb-language-note = Anibeam gebruikt de taal van je telefoon, tenzij je een andere kiest. Je kunt dit later wijzigen onder Meer.
 onb-lists-title = Je lijsten
 onb-lists-note = Log in zodat wat je hier kijkt meetelt op AniList of MyAnimeList. Dit kan ook later onder Meer.
 onb-wifi-title = Alleen Wi-Fi
 onb-wifi-note = Afleveringen zijn groot. Anibeam downloadt via Wi-Fi, tenzij je anders kiest.
 onb-storage-title = Opslag
-onb-storage-note = Een limiet voor wat Anibeam mag downloaden. Er wordt niets gereserveerd: de ruimte blijft vrij tot afleveringen haar vullen.
+onb-storage-note = Stelt een limiet in voor wat Anibeam mag downloaden. Er wordt vooraf niets gereserveerd: de ruimte blijft vrij tot er afleveringen worden gedownload.
 onb-notify-title = Meldingen
 onb-notify-note = Tijdens het downloaden toont een melding de voortgang, en een andere meldt wanneer een aflevering klaar is om te kijken. Downloads lopen hoe dan ook door.
-onb-sites-title = Zoeksites
-onb-sites-note = Anibeam wordt zonder zoekbronnen geleverd. Een repo is een ondertekende lijst met sites om te doorzoeken. Plak het adres van een repo, controleer de sleutel en installeer dan de sites die je wilt. Dit kan ook later onder Meer.
+onb-sites-title = Bronlijsten
+onb-sites-note = Anibeam wordt zonder downloadbronnen geleverd. Een bronlijst is een ondertekende catalogus met sites om te doorzoeken. Plak het adres, controleer de sleutel en installeer de bronnen die je wilt. Dit kan ook later onder Meer.
 onb-computer-title = Je computer
-onb-computer-note = Anibeam op een computer kan zijn bibliotheek via Tailscale met deze telefoon delen: de series staan dan in Bibliotheek en de afleveringen spelen hier af. Typ de Tailscale-naam en poort, en dan Test. Geen computer? Laat het leeg en start; Meer heeft het later.
+onb-computer-note = Anibeam op een computer kan zijn bibliotheek via Tailscale met deze telefoon delen, zodat de series in Bibliotheek staan en hier afspelen. Vul de Tailscale-naam en poort in en tik op Test. Geen computer? Laat het leeg en tik op Starten; je kunt dit later instellen onder Meer.
 onb-wifi-only = Alleen via Wi-Fi
-onb-wifi-on = Aan. Mobiele data vraagt eerst.
+onb-wifi-on = Aan. Anibeam vraagt het eerst voordat het mobiele data gebruikt.
 onb-wifi-off = Uit. Downloads gebruiken ook mobiele data.
 onb-storage-caption = 18 GB is ongeveer 12 afleveringen. Schuif tot maximaal de hele opslag van de telefoon.
 onb-use-cap = Gebruik limiet
-onb-cap-on = Aan. Bij { $cap } downloadt Anibeam niets meer tot je afleveringen wist.
+onb-cap-on = Aan. Bij { $cap } start Anibeam geen nieuwe downloads tot je afleveringen wist.
 onb-cap-off = Uit. Anibeam downloadt tot de telefoon vol is.
 onb-start = Starten
 onb-continue = Verder
@@ -104,7 +104,7 @@ look-size-normal = Normaal
 look-size-large = Groot
 look-size-larger = Groter
 look-size-largest = Grootst
-look-text-size-note = Hoe groot de tekst overal in Anibeam is, bovenop de grootte van je telefoon.
+look-text-size-note = Tekstgrootte in heel Anibeam, bovenop de systeeminstelling van je telefoon.
 
 ## Het venster: tabs en de sheets boven elke pagina
 
@@ -133,7 +133,7 @@ more-search-hits = { $count ->
    *[other] { $count } instellingen
 }
 more-search-tap = Tik om te openen
-more-search-hint = Probeer een eenvoudiger woord: opslag, Wi-Fi, tracker, site, computer.
+more-search-hint = Probeer zoekwoorden als opslag, Wi-Fi, tracker, site of computer.
 more-accounts = Accounts
 more-streaming = Streamen
 more-subtitles = Ondertitels
@@ -155,28 +155,28 @@ more-dl-status-mobile-cap = Wi-Fi en mobiele data, limiet { $cap }
 more-stream-status-auto = Auto, 720p via mobiele data of relay
 more-stream-status-original = Telkens het originele bestand
 more-stream-status-converted = Omgezet naar { $quality }
-more-sites-status-none = Nog geen repo
+more-sites-status-none = Nog geen bronlijst
 more-sites-status-on = { $sites ->
-    [one] 1 site aan
-   *[other] { $sites } sites aan
+    [one] 1 bron aan
+   *[other] { $sites } bronnen aan
 }
 more-sites-status-on-from = { $sites ->
-    [one] 1 site aan
-   *[other] { $sites } sites aan
+    [one] 1 bron aan
+   *[other] { $sites } bronnen aan
 }, { $repos ->
-    [one] uit 1 repo
-   *[other] uit { $repos } repos
+    [one] uit 1 lijst
+   *[other] uit { $repos } lijsten
 }
 more-conn-status-unchecked = Nog niet getest
-more-conn-status-ok = Elke stap is gelukt
+more-conn-status-ok = Alle controles geslaagd
 more-conn-status-failed = { $total ->
-    *[other] { $failed } van { $total } stappen mislukt
+    *[other] { $failed } van { $total } controles mislukt
 }
 more-computer-status-none = Nog niet verbonden
 more-icon-default = Standaard
 more-icon-dark = Donker
 more-icon-line = Lijntekening
-more-subs-status = Grootte, plek, lettertype, kleuren en vak
+more-subs-status = Grootte, positie, lettertype, kleuren en vak
 more-data-status = Back-up, herstel, afbeeldingscache
 more-activity-status = Wat Anibeam deed, nieuwste eerst
 more-look-status-phone = Volgt de telefoon
@@ -188,7 +188,7 @@ more-stats-status-empty = Een jaar kijken
 
 ## Meer: de eigen instellingen van de onderdelen
 
-more-accounts-note = Wat je hier kijkt werkt je lijsten bij, en voortgang van daar zie je terug bij je series.
+more-accounts-note = Afleveringen die je hier kijkt werken je lijsten bij, en je lijstvoortgang zie je terug in je bibliotheek.
 more-storage = Opslag
 more-storage-capped = Limiet { $cap }
 more-storage-no-cap = Onbeperkt
@@ -196,12 +196,37 @@ more-storage-used = voor afleveringen
 more-storage-cap-caption = limiet
 more-storage-free = vrij op de telefoon
 more-set-storage-cap = Opslaglimiet
-more-storage-cap-on = Bij { $cap } downloadt er niets meer tot je afleveringen wist.
+more-set-rolling = Doorlopende downloads
+more-roll-note-over = { $count ->
+    [one] Boven { $count } aflevering
+   *[other] Boven { $count } afleveringen
+}
+more-roll-note-asked = Op verzoek
+more-roll-big = Vanzelf aan voor lange series
+more-roll-big-help = { $count ->
+    [one] Alles boven { $count } aflevering downloadt vanzelf een paar tegelijk. Je kunt alles nog steeds in één keer downloaden vanuit Downloads.
+   *[other] Alles boven { $count } afleveringen downloadt vanzelf een paar tegelijk. Je kunt alles nog steeds in één keer downloaden vanuit Downloads.
+}
+more-roll-ahead = Afleveringen vooruit
+more-roll-ahead-help = Hoeveel er gedownload blijven na de aflevering waar je bent. 12 is ongeveer een seizoen.
+more-roll-over = Doorlopend bij series langer dan
+more-roll-over-help = Downloads met meer afleveringen dan dit komen een paar tegelijk binnen.
+more-roll-watched = Gekeken afleveringen
+more-roll-delete = Wissen
+more-roll-keep-all = Alles bewaren
+more-roll-delete-help = Vanzelf gewist zodra je verder bent, zodat alleen de komende afleveringen op je telefoon staan.
+more-roll-keep-all-help = Elk bestand blijft op de telefoon nadat je het hebt gekeken.
+more-roll-behind = Gekeken afleveringen bewaren
+more-roll-behind-help = { $count ->
+    [0] Een aflevering afkijken wist de aflevering ervoor.
+   *[other] Gekeken afleveringen die blijven staan achter de aflevering die je net afkeek. Met { $count } wist het afkijken van aflevering { $episode } aflevering 1.
+}
+more-storage-cap-on = Bij { $cap } start Anibeam geen nieuwe downloads tot je afleveringen wist.
 more-storage-cap-off = Uit: Anibeam downloadt tot de telefoon vol is.
 more-network = Netwerk
 more-network-wifi = Alleen Wi-Fi
 more-network-mobile = Wi-Fi en mobiele data
-more-wifi-on = Aan. Downloads wachten op Wi-Fi; mobiele data vraagt eerst.
+more-wifi-on = Aan. Downloads wachten op Wi-Fi, en Anibeam vraagt het eerst voordat het mobiele data gebruikt.
 more-set-stream-quality = Streamkwaliteit
 more-stream-question = Hoe een aflevering van je computer hier afspeelt.
 more-stream-auto-note = Auto speelt het bestand ongewijzigd af via Wi-Fi, en omgezet naar 720p via mobiele data of als Tailscale je computer via een relay bereikt.
@@ -210,17 +235,17 @@ more-stream-converted-note = Op je computer omgezet naar { $quality }. Gebruikt 
 more-set-feeds = Je eigen feeds
 more-feeds-note = Eerst doorzocht, voor de sites
 more-set-check = Verbinding controleren
-more-check-note = Test elke stap tussen deze telefoon en de zoeksites: ze vinden, ze bereiken en een beveiligde verbinding.
+more-check-note = Test elke stap tussen deze telefoon en je downloadbronnen: DNS-lookup, verbinding en HTTPS.
 more-check-copy = Resultaten kopiëren
 more-set-computer = Anibeam op je computer
 more-computer-note = De bibliotheek ervan staat in Bibliotheek en de afleveringen spelen hier af. Een naam als mijn-computer of een adres als 100.64.0.1.
 more-computer-placeholder = mijn-computer:8790
 more-subs-note = Waarmee elke aflevering op deze telefoon begint. Een aflevering die van je computer streamt, begint met de instellingen van die computer.
 more-icon-note = Het icoon op je startscherm en in het appmenu.
-more-icon-line-note = Lijntekening neemt de kleuren van je achtergrond over, zoals je andere Material You-iconen.
+more-icon-line-note = Lijntekening neemt de kleuren van je achtergrond over, zoals andere Material You-iconen.
 more-icon-moved-note = Sommige launchers halen het icoon van het startscherm als het wijzigt. Het blijft in het appmenu; sleep het daar terug.
 more-set-whats-new = Wat is nieuw
-more-set-onboarding = Opnieuw starten
+more-set-onboarding = Installatie opnieuw doorlopen
 more-update-out = Anibeam { $version } is uit
 more-update-download = Download
 more-about-status-update = Er is een nieuwe versie
@@ -234,6 +259,7 @@ host-synced = Gesynct { $when }.
 host-last-try = Laatste poging { $when }: { $error }
 host-asking = Vragen...
 host-reached = { $host } bereikt, Anibeam { $version }.
+host-reached-for = { $host } bereikt, Anibeam { $version }, voortgang van { $name }.
 host-saved = Opgeslagen. Syncen...
 host-none = Geen computer. Deze telefoon houdt het bij zijn eigen bibliotheek.
 acct-signed-in-as = Ingelogd als { $name }
@@ -256,6 +282,7 @@ lib-note-phone = { $count ->
    *[other] Deze telefoon, { $count } series
 }
 lib-note-remote = { $device }, gesynct { $when }
+lib-note-remote-for = { $device }, voortgang van { $name }, gesynct { $when }
 lib-empty-search = Niets gevonden voor "{ $query }".
 lib-empty-phone = Nog niets op deze telefoon.
 lib-empty-remote = Dat apparaat heeft niets in zijn bibliotheek.
@@ -276,7 +303,7 @@ airing-other-season = Overig
 airing-hidden = { $count ->
     *[other] { $count } verborgen als niet interessant
 }
-airing-plan-needs-tracker = Later kijken vraagt om AniList of MAL. Log in onder Meer, Accounts.
+airing-plan-needs-tracker = Later kijken vereist AniList of MAL. Log in onder Meer > Accounts.
 airing-plan-failed = Later kijken is niet gelukt: { $error }
 list-watching = Kijken
 list-planning = Gepland
@@ -284,8 +311,8 @@ list-completed = Voltooid
 list-paused = Gepauzeerd
 list-dropped = Gestopt
 list-repeating = Herkijken
-more-check-all-ok = Elke stap is gelukt.
-more-check-failed = { $failed } van { $total } stappen mislukt. Een screenshot van deze lijst laat zien waar.
+more-check-all-ok = Alle controles geslaagd.
+more-check-failed = { $failed } van { $total } controles mislukt. Een screenshot van deze lijst laat zien waar.
 more-check-row = { $step }  { $ms } ms
 more-check-copied = Gekopieerd. Plak het in een bericht.
 more-version = Anibeam voor Android { $version } (build { $build })
@@ -317,6 +344,7 @@ more-set-subs-style = Ondertitelstijl
 more-words-anilist = anilist tracker inloggen account koppelen lijst voortgang
 more-words-mal = mal myanimelist tracker inloggen account koppelen lijst voortgang
 more-words-storage-cap = ruimte schijf limiet gb vol opslag wissen grootte
+more-words-rolling = doorlopend lang serie afleveringen vooruit wissen gekeken bewaren batch ruimte
 more-words-wifi = wifi wi-fi mobiel data netwerk
 more-words-notifications = melding meldingen waarschuwing voortgang toestemming toestaan
 more-words-stream-quality = auto origineel 1080p 720p 480p omzetten data computer afspelen
@@ -434,8 +462,8 @@ phone-series-episodes = Afleveringen
 series-delete-episodes = Afl. wissen
 series-delete-tap = Tik op de afleveringen om te wissen.
 phone-series-delete-picked = { $count ->
-    [one] { $count } aflevering gekozen.
-   *[other] { $count } afleveringen gekozen.
+    [one] { $count } aflevering geselecteerd.
+   *[other] { $count } afleveringen geselecteerd.
 }
 series-delete-note = De bestanden worden van deze telefoon gewist. Wat je keek blijft bijgehouden.
 series-delete-button = { $count ->
@@ -476,7 +504,7 @@ show-status-completed = Voltooid
 show-status-paused = Gepauzeerd
 show-status-dropped = Gestopt
 show-status-repeating = Herkijken
-show-status-now = { $label }, nu
+show-status-now = { $label } (huidig)
 phone-show-add-to-list = Op lijst zetten
 phone-show-your-score = Jouw score { $score }
 show-rate = Score
@@ -592,6 +620,7 @@ inspect-holds = { $count ->
 
 phone-notes-title = Wat is nieuw
 notes-got-it = Begrepen
+notes-github = Volledige changelog op GitHub
 
 ## De lijst naar een tracker verplaatsen
 
@@ -599,7 +628,7 @@ move-lists-label = Lijsten op deze telefoon
 move-title = Verplaats je lijst naar { $site }
 move-here = Op deze telefoon: { $list }
 move-there = Nu op { $site }: { $list }
-move-later-hint = Later: Meer, Accounts
+move-later-hint = Later: Meer > Accounts
 move-not-now = Niet nu
 move-nothing = Niets
 move-not-on-list = Niet op je lijst
@@ -627,8 +656,8 @@ move-moved = { $count ->
    *[other] { $count } series naar { $site } verplaatst
 }
 move-failed = { $count ->
-    [one] { $site } nam { $count } serie niet aan; zie het activiteitenlogboek
-   *[other] { $site } nam { $count } series niet aan; zie het activiteitenlogboek
+    [one] Kon { $count } serie niet naar { $site } verhuizen; zie het activiteitenlogboek
+   *[other] Kon { $count } series niet naar { $site } verhuizen; zie het activiteitenlogboek
 }
 
 ## Downloads: zoeken (zoekopdracht, series, bronnen, releases)
@@ -646,9 +675,9 @@ find-lens-downloaded = Gedownload
 find-lens-with-count = { $lens } { $count }
 find-what-to-get = Wat te halen
 find-lens-list-line = Kijken en Gepland op je lijst. Open er een om de afleveringen op te halen.
-find-lens-gaps-line = Uitgezonden afleveringen die niet op deze telefoon staan. Open een serie om te zien wie ze heeft.
+find-lens-gaps-line = Uitgezonden afleveringen die niet op deze telefoon staan. Open een serie om ze te zoeken.
 find-lens-airing-line = Nieuwe afleveringen die nog komen, de eerste het eerst.
-find-lens-following-line = De abonnementen: nieuwe afleveringen downloaden vanzelf. Open er een om te stoppen.
+find-lens-following-line = Abonnementen: nieuwe afleveringen downloaden vanzelf. Open er een om te stoppen met volgen.
 find-lens-downloaded-line = Wat deze telefoon downloadde, per serie.
 
 find-lens-gaps-empty = Geen gaten: van elke serie die je begon staan de uitgezonden afleveringen hier.
@@ -657,7 +686,7 @@ find-lens-following-empty = Nog geen abonnementen. Open een serie en zet Volgen 
 find-lens-downloaded-empty = Nog niets gedownload.
 find-list-empty = Nog niets op je lijst. Zoek hierboven een serie en voeg hem toe.
 find-list-reading = Je lijst lezen...
-find-list-signed-out = Log in bij AniList onder Meer, Accounts, en je lijst verschijnt hier.
+find-list-signed-out = Log in bij AniList onder Meer > Accounts om je lijst hier te zien.
 find-list-failed = Je lijst kon niet worden gelezen: { $error }
 
 find-aired = uit
@@ -679,18 +708,18 @@ find-list-status-watching = Op je lijst: Kijken
 find-list-status-already = Staat al op je lijst
 find-going-planning = { $title } wordt op Gepland gezet.
 find-already-listed = { $title } staat al op je lijst.
-find-plan-needs-tracker = Toevoegen aan je lijst vraagt om AniList of MAL. Log in onder Meer, Accounts.
+find-plan-needs-tracker = Toevoegen aan je lijst vereist AniList of MAL. Log in onder Meer > Accounts.
 find-plan-failed = Niet aan je lijst toegevoegd: { $error }
 find-show-gone = Die serie staat niet meer in de bibliotheek op deze telefoon.
 
 ## Series tijdens het typen
 
 find-shows = Series
-find-suggesting = AniList vragen...
-find-suggest-tap = Tik op een serie om te zien wie hem heeft. Enter doorzoekt releasenamen.
-find-suggest-none = Geen serie met die naam. Enter doorzoekt in plaats daarvan releasenamen.
-find-suggest-hint = Series verschijnen terwijl je typt. Enter doorzoekt releasenamen.
-find-suggest-failed = AniList kon niet worden bevraagd: { $error }
+find-suggesting = AniList doorzoeken...
+find-suggest-tap = Tik op een serie om bronnen te doorzoeken. Druk op Enter om releasenamen te doorzoeken.
+find-suggest-none = Geen serie met die naam. Druk op Enter om in plaats daarvan releasenamen te doorzoeken.
+find-suggest-hint = Series verschijnen terwijl je typt. Druk op Enter om releasenamen te doorzoeken.
+find-suggest-failed = Kon AniList niet bereiken: { $error }
 find-library-line = In je bibliotheek
 find-library-line-none = In je bibliotheek, geen van { $total } op deze telefoon
 find-library-line-some = In je bibliotheek, { $here } van { $total } op deze telefoon
@@ -732,20 +761,20 @@ find-stop-failed = Stoppen is niet afgerond: { $error }
 find-where = Waar te halen
 find-where-pick = Kies een bron om te zien wat hij heeft.
 find-where-nothing = Er wordt niets gedownload tot jij het zegt.
-find-source-idle = Tik om te zien
+find-source-idle = Tik om te zoeken
 find-source-trying = { $name } proberen
 find-source-searching = Zoeken
-find-source-silent = Geen antwoord
-find-no-sites-title = Nog geen zoeksites
-find-no-sites-body = Voeg onder Meer een repo met zoeksites toe, of een eigen feed.
+find-source-silent = Reageert niet
+find-no-sites-title = Nog geen downloadbronnen
+find-no-sites-body = Voeg onder Meer een bronlijst of een eigen feed toe.
 find-open-more = Meer openen
 find-pick-source-title = Kies een bron
-find-pick-source-body = De releases ervan verschijnen hier als raster, een aflevering per blokje.
+find-pick-source-body = Releases verschijnen hier in een raster, één vakje per aflevering.
 find-releases = { $count ->
     [one] { $count } release
    *[other] { $count } releases
 }
-find-unreachable = { $host } kon niet worden bereikt. Sommige netwerken en landen blokkeren releasesites; Anibeam komt al langs blokkades op naam, dus deze blokkeert de site zelf, of de site is offline. Een vpn komt erlangs, of probeer een andere bron.
+find-unreachable = Kon { $host } niet bereiken. Sommige netwerken blokkeren releasesites; Anibeam omzeilt DNS-blokkades al, dus deze site is misschien direct geblokkeerd of offline. Probeer een vpn of een andere bron.
 find-the-source = De bron
 
 find-has = Wat hij heeft
@@ -757,18 +786,28 @@ find-on-this-phone = Op deze telefoon
 find-on-computer = Op { $name }
 
 find-plan-no-releases = Deze bron heeft geen releases van deze serie.
-find-plan-nothing-picked = Niets gekozen: tik op een rij of de blokjes.
+find-plan-nothing-picked = Niets geselecteerd: tik op een rij of op losse afleveringen.
 find-plan-line = { $episodes } van { $groups }, { $size }
 find-plan-skipped = { $count ->
-    [one] { $count } aflevering die je al hebt is weggelaten. Zet Vervangen aan om haar opnieuw te halen.
-   *[other] Afleveringen die je al hebt zijn weggelaten. Zet Vervangen aan om ze opnieuw te halen.
+    [one] { $count } aflevering die je al hebt wordt overgeslagen. Zet Vervangen aan om haar opnieuw te downloaden.
+   *[other] Afleveringen die je al hebt worden overgeslagen. Zet Vervangen aan om ze opnieuw te downloaden.
 }
-find-plan-follow-note = Nieuwe afleveringen van { $query } downloaden vanzelf.
+find-plan-follow-note = Nieuwe afleveringen van { $query } worden vanzelf gedownload.
 find-plan-on-desk = Ze downloaden op { $name }, in de bibliotheek ervan.
 find-follow-new = Nieuwe afl. volgen
-find-follow-new-note = Ze downloaden vanzelf zodra ze uitkomen.
+find-follow-new-note = Ze worden vanzelf gedownload zodra ze uitkomen.
+find-roll-title = Doorlopende downloads
+find-roll-on = { $count ->
+    [one] { $count } aflevering downloadt nu, en als je die afkijkt start de volgende.
+   *[other] { $count } afleveringen downloaden nu, en elke aflevering die je afkijkt start de volgende.
+}
+find-roll-on-delete = { $count ->
+    [one] { $count } aflevering downloadt nu, en als je die afkijkt start de volgende. Gekeken afleveringen worden vanzelf gewist.
+   *[other] { $count } afleveringen downloaden nu, en elke aflevering die je afkijkt start de volgende. Gekeken afleveringen worden vanzelf gewist.
+}
+find-roll-off = Elke geselecteerde aflevering downloadt tegelijk.
 find-replace = Vervang wat je hebt
-find-replace-note = Downloadt de gekozen afleveringen opnieuw over die op deze telefoon.
+find-replace-note = Downloadt de geselecteerde afleveringen opnieuw over die op deze telefoon.
 find-go = { $mode ->
     [replace] { common-episodes } ophalen en vervangen
     [subscribe] { common-episodes } ophalen en abonneren
@@ -784,7 +823,7 @@ find-download-to = Downloaden naar
 find-this-phone = Deze telefoon
 find-your-computer = Je computer
 find-desk-asking = { $name } vragen...
-find-desk-silent = { $name } antwoordt niet. Kies Deze telefoon, of probeer opnieuw als hij aan staat.
+find-desk-silent = { $name } reageert niet. Kies Deze telefoon, of probeer het opnieuw als hij online is.
 find-sending-to = Versturen naar { $name }...
 
 ## De releaselijst
@@ -795,7 +834,7 @@ find-get = Ophalen
 find-get-all = Alle { $count } ophalen
 find-subscribe = Abonneren
 find-back-step = Een stap terug
-find-narrow-placeholder = Verfijn, of -woord om uit te sluiten
+find-narrow-placeholder = Filter, of -woord om uit te sluiten
 find-best-fit-searches = Beste match zoekt: { $query }
 find-fact-batch = batch
 find-fact-seeds = { $count } seeds
@@ -833,7 +872,7 @@ find-downloading = { $count ->
 }
 find-not-added = Niet toegevoegd: { $error }
 find-not-subscribed = Niet geabonneerd: { $error }
-find-desk-refused = { $name } nam het niet aan: { $error }
+find-desk-refused = { $name } weigerde het: { $error }
 find-desk-not-subscribed = Niet geabonneerd op { $name }: { $error }
 
 ## Speler
@@ -867,7 +906,7 @@ player-android-only = de speler draait alleen op Android
 ## Speler: vertraging
 
 player-delay-title = Timing
-player-delay-note = Elke tik verschuift 0,1 s. Tot het volgende bestand.
+player-delay-note = Elke tik verschuift 0,1 s. Wordt teruggezet bij de volgende aflevering.
 phone-player-delay-seconds = { $value } s
 player-sub-delay-now = Ondertitelvertraging { $value }
 player-audio-delay-now = Audiovertraging { $value }
@@ -911,12 +950,12 @@ subs-position = Positie
 subs-position-helper = 100 zit op de onderrand. Lagere getallen tillen de regels hoger in het beeld.
 subs-style-title = Stijl
 subs-styled = Opgemaakte tekst
-subs-styled-as-made = Opgemaakte (ASS) bestanden zien eruit zoals hun makers ze instelden.
-subs-styled-mine = Je stijl hieronder geldt voor elk bestand. Bordjes en karaoke kunnen stuk gaan.
-subs-styled-size-only = Opgemaakte ondertitelbestanden houden hun uiterlijk en nemen je grootte. Gewone bestanden nemen je stijl.
+subs-styled-as-made = Opgemaakte (ASS) ondertitels worden precies getoond zoals ze gemaakt zijn.
+subs-styled-mine = Je stijl hieronder overschrijft elk bestand. Bordjes en karaoke kunnen stuk gaan.
+subs-styled-size-only = Opgemaakte ondertitelbestanden houden hun uiterlijk en gebruiken je grootte. Gewone bestanden gebruiken je stijl.
 subs-mode-as-made = Origineel
 subs-mode-size-only = Alleen maat
-subs-mode-mine = Mijn
+subs-mode-mine = Overschrijven
 subs-font = Font
 subs-font-bad = Typ een lettertypenaam, zoals Noto Sans.
 subs-bold = Vet
@@ -924,15 +963,15 @@ subs-colour = Tekstkleur
 subs-colour-bad = Typ een kleur als #ffcc00.
 subs-outline = Omlijning
 subs-outline-bad-width = De breedte is een getal, 0 of meer.
-subs-outline-bad-colour = Typ de kleur als #000000.
+subs-outline-bad-colour = Typ een kleur als #000000.
 subs-outline-helper = Eerst de breedte, dan de kleur.
 subs-shadow = Schaduw
 subs-shadow-bad = Een getal, 0 of meer. 0 betekent geen schaduw.
 subs-shadow-helper = Hoe ver de schaduw valt, 0 voor geen.
 subs-box = Achtergrondvak
 subs-box-helper = Een donker vak achter de regels. 0 laat het weg.
-subs-reset-title = Terugzetten
-subs-reset-helper = Zet grootte, lettertype, kleuren, omlijning, vak en positie terug zoals ze waren.
+subs-reset-title = Ondertitelstijl terugzetten
+subs-reset-helper = Zet grootte, lettertype, kleuren, omlijning, vak en positie terug naar de standaard.
 subs-reset = Herstel
 
 ## Streamen
@@ -941,11 +980,11 @@ stream-quality-auto = Auto
 stream-quality-original = Origineel
 stream-app-starting = De app is nog aan het starten
 stream-no-computer = Nog geen computer. Voeg de jouwe toe in Meer.
-stream-off-on-host = Streamen staat uit op { $host }. Zet daar Afleveringen streamen aan, onder Instellingen, Telefoon-app.
+stream-off-on-host = Streamen staat uit op { $host }. Zet daar Afleveringen streamen aan onder Instellingen > Accounts (Telefoonapp).
 stream-cannot-stream = { $host } draait Anibeam { $version }, dat nog niet kan streamen. Werk het daar bij.
-stream-no-session = Het andere apparaat gaf geen sessie
-stream-answer-unreadable = Het antwoord was onleesbaar: { $why }
-stream-answered-status = { $name } antwoordde { $status }
+stream-no-session = Het andere apparaat gaf geen streamsessie
+stream-answer-unreadable = Kon het antwoord niet lezen: { $why }
+stream-answered-status = { $name } gaf HTTP { $status }
 
 ## Statistieken
 
@@ -1002,7 +1041,7 @@ backup-export-helper = Eén bestand met je mappen, koppelingen en wat je keek.
 backup-private = Privégegevens meenemen
 backup-private-helper = Voegt AniList- en MyAnimeList-logins, kijkgeschiedenis en voorkeuren toe. Logins staan als leesbare tekst, dus houd het bestand voor jezelf.
 backup-restore = Herstellen uit een back-up
-backup-restore-helper = Leest een back-up in deze bibliotheek. Wat op schijf staat wint; het bestand vult de rest aan.
+backup-restore-helper = Zet een back-up terug in deze bibliotheek. De koppelingen en instellingen uit de back-up winnen; er wordt niets van deze telefoon gewist.
 backup-done = Back-up gemaakt. Het bestand staat waar je het opsloeg.
 backup-not-saved = Niet opgeslagen. Er is niets geschreven.
 backup-starting = Anibeam is nog aan het starten. Probeer het zo opnieuw.
@@ -1048,12 +1087,12 @@ backup-sum-resume = { $count ->
    *[other] { $count } hervatpunten samengevoegd
 }
 backup-sum-accounts = { $count ->
-    [one] { $count } lijstaccount overgenomen
-   *[other] { $count } lijstaccounts overgenomen
+    [one] { $count } lijstaccount geïmporteerd
+   *[other] { $count } lijstaccounts geïmporteerd
 }
 backup-sum-fixes = { $count ->
-    [one] { $count } bestand neemt een correctie van jou over.
-   *[other] { $count } bestanden nemen een correctie van jou over.
+    [one] Opgeslagen correcties toegepast op { $count } bestand.
+   *[other] Opgeslagen correcties toegepast op { $count } bestanden.
 }
 backup-sum-missing = { $count ->
     [one] { $count } map is niet op deze telefoon gevonden.
@@ -1069,7 +1108,7 @@ activity-copied = Gekopieerd
 activity-clear-every-line = Elke regel wissen
 activity-fold = Klap in
 activity-no-problems = Geen problemen. Alles werkte.
-activity-nothing-yet = Nog niets te melden. Wat Anibeam voor je doet verschijnt hier.
+activity-nothing-yet = Nog niets te melden. De activiteit van Anibeam verschijnt hier.
 activity-time-today = %H:%M:%S
 activity-time-other = %-d %b %H:%M
 
@@ -1109,27 +1148,28 @@ fmt-bytes-tb = { $value } TB
 ## Praten met de computer (companion client.rs, sync.rs, address.rs)
 
 client-not-found = { $host } is geen naam die de telefoon kan vinden. Is Tailscale verbonden?
-client-timeout = { $host } antwoordde niet. Staat hij aan, en is Tailscale aan beide kanten verbonden?
-client-connect-failed = Kon { $host } niet bereiken. Staat hij aan, en is Tailscale aan beide kanten verbonden?
-client-refused = { $host } staat aan, maar Anibeam daar is gesloten of deelt niet. Open Anibeam erop en zet Delen via Tailscale aan onder Instellingen, Telefoon-app.
+client-timeout = { $host } reageerde niet. Staat hij aan, en is Tailscale op beide apparaten verbonden?
+client-connect-failed = Kon { $host } niet bereiken. Staat hij aan, en is Tailscale op beide apparaten verbonden?
+client-refused = { $host } staat aan, maar Anibeam daar is gesloten of deelt niet. Open Anibeam erop en zet Delen via Tailscale aan onder Instellingen > Accounts.
 client-no-route = Geen route naar { $host }. Is Tailscale verbonden?
 client-invalid-input = Kon geen verbinding maken met { $host }
 client-unreachable = Kon { $host } niet bereiken: { $why }
 client-cannot-find = De telefoon kan { $host } niet vinden. Is Tailscale verbonden?
-client-broke-off = Het antwoord van { $host } brak af: { $why }
-client-answered = { $host } antwoordde { $status } voor { $path }
-client-not-anibeam-status = Iets antwoordde, maar het is geen Anibeam ({ $host } antwoordde { $status } voor { $path })
-client-not-anibeam-hello = Iets antwoordde, maar het is geen Anibeam (het antwoord is niet de hello van Anibeam)
-client-not-anibeam-name = Iets antwoordde, maar het is geen Anibeam (het noemt zichzelf { $name })
-client-too-new = De host spreekt API { $host_api }; deze app leest { $app_api }. Werk de app bij.
-client-snapshot-unreadable = De momentopname was onleesbaar: { $why }
-client-probe-unreadable = De bestandsdetails waren onleesbaar: { $why }
-client-peers-unreadable = De lijst met Anibeams was onleesbaar: { $why }
+client-broke-off = De verbinding met { $host } werd onderbroken: { $why }
+client-answered = { $host } gaf HTTP { $status } voor { $path }
+client-not-anibeam-status = Iets reageerde, maar het is geen Anibeam ({ $host } gaf HTTP { $status } voor { $path })
+client-not-anibeam-hello = Iets reageerde, maar het is geen Anibeam (onverwacht antwoord)
+client-not-anibeam-name = Iets reageerde, maar het is geen Anibeam (het noemt zichzelf { $name })
+client-too-new = De host gebruikt API { $host_api }, maar deze app ondersteunt alleen { $app_api }. Werk de app bij.
+client-snapshot-unreadable = Kon de momentopname van de bibliotheek niet lezen: { $why }
+client-probe-unreadable = Kon de bestandsdetails niet lezen: { $why }
+client-peers-unreadable = Kon de lijst met apparaten niet lezen: { $why }
 sync-save-failed = Kon de momentopname niet opslaan: { $why }
 address-https = Anibeam op je computer antwoordt via Tailscale op gewoon http; laat https:// weg.
 address-empty = Typ de naam of het adres van de host, bijvoorbeeld my-computer:8790.
 address-ipv6-close = Een IPv6-adres heeft een afsluitende ] nodig.
 address-ipv6-port = Zet de poort na de ], zoals [fd7a::1]:8790.
+address-ipv6-brackets = Zet een IPv6-adres tussen haken, zoals [fd7a::1]:8790.
 address-bad-host = "{ $text }" is geen hostnaam.
 address-bad-port = "{ $port }" is geen poort.
 
@@ -1145,17 +1185,17 @@ clib-format-music = Muziek
 ## Zoeksites en repos
 
 repos-by-hand-title = Handmatig toevoegen
-repos-by-hand-note = Voor een site die geen repo heeft. Elke feed met { "{query}" } waar de zoekterm komt, ook een Jackett- of Prowlarr-feed. Een sleutel of token in het adres wordt naar de geheimenopslag van deze telefoon verplaatst.
+repos-by-hand-note = Voor een site die in geen enkele bronlijst staat. Elke feed met { "{query}" } waar de zoekterm komt, ook een Jackett- of Prowlarr-feed. Een sleutel of token in het adres wordt naar de geheimenopslag van deze telefoon verplaatst.
 repos-name-placeholder = Naam
 repos-url-placeholder = https://...{ "{query}" }...
 repos-index-placeholder = https://.../index.json
 repos-add-site = Site erbij
-repos-add-title = Repo toevoegen
-repos-add-note = Plak het adres van de index van een repo. Anibeam controleert de handtekening en toont je de sleutel voordat iets wordt opgeslagen.
-repos-add-repo = Repo erbij
-repos-trust-title = Deze repo vertrouwen?
+repos-add-title = Bronlijst toevoegen
+repos-add-note = Plak het adres van de index van een bronlijst. Anibeam controleert de handtekening en toont je de sleutel voordat er iets wordt opgeslagen.
+repos-add-repo = Bronlijst toevoegen
+repos-trust-title = Deze bronlijst vertrouwen?
 repos-fingerprint = Vingerafdruk
-repos-trust-warning = De sites bepalen waar je zoekopdrachten heen gaan. Vertrouw alleen een repo van iemand die je vertrouwt.
+repos-trust-warning = De bronnen bepalen waar je zoekopdrachten heen gaan. Vertrouw alleen bronlijsten van mensen die je vertrouwt.
 repos-trust = Vertrouw
 repos-open-link = { $url } openen
 repos-saving = Opslaan...
@@ -1164,33 +1204,33 @@ repos-update = Bijwerken
 repos-edit-note = Een sleutel of token in het adres wordt naar de geheimenopslag van deze telefoon verplaatst.
 repos-edit-note-keys = Laat elke { "{key}" } in het adres staan; de waarde blijft op deze telefoon.
 repos-change-its = { $keys } wijzigen
-repos-check-repos = Repos controleren op nieuwe sites
-repos-check-sites = Sites controleren
+repos-check-repos = Bronlijsten controleren op updates
+repos-check-sites = Bronnen controleren
 repos-add-site-label = Site handmatig toevoegen
 repos-needs-before-search = Heeft { $labels } nodig voor het zoekt
-repos-no-longer-offered = Wordt niet meer aangeboden door de repo
+repos-no-longer-offered = Wordt niet meer aangeboden door de bronlijst
 repos-update-host = De update stuurt verzoeken naar { $host }
 repos-tap-change-custom = Tik om de naam of het adres te wijzigen
 repos-tap-change-keys = Tik om { $labels } te wijzigen
-repos-line-custom = { $host }  { $kind }  door jou toegevoegd
+repos-line-custom = { $host }  { $kind }  handmatig toegevoegd
 repos-update-to = Bijwerken naar v{ $version }
 repos-add-its-value = Waarde toevoegen
 repos-asks-for = Vraagt om je { $labels }
 repos-preview-line = { $count ->
-    [one] { $count } site, ondertekend
-   *[other] { $count } sites, ondertekend
+    [one] { $count } bron, ondertekend
+   *[other] { $count } bronnen, ondertekend
 }
 repos-preview-trusted = { $count ->
-    [one] { $count } site, ondertekend, al vertrouwd
-   *[other] { $count } sites, ondertekend, al vertrouwd
+    [one] { $count } bron, ondertekend, al vertrouwd
+   *[other] { $count } bronnen, ondertekend, al vertrouwd
 }
 repos-ask-kept-empty = Alleen bewaard op deze telefoon. Een leeg veld behoudt wat is opgeslagen.
 repos-ask-kept-never = Alleen bewaard op deze telefoon, nooit in de bibliotheek of een export.
 repos-ask-new-host = De nieuwe versie stuurt dit naar { $host }, dus hij vraagt het opnieuw.
 repos-ask-new = De nieuwe versie vraagt hier opnieuw om.
 repos-type-value = Typ eerst een waarde.
-repos-health-answered = Antwoord in { $ms } ms
-repos-health-failed = Geen antwoord. { $step }: { $detail }
+repos-health-answered = Reageerde in { $ms } ms
+repos-health-failed = Reageerde niet. { $step }: { $detail }
 
 ## Downloads
 
@@ -1203,6 +1243,18 @@ dl-batch-files = { $count ->
    *[other] Batch, { $count } bestanden
 }
 dl-batch-tag = Batch
+dl-roll-line = { $watched ->
+    [0] { $ahead } klaar houden: afleveringen { $next } t/m { $through } van { $total }
+   *[other] { $ahead } klaar houden: afleveringen { $next } t/m { $through } van { $total }, { $watched } gekeken
+}
+dl-roll-more = Nog { $count } ophalen
+dl-roll-all = Alles ophalen
+dl-roll-all-ask = { $count ->
+    [one] De resterende aflevering downloaden?
+   *[other] Alle { $count } resterende afleveringen downloaden?
+}
+dl-roll-keep = Doorlopend houden
+dl-roll-ahead = { $count } vooruit
 dl-downloading-count = { $count ->
     [one] { $count } downloadt
    *[other] { $count } downloaden
@@ -1255,9 +1307,9 @@ disk-delete-watched-title = { $count ->
     [one] { $count } gekeken aflevering
    *[other] { $count } gekeken afleveringen
 } wissen, { $size }?
-disk-delete-finished-body = { $names }. Alleen series waarvan de provider zegt dat ze zijn afgelopen, elke aflevering gekeken; een serie die nog loopt, of waarvan het einde een gok is, blijft. Elk bestand ervan wordt van deze telefoon gewist, extra's ook. Hun downloads verdwijnen ook, dus ze kunnen opnieuw worden gedownload.
-disk-delete-watched-body = Elke aflevering die je keek, in elke serie. Nog niet gekeken afleveringen en extra's blijven. De bestanden en hun ondertitels worden definitief van deze telefoon gewist.
-disk-no-finished = Geen enkele uitgekeken serie is helemaal gekeken
+disk-delete-finished-body = { $names }. Alleen series die als afgelopen gemarkeerd zijn, met elke aflevering gekeken; lopende of onbevestigde series blijven. Al hun bestanden (ook extra's) worden van deze telefoon gewist, en hun downloads worden verwijderd, zodat ze opnieuw gedownload kunnen worden.
+disk-delete-watched-body = Elke aflevering die je hebt gekeken, in alle series. Ongekeken afleveringen en extra's blijven. Bestanden en ondertitels worden definitief van deze telefoon gewist.
+disk-no-finished = Geen afgelopen series zijn helemaal gekeken
 disk-nothing-watched = Niets gekeken staat op deze telefoon
 disk-deleted = { $count ->
     [one] { $count } aflevering
@@ -1402,8 +1454,8 @@ dates-summary-record =
     }
 dates-summary-record-unnamed =
     { $count ->
-        [one] { $count } gedateerd door de bron
-       *[other] { $count } gedateerd door de bron
+        [one] { $count } uit metadata
+       *[other] { $count } uit metadata
     }
 dates-summary-set =
     { $count ->
@@ -1424,8 +1476,8 @@ dates-told-season-ends = Seizoen { $season } eindigt bij aflevering { $episode }
 dates-told-by-you = { $told }, zelf gezet
 dates-told-gave-way =
     { $count ->
-        [one] Je stelde { $count } aflevering in; die geldt niet meer
-       *[other] Je stelde { $count } afleveringen in; die gelden niet meer
+        [one] Je stelde { $count } aflevering in, en dat geldt niet meer
+       *[other] Je stelde { $count } afleveringen in, en dat geldt niet meer
     }
 
 ## Seriegegevens
@@ -1462,13 +1514,14 @@ mark-menu-unwatched = Markeer ongekeken vanaf hier
 mark-menu-cancel = Annuleren
 mark-watched-up-to = Gekeken tot aflevering { $episode }
 mark-unwatched-from = Niet gekeken vanaf aflevering { $episode }
-mark-not-connected = { $reason } Log in onder Meer, Accounts.
+mark-not-connected = { $reason } Log in onder Meer > Accounts.
 series-not-tracked = Niet getrackt
 series-not-tracked-on-phone =
     { $count ->
         [one] Niet getrackt, { $count } aflevering op deze telefoon
        *[other] Niet getrackt, { $count } afleveringen op deze telefoon
     }
+host-progress = Voortgang van { $name }
 
 ## Speler
 player-speed-not-while-casting = Niet tijdens casten
