@@ -1,8 +1,10 @@
-//! `anibeam://` links reach the app (#888). An install made before rooms wrote its
-//! desktop entry without `x-scheme-handler/anibeam`, so a browser's "Open in Anibeam"
-//! went nowhere. At launch the user's own entry for this app gets the MimeType line
-//! and a `%U` on its Exec when it has no field code for files or links yet, the desktop's cache is rebuilt, and
-//! the entry becomes the handler when nothing else is.
+//! `anibeam://` links reach the app (#888), and so do magnet links (#1391). An install made
+//! before rooms wrote its desktop entry without `x-scheme-handler/anibeam`, so a browser's
+//! "Open in Anibeam" went nowhere, and one made before magnets lacks
+//! `x-scheme-handler/magnet`. At launch the user's own entry for this app gets both on its
+//! MimeType line and a `%U` on its Exec when it has no field code for files or links yet,
+//! the desktop's cache is rebuilt, and the entry becomes the handler of each when nothing
+//! else is. Settings, Downloads makes it the magnet handler when another app is.
 //!
 //! Only the user's entry is touched (`$XDG_DATA_HOME/applications`), never a system
 //! one, and nothing at all when there is none. It runs off the main thread, says
@@ -26,8 +28,44 @@ pub fn ensure() {
 /// The scheme's MIME type, as desktop entries and xdg-mime name it.
 #[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
 const MIME: &str = "x-scheme-handler/anibeam";
+/// Magnet links' MIME type.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+const MAGNET: &str = "x-scheme-handler/magnet";
+/// Every link type the entry declares.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+const TYPES: [&str; 2] = [MIME, MAGNET];
 
-/// `entry` with the MimeType and the `%U` it needs, or `None` when it has both. An Exec
+/// Who opens magnet links: "anibeam", "other" or "none". None where the desktop has no such
+/// setting, or no entry of this app's to name.
+pub fn magnet_handler() -> Option<&'static str> {
+    #[cfg(target_os = "linux")]
+    {
+        linux::magnet_handler()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+/// Makes this app the magnet handler, then says who is. A sandbox run changes nothing.
+pub fn make_magnet_default() -> Option<&'static str> {
+    #[cfg(target_os = "linux")]
+    {
+        let args = crate::runtime::args();
+        if args.root.is_none() && args.drive.is_none() && args.shoot.is_none() {
+            linux::make_magnet_default();
+        }
+        linux::magnet_handler()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+/// `entry` with every type of `TYPES` on its MimeType line and the `%U` it needs, or
+/// `None` when it has them all. An Exec
 /// that already takes files or links (`%f`, `%F`, `%u` or `%U`) stays as it is: the spec
 /// allows one of the four. Only the `[Desktop Entry]` group changes; actions and other
 /// groups keep their own Exec lines.
@@ -54,7 +92,12 @@ fn patch(entry: &str) -> Option<String> {
         }
         if let Some(value) = line.strip_prefix("MimeType=") {
             has_mime = true;
-            if value.split(';').any(|m| m.trim() == MIME) {
+            let missing: Vec<&str> = TYPES
+                .iter()
+                .copied()
+                .filter(|t| !value.split(';').any(|m| m.trim() == *t))
+                .collect();
+            if missing.is_empty() {
                 out.push(line.to_owned());
             } else {
                 let value = value.trim_end();
@@ -63,7 +106,7 @@ fn patch(entry: &str) -> Option<String> {
                 } else {
                     ";"
                 };
-                out.push(format!("MimeType={value}{sep}{MIME};"));
+                out.push(format!("MimeType={value}{sep}{};", missing.join(";")));
                 changed = true;
             }
         } else if let Some(value) = line.strip_prefix("Exec=") {
@@ -91,7 +134,7 @@ fn patch(entry: &str) -> Option<String> {
         while at > 0 && out[at - 1].trim().is_empty() {
             at -= 1;
         }
-        out.insert(at, format!("MimeType={MIME};"));
+        out.insert(at, format!("MimeType={};", TYPES.join(";")));
         changed = true;
     }
     if !changed {
@@ -102,6 +145,21 @@ fn patch(entry: &str) -> Option<String> {
         text.push('\n');
     }
     Some(text)
+}
+
+/// Who `current`, the entry xdg-mime names, is: `ours` (this run's own entry), another app,
+/// or nobody. The other build's entry (Dev beside an installed Nightly) counts as another
+/// app, since links then open in that build and not this one.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn handler_word(current: &str, ours: &str) -> &'static str {
+    let current = current.trim();
+    if current.is_empty() {
+        "none"
+    } else if current == ours {
+        "anibeam"
+    } else {
+        "other"
+    }
 }
 
 /// The program an Exec line runs: the first word that is not `env` or a `NAME=value`
@@ -151,7 +209,7 @@ pub(crate) mod linux {
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
 
-    use super::{MIME, patch, program};
+    use super::{MAGNET, TYPES, patch, program};
 
     const MAIN: &str = "com.marcusrosado.Anibeam.desktop";
     const DEV: &str = "com.marcusrosado.Anibeam.Dev.desktop";
@@ -217,15 +275,50 @@ pub(crate) mod linux {
             }
             quiet(Command::new("update-desktop-database").arg(&dir));
         }
-        let current = Command::new("xdg-mime")
-            .args(["query", "default", MIME])
+        for mime in TYPES {
+            if default_of(mime).is_some_and(|d| d.is_empty()) {
+                quiet(Command::new("xdg-mime").args(["default", name, mime]));
+            }
+        }
+    }
+
+    /// The desktop entry xdg-mime names for `mime`, empty when there is none; None when
+    /// xdg-mime itself cannot be run.
+    fn default_of(mime: &str) -> Option<String> {
+        let out = Command::new("xdg-mime")
+            .args(["query", "default", mime])
             .stdin(Stdio::null())
             .stderr(Stdio::null())
-            .output();
-        if let Ok(out) = current
-            && String::from_utf8_lossy(&out.stdout).trim().is_empty()
-        {
-            quiet(Command::new("xdg-mime").args(["default", name, MIME]));
+            .output()
+            .ok()?;
+        Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+
+    /// This app's entry by name: the user's own that launched it, else the first of the
+    /// app's entries any data directory holds (a package's, under /usr/share).
+    fn entry_name() -> Option<&'static str> {
+        if let Some(name) = applications().as_deref().and_then(pick) {
+            return Some(name);
+        }
+        let dirs = std::env::var("XDG_DATA_DIRS")
+            .ok()
+            .filter(|d| !d.is_empty())
+            .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+        [MAIN, DEV].into_iter().find(|name| {
+            dirs.split(':')
+                .any(|d| Path::new(d).join("applications").join(name).is_file())
+        })
+    }
+
+    pub fn magnet_handler() -> Option<&'static str> {
+        let ours = entry_name()?;
+        let current = default_of(MAGNET)?;
+        Some(super::handler_word(&current, ours))
+    }
+
+    pub fn make_magnet_default() {
+        if let Some(name) = entry_name() {
+            quiet(Command::new("xdg-mime").args(["default", name, MAGNET]));
         }
     }
 
@@ -279,7 +372,9 @@ mod tests {
     #[test]
     fn an_entry_from_before_rooms_gets_the_scheme() {
         let patched = patch(OLD).unwrap();
-        assert!(patched.ends_with("Terminal=false\nMimeType=x-scheme-handler/anibeam;\n"));
+        assert!(patched.ends_with(
+            "Terminal=false\nMimeType=x-scheme-handler/anibeam;x-scheme-handler/magnet;\n"
+        ));
         assert!(patched.contains("Exec=env APPIMAGELAUNCHER_DISABLE=1 /opt/anibeam %U\n"));
         assert_eq!(patch(&patched), None);
     }
@@ -289,12 +384,12 @@ mod tests {
         let patched = patch("[Desktop Entry]\nExec=env A=1 /x/anibeam\n").unwrap();
         assert_eq!(
             patched,
-            "[Desktop Entry]\nExec=env A=1 /x/anibeam %U\nMimeType=x-scheme-handler/anibeam;\n"
+            "[Desktop Entry]\nExec=env A=1 /x/anibeam %U\nMimeType=x-scheme-handler/anibeam;x-scheme-handler/magnet;\n"
         );
         for code in ["%f", "%F", "%u", "%U"] {
             assert_eq!(
                 patch(&format!(
-                    "[Desktop Entry]\nExec=anibeam {code}\nMimeType=x-scheme-handler/anibeam;\n"
+                    "[Desktop Entry]\nExec=anibeam {code}\nMimeType=x-scheme-handler/anibeam;x-scheme-handler/magnet;\n"
                 )),
                 None,
                 "{code}"
@@ -302,7 +397,7 @@ mod tests {
         }
         assert_eq!(
             patch("[Desktop Entry]\nExec=anibeam %F\n").unwrap(),
-            "[Desktop Entry]\nExec=anibeam %F\nMimeType=x-scheme-handler/anibeam;\n"
+            "[Desktop Entry]\nExec=anibeam %F\nMimeType=x-scheme-handler/anibeam;x-scheme-handler/magnet;\n"
         );
     }
 
@@ -310,12 +405,42 @@ mod tests {
     fn other_types_stay_and_the_scheme_joins_them() {
         assert_eq!(
             patch("[Desktop Entry]\nExec=a %U\nMimeType=video/mp4;\n").unwrap(),
-            "[Desktop Entry]\nExec=a %U\nMimeType=video/mp4;x-scheme-handler/anibeam;\n"
+            "[Desktop Entry]\nExec=a %U\nMimeType=video/mp4;x-scheme-handler/anibeam;x-scheme-handler/magnet;\n"
         );
         assert_eq!(
             patch("[Desktop Entry]\nExec=a %U\nMimeType=video/mp4\n").unwrap(),
-            "[Desktop Entry]\nExec=a %U\nMimeType=video/mp4;x-scheme-handler/anibeam;\n"
+            "[Desktop Entry]\nExec=a %U\nMimeType=video/mp4;x-scheme-handler/anibeam;x-scheme-handler/magnet;\n"
         );
+    }
+
+    #[test]
+    fn an_entry_from_before_magnets_gets_the_magnet_type_only() {
+        assert_eq!(
+            patch("[Desktop Entry]\nExec=a %u\nMimeType=x-scheme-handler/anibeam;\n").unwrap(),
+            "[Desktop Entry]\nExec=a %u\nMimeType=x-scheme-handler/anibeam;x-scheme-handler/magnet;\n"
+        );
+        assert_eq!(
+            patch(
+                "[Desktop Entry]\nExec=a %u\nMimeType=x-scheme-handler/magnet;x-scheme-handler/anibeam;\n"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn the_magnet_handler_is_ours_anothers_or_nobodys() {
+        let ours = "com.marcusrosado.Anibeam.desktop";
+        assert_eq!(
+            handler_word("com.marcusrosado.Anibeam.desktop\n", ours),
+            "anibeam"
+        );
+        // The other build's entry opens links in that build, not in this one
+        assert_eq!(
+            handler_word("com.marcusrosado.Anibeam.Dev.desktop", ours),
+            "other"
+        );
+        assert_eq!(handler_word("org.example.Torrents.desktop", ours), "other");
+        assert_eq!(handler_word("  ", ours), "none");
     }
 
     #[test]
@@ -323,7 +448,7 @@ mod tests {
         let entry = "[Desktop Entry]\nExec=a %U\n\n[Desktop Action play]\nExec=a --play\n";
         assert_eq!(
             patch(entry).unwrap(),
-            "[Desktop Entry]\nExec=a %U\nMimeType=x-scheme-handler/anibeam;\n\n[Desktop Action play]\nExec=a --play\n"
+            "[Desktop Entry]\nExec=a %U\nMimeType=x-scheme-handler/anibeam;x-scheme-handler/magnet;\n\n[Desktop Action play]\nExec=a --play\n"
         );
         assert_eq!(patch("Name=x\n"), None);
     }

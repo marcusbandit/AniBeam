@@ -52,11 +52,22 @@ pub mod qobject {
         /// The watch together room code this run was started with, from an
         /// `anibeam://room/<code>` link; empty when there was none (#846).
         #[qproperty(QString, room_link)]
+        /// The magnet link this run was started with, as given; empty when there was none
+        /// (#1391).
+        #[qproperty(QString, magnet_link)]
         type Shell = super::ShellRust;
 
         /// A second launch handed over an `anibeam://room/<code>` link: join that room.
         #[qsignal]
         fn room_link_opened(self: Pin<&mut Self>, code: QString);
+        /// A second launch handed over a magnet link: Downloads takes it (#1391).
+        #[qsignal]
+        fn magnet_link_opened(self: Pin<&mut Self>, link: QString);
+        /// Who opens magnet links: "anibeam" when this run's entry is the default, "other"
+        /// when another app or build is, "none" when nothing is, or empty where the desktop
+        /// has no such setting.
+        #[qsignal]
+        fn magnet_handler_read(self: Pin<&mut Self>, answer: QString);
 
         /// A second launch, or MPRIS Raise, asked for the window; the token is the launcher's.
         #[qsignal]
@@ -167,6 +178,11 @@ pub mod qobject {
         /// answer: held while a service exists, back to the preference once none does.
         #[qinvokable]
         fn host_service(self: &Self) -> QString;
+        /// Asks off the GUI thread who opens magnet links on this desktop, first making this
+        /// app's entry the default when `make_default` is set (never in a sandbox run: --root,
+        /// a drive or a shot). The answer comes back as magnetHandlerRead (#1391).
+        #[qinvokable]
+        fn read_magnet_handler(self: &Self, make_default: bool);
         /// What's new for this build, from the two versions QML keeps in shell.conf: whether
         /// it opens by itself, what to keep now and once it closes, and what it shows.
         #[qinvokable]
@@ -231,6 +247,7 @@ pub struct ShellRust {
     drive_out: QString,
     settings_url: QString,
     room_link: QString,
+    magnet_link: QString,
 }
 
 impl Default for ShellRust {
@@ -280,6 +297,7 @@ impl Default for ShellRust {
                     .unwrap_or_default()
                     .as_str(),
             ),
+            magnet_link: QString::from(crate::args::magnet_of(a.link.as_deref()).unwrap_or("")),
         }
     }
 }
@@ -742,6 +760,21 @@ impl qobject::Shell {
     }
     pub fn open_url(&self, url: &QString) -> bool {
         crate::bridge::helpers::ffi::open_url(url)
+    }
+
+    /// xdg-mime is a shell script that walks every mimeapps.list, so it never runs on the
+    /// GUI thread.
+    pub fn read_magnet_handler(&self, make_default: bool) {
+        let shell = self.qt_thread();
+        crate::runtime::runtime().spawn_blocking(move || {
+            let word = if make_default {
+                crate::scheme::make_magnet_default()
+            } else {
+                crate::scheme::magnet_handler()
+            };
+            let _ = shell
+                .queue(move |shell| shell.magnet_handler_read(QString::from(word.unwrap_or(""))));
+        });
     }
 
     pub fn host_service(&self) -> QString {

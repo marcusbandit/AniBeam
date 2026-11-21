@@ -17,6 +17,12 @@ _anibeam() {
     compopt -o nospace 2>/dev/null
     return
   fi
+  # A magnet link, which opens in Downloads
+  if [[ $cur == m* ]] && [[ magnet:? == "$cur"* ]]; then
+    COMPREPLY=("magnet:?")
+    compopt -o nospace 2>/dev/null
+    return
+  fi
   local w i
   # anibeam ctl <command> ...: drives the open window
   for (( i = 1; i < COMP_CWORD; i++ )); do

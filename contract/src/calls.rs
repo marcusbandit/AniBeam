@@ -490,9 +490,16 @@ pub enum Call {
         name: Option<String>,
         options: DownloadOptions,
     },
-    /// One link into the movie folder, no subdirectory. Ends in
-    /// `TorrentsAdded`.
+    /// One link into the movie folder, no subdirectory. With `needs_video`
+    /// a torrent with no video in it moves to the Downloads folder instead,
+    /// as `DownloadOptions::needs_video` says. Ends in `TorrentsAdded`.
     DownloadMovie {
+        link: String,
+        #[serde(default)]
+        needs_video: bool,
+    },
+    /// What a magnet link names, read at once: replies `Magnet`.
+    ReadMagnet {
         link: String,
     },
     /// Reads the subscriptions from anirss, or from qBittorrent's rules on
@@ -935,6 +942,10 @@ pub enum Reply {
     },
     SeriesDetail {
         detail: Box<SeriesDetail>,
+    },
+    /// What `ReadMagnet` read.
+    Magnet {
+        magnet: MagnetLink,
     },
     /// What `ParseSchedule` read.
     Schedule {

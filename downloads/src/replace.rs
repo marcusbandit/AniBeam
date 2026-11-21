@@ -22,6 +22,12 @@
 //! A followup whose torrent the user removed, or that nothing bound to
 //! within three days, is dropped without touching a file.
 //!
+//! A download that has to be something Anibeam plays (a pasted magnet link,
+//! #1391) is checked once the client knows its files: with no video file
+//! anywhere in it, a notice says it is nothing Anibeam plays, and when the
+//! client keeps its files on this machine they move to the person's
+//! Downloads folder, out of the library.
+//!
 //! Old torrents follow their files: one whose every file was trashed leaves
 //! the client (without the client deleting anything); one that keeps other
 //! files has the trashed ones set to "do not download", so a recheck does
@@ -41,7 +47,7 @@ use super::qbt::QbtClient;
 use crate::Downloads;
 use anibeam_contract::*;
 use anibeam_foundation::magnet;
-use anibeam_foundation::names::title_key;
+use anibeam_foundation::names::{is_video, title_key};
 use anibeam_foundation::services::Services;
 use anibeam_foundation::store::{Store, settings};
 use anibeam_foundation::time::now_secs;
@@ -86,6 +92,9 @@ pub struct Followup {
     pub series: Option<u64>,
     #[serde(default)]
     pub replace: Vec<Replacement>,
+    /// The torrent is still to be checked for a video file (#1391).
+    #[serde(default)]
+    pub needs_video: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -190,6 +199,31 @@ pub fn episode_ready(episode: u32, t: &Torrent, files: &[TorrentFile]) -> bool {
     files
         .iter()
         .any(|f| f.priority > 0 && f.progress >= 1.0 && episode_of(&f.name) == Some(episode))
+}
+
+/// What a torrent's files say about whether Anibeam can play it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VideoCheck {
+    /// The client does not know the files yet: a magnet still fetching its
+    /// metadata lists none.
+    Unknown,
+    Plays,
+    NoVideo,
+}
+
+/// Whether any file of the torrent is a video, once the client knows them.
+pub fn video_check(t: &Torrent, files: &[TorrentFile]) -> VideoCheck {
+    if files.is_empty()
+        || t.state.eq_ignore_ascii_case("metaDL")
+        || t.state.eq_ignore_ascii_case("forcedMetaDL")
+    {
+        return VideoCheck::Unknown;
+    }
+    if files.iter().any(|f| is_video(&f.name)) {
+        VideoCheck::Plays
+    } else {
+        VideoCheck::NoVideo
+    }
 }
 
 /// The old files to trash: those the library listed, minus any path the new
@@ -482,7 +516,7 @@ pub fn prepare(
                 }
             }
         }
-        if !options.sequential && entries.is_empty() {
+        if !options.sequential && entries.is_empty() && !options.needs_video {
             continue;
         }
         out.push(Followup {
@@ -493,9 +527,30 @@ pub fn prepare(
             sequential: options.sequential,
             series: options.series,
             replace: entries,
+            needs_video: options.needs_video,
         });
     }
     Ok(out)
+}
+
+/// The followup that checks a film for a video file (`DownloadMovie` with
+/// `needs_video`): bound by the magnet's hash, else by the hash the client
+/// gave back. None when neither names the torrent, which then goes
+/// unchecked.
+pub fn video_followup(link: &str, added: &AddedTorrents) -> Option<Followup> {
+    let hash = magnet::hash(link)
+        .or_else(|| added.hashes.first().map(|h| h.trim().to_lowercase()))
+        .filter(|h| !h.is_empty())?;
+    Some(Followup {
+        id: 0,
+        created_at: now_secs(),
+        title: magnet::name(link).unwrap_or_default(),
+        hash,
+        sequential: false,
+        series: None,
+        replace: Vec::new(),
+        needs_video: true,
+    })
 }
 
 /// A line for the job's message: what the download will also do.
@@ -550,9 +605,11 @@ pub async fn after_add(
     let saved = downloads.services.store.write_async(move |c| {
         let mut cur = settings::get::<Vec<Followup>>(c, FOLLOWUPS)?.unwrap_or_default();
         let mut next = cur.iter().map(|f| f.id).max().unwrap_or(0);
+        let mut ids = Vec::new();
         for mut f in followups {
             next += 1;
             f.id = next;
+            ids.push(next);
             cur.push(f);
         }
         settings::set(c, FOLLOWUPS, &cur)?;
@@ -564,12 +621,15 @@ pub async fn after_add(
             all.drain(..over);
             settings::set(c, SOURCES, &all)?;
         }
-        Ok(())
+        Ok(ids)
     });
-    if let Err(e) = saved.await {
-        tracing::warn!("download followups not saved: {e}");
-        return;
-    }
+    let ours = match saved.await {
+        Ok(ids) => ids,
+        Err(e) => {
+            tracing::warn!("download followups not saved: {e}");
+            return;
+        }
+    };
     let replacing: BTreeSet<u32> = options
         .replace
         .iter()
@@ -586,25 +646,49 @@ pub async fn after_add(
         .await;
     }
     let (downloads, client) = (downloads.clone(), client.clone());
-    let wants_ticks = options.sequential || !replacing.is_empty();
-    if wants_ticks {
+    let wants_ticks = options.sequential || !replacing.is_empty() || options.needs_video;
+    if wants_ticks && !ours.is_empty() {
+        let needs_video = options.needs_video;
         let handle = downloads.services.handle.clone();
         handle.spawn(async move {
-            // The client may take a moment to list a torrent it was just given
-            for _ in 0..15 {
-                tokio::time::sleep(Duration::from_secs(3)).await;
+            // The client may take a moment to list a torrent it was just given, and a
+            // magnet fetches its file list from peers first, which can take hours on a
+            // release few people seed; the page's own reads tick too while it is open
+            let mut round = 0;
+            while let Some(wait) = burst_wait(round, needs_video) {
+                round += 1;
+                tokio::time::sleep(wait).await;
                 match client.torrents().await {
                     Ok(torrents) => tick(&downloads.services, &client, &torrents).await,
                     Err(e) => tracing::debug!("followup read failed: {e}"),
                 }
                 match load(&downloads.services) {
-                    Ok(f) if f.iter().all(|f| !f.hash.is_empty()) => break,
+                    Ok(f) if settled(&f, &ours) => break,
                     Ok(_) => {}
                     Err(_) => break,
                 }
             }
         });
     }
+}
+
+/// How long the reads after an add wait before read `round`, or None once they stop: every
+/// 3 s for 45 s, and for a download still to be checked for a video, every 3 s for two
+/// minutes and then every 30 s for six hours more.
+pub fn burst_wait(round: u32, needs_video: bool) -> Option<Duration> {
+    match (round, needs_video) {
+        (0..15, _) | (15..40, true) => Some(Duration::from_secs(3)),
+        (40..760, true) => Some(Duration::from_secs(30)),
+        _ => None,
+    }
+}
+
+/// Whether the followups an add made (`ours`, by id) need no more reads: each is bound to
+/// its torrent and checked for a video, or gone (done, or dropped by a tick).
+pub fn settled(all: &[Followup], ours: &[u64]) -> bool {
+    all.iter()
+        .filter(|f| ours.contains(&f.id))
+        .all(|f| !f.hash.is_empty() && !f.needs_video)
 }
 
 /// Stops the unfinished torrents the new ones stand in for, as far as
@@ -734,6 +818,21 @@ pub async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent])
                 Err(e) => tracing::warn!("{} not set to download in order: {e}", t.name),
             }
         }
+        if f.needs_video {
+            let files = if t.files.is_empty() {
+                client.files(&t.hash).await.unwrap_or_default()
+            } else {
+                t.files.clone()
+            };
+            match video_check(t, &files) {
+                VideoCheck::Unknown => {}
+                VideoCheck::Plays => f.needs_video = false,
+                VideoCheck::NoVideo => {
+                    f.needs_video = false;
+                    no_video(services, client, t).await;
+                }
+            }
+        }
         if f.replace.is_empty() {
             continue;
         }
@@ -778,13 +877,14 @@ pub async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent])
         f.replace = waiting;
     }
     fus.retain(|f| {
-        if !f.sequential && f.replace.is_empty() {
+        if !f.sequential && f.replace.is_empty() && !f.needs_video {
             return false;
         }
         if now - f.created_at > MAX_AGE_SECS {
             return false;
         }
-        if f.hash.is_empty() {
+        // A magnet's check has its hash before the client lists the torrent
+        if f.hash.is_empty() || (f.needs_video && !live.contains(&f.hash.to_lowercase())) {
             return now - f.created_at <= UNBOUND_AGE_SECS;
         }
         live.contains(&f.hash.to_lowercase())
@@ -792,6 +892,63 @@ pub async fn tick(services: &Services, client: &QbtClient, torrents: &[Torrent])
     if let Err(e) = save_changes(services, &before, &fus) {
         tracing::warn!("download followups not saved: {e}");
     }
+}
+
+/// A torrent with no video in it: says so, and moves it to the person's
+/// Downloads folder when the client keeps its files on this machine. A
+/// client elsewhere keeps it where it is, since its paths are its own.
+async fn no_video(services: &Services, client: &QbtClient, t: &Torrent) {
+    let name = if t.name.trim().is_empty() {
+        t.hash.clone()
+    } else {
+        t.name.clone()
+    };
+    let here = crate::settings::read(services).is_ok_and(|s| crate::settings::files_here(&s));
+    let target = here
+        .then(|| crate::home::AnirssHome::of(&services.paths).downloads_dir())
+        .flatten();
+    let moved = match &target {
+        Some(dir) => {
+            let folder = dir.to_string_lossy().into_owned();
+            let _ = std::fs::create_dir_all(dir);
+            let already = Path::new(t.save_path.trim_end_matches(['/', '\\'])) == dir.as_path();
+            if already {
+                Some(folder)
+            } else {
+                match client
+                    .set_location(std::slice::from_ref(&t.hash), &folder)
+                    .await
+                {
+                    Ok(()) => Some(folder),
+                    Err(e) => {
+                        tracing::warn!("{name} not moved to {folder}: {e}");
+                        None
+                    }
+                }
+            }
+        }
+        None => None,
+    };
+    match moved {
+        Some(folder) => services.bus.say(
+            Level::Warn,
+            Stage::Downloads,
+            anibeam_contract::words!(
+                "core-downloads-no-video-moved",
+                name = name.as_str(),
+                folder = folder.as_str()
+            ),
+            format!("{name} has no video in it, so Anibeam cannot play it; moved to {folder}"),
+            EventBody::Notice,
+        ),
+        None => services.bus.say(
+            Level::Warn,
+            Stage::Downloads,
+            anibeam_contract::words!("core-downloads-no-video", name = name.as_str()),
+            format!("{name} has no video in it, so Anibeam cannot play it"),
+            EventBody::Notice,
+        ),
+    };
 }
 
 /// Trashes the old files of one episode and tidies the old torrents.
@@ -920,6 +1077,7 @@ mod tests {
             sequential: false,
             series: Some(1),
             replace: Vec::new(),
+            needs_video: false,
         }
     }
 
@@ -1319,6 +1477,7 @@ mod tests {
             ],
             cancel: Vec::new(),
             rolling: None,
+            needs_video: false,
         };
         let got = prepare(&store, &items, &options).unwrap();
         assert_eq!(got.len(), 2, "item 2 asks for nothing");
@@ -1423,5 +1582,126 @@ mod tests {
         assert_eq!(got, vec![bound, c]);
         // A tick that changed nothing changes nothing
         assert!(diff(&[followup("x", 1)], &[followup("x", 1)]).is_empty());
+    }
+
+    #[test]
+    fn a_torrent_plays_when_any_file_is_a_video_once_the_client_knows_its_files() {
+        let mut t = torrent("aa", "Example Show - 03 [1080p]", 1);
+        t.state = "metaDL".into();
+        // A magnet still fetching its metadata knows no files yet
+        assert_eq!(video_check(&t, &[]), VideoCheck::Unknown);
+        assert_eq!(
+            video_check(&t, &[file("Example Show - 03.mkv", 0.0, 1)]),
+            VideoCheck::Unknown
+        );
+        t.state = "downloading".into();
+        assert_eq!(video_check(&t, &[]), VideoCheck::Unknown);
+        assert_eq!(
+            video_check(
+                &t,
+                &[
+                    file("Extras/cover.jpg", 0.0, 1),
+                    file("Season 1/Example Show - 03.MKV", 0.0, 1)
+                ]
+            ),
+            VideoCheck::Plays
+        );
+        assert_eq!(
+            video_check(
+                &t,
+                &[
+                    file("Example Album/01 Opening.flac", 0.0, 1),
+                    file("Example Album/booklet.pdf", 0.0, 1),
+                    file("Example Album/readme.txt", 0.0, 1)
+                ]
+            ),
+            VideoCheck::NoVideo
+        );
+    }
+
+    #[test]
+    fn a_download_that_needs_a_video_gets_a_followup_even_asking_nothing_else() {
+        let (_d, store, _) = library();
+        let hex = "0123456789abcdef0123456789abcdef01234567";
+        let items = vec![release(
+            "Example Show - 03 [1080p]",
+            &format!("magnet:?xt=urn:btih:{hex}&dn=Example%20Show%20-%2003"),
+        )];
+        let none = prepare(&store, &items, &DownloadOptions::default()).unwrap();
+        assert!(none.is_empty());
+        let options = DownloadOptions {
+            needs_video: true,
+            ..Default::default()
+        };
+        let got = prepare(&store, &items, &options).unwrap();
+        assert_eq!(got.len(), 1);
+        assert!(got[0].needs_video && !got[0].sequential && got[0].replace.is_empty());
+        assert_eq!(got[0].hash, hex);
+    }
+
+    #[test]
+    fn a_film_is_followed_by_its_magnets_hash_or_the_one_the_client_gave() {
+        let hex = "0123456789abcdef0123456789abcdef01234567";
+        let added = |hashes: &[&str]| AddedTorrents {
+            count: 1,
+            save_path: "/films".into(),
+            tags: Vec::new(),
+            hashes: hashes.iter().map(|h| h.to_string()).collect(),
+        };
+        let f = video_followup(
+            &format!("magnet:?xt=urn:btih:{hex}&dn=Example%20Film%202001"),
+            &added(&[]),
+        )
+        .unwrap();
+        assert_eq!(
+            (f.hash.as_str(), f.title.as_str()),
+            (hex, "Example Film 2001")
+        );
+        assert!(f.needs_video);
+        let f = video_followup("https://example.com/film.torrent", &added(&["ABCDEF"])).unwrap();
+        assert_eq!(f.hash, "abcdef");
+        assert_eq!(
+            video_followup("https://example.com/film.torrent", &added(&[])),
+            None
+        );
+    }
+
+    #[test]
+    fn the_reads_after_an_add_wait_longer_for_a_video_check() {
+        let total = |needs_video: bool| {
+            (0..)
+                .map_while(|r| burst_wait(r, needs_video))
+                .map(|d| d.as_secs())
+                .sum::<u64>()
+        };
+        assert_eq!(total(false), 45);
+        assert_eq!(burst_wait(39, true), Some(Duration::from_secs(3)));
+        assert_eq!(burst_wait(40, true), Some(Duration::from_secs(30)));
+        // Two minutes of quick reads, then six hours of slow ones
+        assert_eq!(total(true), 120 + 6 * 3600);
+    }
+
+    #[test]
+    fn an_add_is_settled_once_its_own_followups_are_bound_and_checked() {
+        let bound = |id: u64, needs_video: bool| Followup {
+            id,
+            hash: format!("{id:040}"),
+            needs_video,
+            ..followup("x", 0)
+        };
+        let unbound = Followup {
+            id: 3,
+            ..followup("y", 0)
+        };
+        assert!(settled(&[bound(1, false)], &[1]));
+        assert!(!settled(&[bound(1, true)], &[1]), "files not known yet");
+        assert!(
+            !settled(std::slice::from_ref(&unbound), &[3]),
+            "not listed yet"
+        );
+        // Another add's followup waits on its own reads, not these
+        assert!(settled(&[bound(1, false), unbound], &[1]));
+        // Gone: done, or dropped by a tick
+        assert!(settled(&[], &[1, 2]));
     }
 }

@@ -846,7 +846,12 @@ impl Core {
                 name,
                 options,
             } => downloads::download_with(&self.downloads, items, name, options).map(started),
-            Call::DownloadMovie { link } => downloads::movie(&self.downloads, link).map(started),
+            Call::DownloadMovie { link, needs_video } => {
+                downloads::movie(&self.downloads, link, needs_video).map(started)
+            }
+            Call::ReadMagnet { link } => Ok(Reply::Magnet {
+                magnet: downloads::read_magnet(&link),
+            }),
             Call::ListSubscriptionRules => downloads::list_rules(&self.downloads),
             Call::ListTorrents => downloads::list_torrents(&self.downloads),
             Call::ReadFeed { url, tag } => downloads::read_feed(&self.services, url, tag),

@@ -1445,6 +1445,8 @@ core-downloads-replace-bad-item = pozycja { $item } nie należy do wydań (jest 
 # $episode is the episode's number
 core-downloads-not-replaced = Odcinek { $episode } nie został zastąpiony.
 core-downloads-replaced = Zastąpiono odcinek { $episode } nowym pobraniem.
+core-downloads-no-video-moved = { $name } nie zawiera wideo, więc Anibeam nie może tego odtworzyć. Jest teraz w { $folder }.
+core-downloads-no-video = { $name } nie zawiera wideo, więc Anibeam nie może tego odtworzyć.
 
 ## downloads/src/rolling.rs
 

@@ -9,4 +9,4 @@ Categories=AudioVideo;Video;Player;
 Keywords=anibeam;anime;media;video;
 StartupWMClass=com.marcusrosado.Anibeam
 StartupNotify=true
-MimeType=x-scheme-handler/anibeam;
+MimeType=x-scheme-handler/anibeam;x-scheme-handler/magnet;

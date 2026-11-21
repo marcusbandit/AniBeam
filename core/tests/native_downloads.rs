@@ -893,7 +893,13 @@ fn movie_adds_into_the_movie_path() {
     let r = rig();
     r.http.push_for("torrents/add", 200, "Ok.");
     let link = format!("magnet:?xt=urn:btih:{:040x}", 7);
-    let job = started(&r.core, Call::DownloadMovie { link: link.clone() });
+    let job = started(
+        &r.core,
+        Call::DownloadMovie {
+            link: link.clone(),
+            needs_video: false,
+        },
+    );
     let done = common::wait_job(&r.c, job);
     let result = added(&done);
     // No films' folder set anywhere: the default save folder, no subfolder

@@ -552,6 +552,18 @@ FocusScope {
         roomState.join(code)
     }
     Connections { target: Shell; function onRoomLinkOpened(code) { frame.joinRoomLink(code) } }
+    // A magnet link (#1391) from the command line or a second launch: Downloads, with the link
+    // in its field. A Downloads page already open takes it where it is; one that opens for it
+    // takes it once from here, never from its props, which the rail would hand it again
+    property string pendingMagnet: ""
+    function openMagnet(link) {
+        if (!link) return
+        if (nav.current.page === "downloads" && page.item && page.item.takeMagnet) { page.item.takeMagnet(link); return }
+        frame.pendingMagnet = link
+        frame.go("downloads", {}, words.t("nav-downloads"))
+    }
+    function takePendingMagnet() { var link = frame.pendingMagnet; frame.pendingMagnet = ""; return link }
+    Connections { target: Shell; function onMagnetLinkOpened(link) { frame.openMagnet(link) } }
     // Discord (#966): an Ask to Join comes up as an island, and a Join or an accepted invite
     // takes the same road as a room link
     Connections {
@@ -711,6 +723,7 @@ FocusScope {
         roomState.refresh()
         // Started from a room link: join it once the first page is up
         if (Shell.roomLink !== "") Qt.callLater(function() { frame.joinRoomLink(Shell.roomLink) })
+        if (Shell.magnetLink !== "") Qt.callLater(function() { frame.openMagnet(Shell.magnetLink) })
         Qt.callLater(frame.takeDiscordJoin)
         if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }

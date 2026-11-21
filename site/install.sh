@@ -185,9 +185,9 @@ Exec=env APPIMAGELAUNCHER_DISABLE=1 "$bin/anibeam" %u
 Icon=com.marcusrosado.Anibeam
 Categories=AudioVideo;Video;Player;
 Terminal=false
-MimeType=x-scheme-handler/anibeam;
+MimeType=x-scheme-handler/anibeam;x-scheme-handler/magnet;
 EOF
-  # Room links (anibeam://room/<code>) open in Anibeam
+  # Room links (anibeam://room/<code>) and magnet links open in Anibeam
   update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
   case ":$PATH:" in *":$bin:"*) ;; *) say "Add $bin to your PATH to start it as anibeam" ;; esac
   say "The AppImage updates itself from Settings > About"
