@@ -428,10 +428,7 @@ mod tests {
     fn only_a_list_site_sign_in_problem_opens_accounts() {
         let mal = CoreError::provider(Provider::Mal, Some(401), "invalid_token");
         assert_eq!(plain(&mal).fix, Fix::Settings("accounts"));
-        assert_eq!(
-            plain(&mal).said,
-            "MyAnimeList turned down Anibeam's sign-in."
-        );
+        assert_eq!(plain(&mal).said, "MyAnimeList rejected Anibeam's sign-in.");
         let tvmaze = CoreError::provider(Provider::Tvmaze, Some(403), "forbidden");
         assert_eq!(plain(&tvmaze).fix, Fix::Retry);
         let e = CoreError::NotConnected {
@@ -443,7 +440,7 @@ mod tests {
     #[test]
     fn only_no_answer_blames_the_connection() {
         let at = |status| plain(&CoreError::provider(Provider::Tvmaze, status, "x"));
-        assert_eq!(at(None).said, "TVmaze did not answer.");
+        assert_eq!(at(None).said, "TVmaze did not respond.");
         assert!(at(None).next.contains("internet"));
         for status in [Some(400), Some(404), Some(500), Some(503)] {
             assert!(!at(status).next.contains("internet"), "{status:?}");
@@ -461,7 +458,7 @@ mod tests {
     fn a_local_downloads_service_opens_downloads_settings() {
         let e = CoreError::service("qBittorrent", "unauthorized", "403");
         let p = plain(&e);
-        assert_eq!(p.said, "The torrent client turned down the login.");
+        assert_eq!(p.said, "The torrent client rejected the login.");
         assert_eq!(p.fix.key(), "settings:downloads");
     }
 
@@ -481,7 +478,7 @@ mod tests {
     fn a_remote_source_that_times_out_is_not_something_to_start() {
         let e = CoreError::service("Some Feed", "unreachable", "timed out");
         let p = plain(&e);
-        assert_eq!(p.said, "Some Feed did not answer.");
+        assert_eq!(p.said, "Some Feed did not respond.");
         assert!(!p.next.contains("running"), "{}", p.next);
         assert_eq!(p.fix, Fix::Retry);
     }

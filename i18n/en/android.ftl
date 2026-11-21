@@ -62,28 +62,28 @@ lang-name-zh-CN = Chinese (Simplified)
 ## Onboarding
 
 onb-welcome-title = Anibeam
-onb-welcome-note = Your anime on this phone. Find a show, see who has it, download it, and keep your lists in step.
+onb-welcome-note = Your anime on this phone. Find shows, download episodes, and keep your lists in sync.
 onb-language-title = Language
-onb-language-note = Anibeam speaks your phone's language unless you pick another. You can change it later in More.
+onb-language-note = Anibeam uses your phone's language unless you pick another. You can change it later in More.
 onb-lists-title = Your lists
 onb-lists-note = Sign in so what you watch here counts on AniList or MyAnimeList. You can do this later in More.
 onb-wifi-title = Wi-Fi only
 onb-wifi-note = Episodes are big. Anibeam downloads on Wi-Fi unless you say otherwise.
 onb-storage-title = Storage
-onb-storage-note = A cap on how much Anibeam may download. It reserves nothing: the space stays free until episodes fill it.
+onb-storage-note = Sets a limit on how much Anibeam can download. No space is reserved upfront: storage stays free until episodes are downloaded.
 onb-notify-title = Notifications
 onb-notify-note = While episodes download, a notification shows how far along they are, and another says when one is ready to watch. Downloads run either way.
-onb-sites-title = Search sites
-onb-sites-note = Anibeam comes with nothing to search. A repo is a signed list of sites to search. Paste a repo's address, check its key, then install the sites you want. You can do this later in More.
+onb-sites-title = Source lists
+onb-sites-note = Anibeam ships with no download sources. A source list is a signed catalog of sites to search. Paste its address, check its key, and install the sources you want. You can do this later in More.
 # The last step: which computer's Anibeam the phone reaches, if any.
 onb-computer-title = Your computer
-onb-computer-note = Anibeam on a computer can share its library with this phone over Tailscale: its shows appear in Library and their episodes play here. Type its Tailscale name and port, then Test. No computer? Leave it empty and start; More has it later.
+onb-computer-note = Anibeam on a computer can share its library with this phone over Tailscale so its shows appear in Library and play here. Enter its Tailscale name and port, then tap Test. No computer? Leave it blank and continue; you can set this up later in More.
 onb-wifi-only = Only on Wi-Fi
-onb-wifi-on = On. Mobile data asks first.
+onb-wifi-on = On. Anibeam asks before using mobile data.
 onb-wifi-off = Off. Downloads use mobile data too.
 onb-storage-caption = 18 GB is about 12 episodes. Slide it anywhere up to the phone's whole storage.
 onb-use-cap = Use this cap
-onb-cap-on = On. At { $cap }, Anibeam downloads nothing more until you delete episodes.
+onb-cap-on = On. At { $cap }, Anibeam stops downloading until you delete episodes.
 onb-cap-off = Off. Anibeam downloads until the phone is full.
 onb-start = Start
 onb-continue = Continue
@@ -91,7 +91,7 @@ onb-back = Back
 
 ## Appearance
 
-look-colours = Colours
+look-colours = Colors
 look-mode = Mode
 look-dark = Dark
 look-light = Light
@@ -110,7 +110,7 @@ look-size-normal = Normal
 look-size-large = Large
 look-size-larger = Larger
 look-size-largest = Largest
-look-text-size-note = How big the words are everywhere in Anibeam, on top of your phone's own size.
+look-text-size-note = Text size across Anibeam, scaled on top of your phone's system setting.
 
 ## The window: tabs and the sheets over every page
 
@@ -127,7 +127,7 @@ app-mobile-use = Use mobile data too
 # Above a list of releases of one episode.
 app-versions-note = The same episode from { $count } releases. Pick the one to play.
 # A release's name, on the button for the one playing now.
-app-versions-plays-now = { $release }, plays now
+app-versions-plays-now = { $release }, playing now
 app-menu-get = Get episodes
 app-menu-delete = Delete episodes
 
@@ -141,7 +141,7 @@ more-search-hits = { $count ->
    *[other] { $count } settings
 }
 more-search-tap = Tap one to go there
-more-search-hint = Try a plainer word: storage, Wi-Fi, tracker, site, computer.
+more-search-hint = Try keywords like storage, Wi-Fi, tracker, site, or computer.
 more-accounts = Accounts
 more-streaming = Streaming
 more-subtitles = Subtitles
@@ -165,28 +165,28 @@ more-stream-status-auto = Auto, 720p on mobile data or a relay
 more-stream-status-original = The original file, every time
 # A quality such as 1080p.
 more-stream-status-converted = Converted to { $quality }
-more-sites-status-none = No repo yet
+more-sites-status-none = No source list yet
 more-sites-status-on = { $sites ->
-    [one] 1 site on
-   *[other] { $sites } sites on
+    [one] 1 source on
+   *[other] { $sites } sources on
 }
 more-sites-status-on-from = { $sites ->
-    [one] 1 site on
-   *[other] { $sites } sites on
+    [one] 1 source on
+   *[other] { $sites } sources on
 }, { $repos ->
-    [one] from 1 repo
-   *[other] from { $repos } repos
+    [one] from 1 list
+   *[other] from { $repos } lists
 }
 more-conn-status-unchecked = Not checked yet
-more-conn-status-ok = Every step went through
+more-conn-status-ok = All checks passed
 more-conn-status-failed = { $total ->
-    *[other] { $failed } of { $total } steps failed
+    *[other] { $failed } of { $total } checks failed
 }
 more-computer-status-none = Not connected yet
 more-icon-default = Default
 more-icon-dark = Dark
 more-icon-line = Line art
-more-subs-status = Size, place, font, colours and box
+more-subs-status = Size, position, font, colors, and box
 more-data-status = Back up, restore, image cache
 more-activity-status = What Anibeam did, newest first
 more-look-status-phone = Follows the phone
@@ -199,7 +199,7 @@ more-stats-status-empty = A year of watching
 
 ## More: the sections' own settings
 
-more-accounts-note = What you watch here marks your lists, and progress from them shows on your shows.
+more-accounts-note = Episodes you watch here update your lists, and your list progress shows up in your library.
 more-storage = Storage
 more-storage-capped = Capped at { $cap }
 more-storage-no-cap = No cap
@@ -209,37 +209,37 @@ more-storage-used = used by episodes
 more-storage-cap-caption = cap
 more-storage-free = free on the phone
 more-set-storage-cap = Storage cap
-more-set-rolling = Keep the next few ready
+more-set-rolling = Rolling downloads
 more-roll-note-over = { $count ->
     [one] Over { $count } episode
    *[other] Over { $count } episodes
 }
 more-roll-note-asked = When asked
-more-roll-big = For long shows
+more-roll-big = Auto-enable for long shows
 more-roll-big-help = { $count ->
-    [one] Anything over { $count } episode downloads a few at a time by itself. Its card in Downloads can still get everything at once.
-   *[other] Anything over { $count } episodes downloads a few at a time by itself. Its card in Downloads can still get everything at once.
+    [one] Anything over { $count } episode downloads a few at a time automatically. You can still download everything at once from Downloads.
+   *[other] Anything over { $count } episodes downloads a few at a time automatically. You can still download everything at once from Downloads.
 }
 more-roll-ahead = Episodes ahead
 more-roll-ahead-help = How many stay downloaded past the one you are on. 12 is about a season.
-more-roll-over = Long means over
+more-roll-over = Roll shows longer than
 more-roll-over-help = Downloads with more episodes than this get a few at a time.
 more-roll-watched = Watched episodes
 more-roll-delete = Delete
 more-roll-keep-all = Keep all
-more-roll-delete-help = Deleted once you are further along, so the phone only holds what is left to watch.
+more-roll-delete-help = Deleted automatically once you move ahead, keeping only upcoming episodes on your phone.
 more-roll-keep-all-help = Every file stays on the phone after you watch it.
-more-roll-behind = Keep behind
+more-roll-behind = Watched episodes to keep
 more-roll-behind-help = { $count ->
     [0] Finishing an episode deletes the one before it.
    *[other] Watched episodes kept behind the one you just finished. With { $count }, finishing episode { $episode } deletes episode 1.
 }
-more-storage-cap-on = At { $cap }, nothing more downloads until you delete episodes.
+more-storage-cap-on = At { $cap }, downloads pause until you delete episodes.
 more-storage-cap-off = Off: Anibeam downloads until the phone is full.
 more-network = Network
 more-network-wifi = Wi-Fi only
 more-network-mobile = Wi-Fi and mobile data
-more-wifi-on = On. Downloads wait for Wi-Fi; mobile data asks first.
+more-wifi-on = On. Downloads wait for Wi-Fi, and Anibeam asks before using mobile data.
 more-set-stream-quality = Stream quality
 more-stream-question = How an episode from your computer plays here.
 more-stream-auto-note = Auto plays the file as it is on Wi-Fi, and converted to 720p on mobile data or when Tailscale reaches your computer through a relay.
@@ -248,7 +248,7 @@ more-stream-converted-note = Converted on your computer to { $quality }. Uses le
 more-set-feeds = Your own feeds
 more-feeds-note = Searched before the sites
 more-set-check = Check the connection
-more-check-note = Tests each step between this phone and the search sites: finding them, reaching them, and a secure connection.
+more-check-note = Tests each step between this phone and your download sources: DNS lookup, connection, and HTTPS.
 more-check-copy = Copy the results
 more-set-computer = Your computer's Anibeam
 # my-computer stands for a computer's name; translate it like a placeholder. The numbers are an address.
@@ -256,10 +256,10 @@ more-computer-note = Its library shows in Library, and its episodes play here. A
 more-computer-placeholder = my-computer:8790
 more-subs-note = What every episode on this phone starts with. One streamed from your computer starts with that computer's settings.
 more-icon-note = The icon on your home screen and in the app drawer.
-more-icon-line-note = Line art takes your wallpaper's colours, like your other Material You icons.
+more-icon-line-note = Line art adopts your wallpaper colors, like other Material You icons.
 more-icon-moved-note = Some launchers take the icon off the home screen when it changes. It stays in the app drawer; drag it back from there.
 more-set-whats-new = What's new
-more-set-onboarding = Set up again
+more-set-onboarding = Run setup again
 # A newer version of the app is out, on its row in More's About, beside the Download button.
 more-update-out = Anibeam { $version } is out
 # The button beside it, which opens the new version's download in the browser.
@@ -326,7 +326,7 @@ airing-other-season = Other
 airing-hidden = { $count ->
     *[other] { $count } hidden as not interested
 }
-airing-plan-needs-tracker = Plan to watch needs AniList or MAL. Sign in under More, Accounts.
+airing-plan-needs-tracker = Plan to watch requires AniList or MAL. Sign in under More > Accounts.
 airing-plan-failed = Plan to watch did not go through: { $error }
 # A poster's flag: where the show is on the person's list.
 list-watching = Watching
@@ -335,8 +335,8 @@ list-completed = Completed
 list-paused = On hold
 list-dropped = Dropped
 list-repeating = Rewatching
-more-check-all-ok = Every step went through.
-more-check-failed = { $failed } of { $total } steps failed. A screenshot of this list says where.
+more-check-all-ok = All checks passed.
+more-check-failed = { $failed } of { $total } checks failed. A screenshot of this list shows where.
 # A step of the connection check and how long it took.
 more-check-row = { $step }  { $ms } ms
 more-check-copied = Copied. Paste it in a message.
@@ -506,8 +506,8 @@ phone-series-episodes = Episodes
 series-delete-episodes = Delete episodes
 series-delete-tap = Tap the episodes to delete.
 phone-series-delete-picked = { $count ->
-    [one] { $count } episode picked.
-   *[other] { $count } episodes picked.
+    [one] { $count } episode selected.
+   *[other] { $count } episodes selected.
 }
 series-delete-note = Their files are deleted from this phone. What you watched stays tracked.
 series-delete-button = { $count ->
@@ -542,8 +542,8 @@ phone-not-watched = Not watched yet
 phone-progress = { $watched } of { $total } watched, { $count } on this phone
 phone-on-this-phone = { $count } on this phone
 # The main button of a show: { $n } is an episode number.
-phone-play-film = Play the film
-phone-resume-film = Resume the film
+phone-play-film = Play movie
+phone-resume-film = Resume movie
 phone-play-episode = Play episode { $n }
 phone-resume-episode = Resume episode { $n }
 # Used for an upcoming episode whose date is a guess, { $date } is "3 Nov".
@@ -558,7 +558,7 @@ show-status-paused = On hold
 show-status-dropped = Dropped
 show-status-repeating = Rewatching
 # A button for a list the show is on already. { $label } is a status above.
-show-status-now = { $label }, now
+show-status-now = { $label } (current)
 # The chip that opens the list sheet when the show is on no list.
 phone-show-add-to-list = Add to a list
 # The chip that opens the score sheet. { $score } is "8.5".
@@ -638,7 +638,7 @@ show-format-tv-short = TV short
 show-format-ova = OVA
 show-format-ona = ONA
 show-format-special = Special
-show-format-film = Film
+show-format-film = Movie
 show-entry-get = Get episodes
 show-entry-open-anilist = Open on AniList
 # The sheet's second line: { $line } is "Sequel, TV, 2024", { $status } a list status.
@@ -704,7 +704,7 @@ move-title = Move your list to { $site }
 # { $list } is "Watching, score 8.0".
 move-here = On this phone: { $list }
 move-there = On { $site } now: { $list }
-move-later-hint = Later: More, Accounts
+move-later-hint = Later: More > Accounts
 move-not-now = Not now
 move-nothing = Nothing
 move-not-on-list = Not on your list
@@ -733,8 +733,8 @@ move-moved = { $count ->
    *[other] Moved { $count } shows to { $site }
 }
 move-failed = { $count ->
-    [one] { $site } did not take { $count } show; see the activity log
-   *[other] { $site } did not take { $count } shows; see the activity log
+    [one] { $site } rejected { $count } show; see the activity log
+   *[other] { $site } rejected { $count } shows; see the activity log
 }
 
 ## Downloads: find (search, shows, sources, releases)
@@ -756,9 +756,9 @@ find-lens-downloaded = Downloaded
 find-lens-with-count = { $lens } { $count }
 find-what-to-get = What to get
 find-lens-list-line = Watching and Planning on your list. Open one to get its episodes.
-find-lens-gaps-line = Aired episodes that are not on this phone. Open a show to see who has them.
+find-lens-gaps-line = Aired episodes not on this phone. Open a show to search for them.
 find-lens-airing-line = New episodes still to come, the soonest first.
-find-lens-following-line = The subscriptions: new episodes download by themselves. Open one to stop it.
+find-lens-following-line = Subscriptions: new episodes download automatically. Open one to stop following.
 find-lens-downloaded-line = What this phone downloaded, a show at a time.
 
 # The line under a lens when it has nothing to show.
@@ -768,7 +768,7 @@ find-lens-following-empty = No subscriptions yet. Open a show and turn on Follow
 find-lens-downloaded-empty = Nothing downloaded yet.
 find-list-empty = Nothing on your list yet. Search a show above and add it.
 find-list-reading = Reading your list...
-find-list-signed-out = Sign in to AniList under More, Accounts, and your list shows up here.
+find-list-signed-out = Sign in to AniList under More > Accounts to see your list here.
 # { $error } is the reason the core gave.
 find-list-failed = Your list could not be read: { $error }
 
@@ -795,19 +795,19 @@ find-list-status-watching = On your list: Watching
 find-list-status-already = Already on your list
 find-going-planning = { $title } is going on Planning.
 find-already-listed = { $title } is already on your list.
-find-plan-needs-tracker = Adding to your list needs AniList or MAL. Sign in under More, Accounts.
+find-plan-needs-tracker = Adding to your list requires AniList or MAL. Sign in under More > Accounts.
 find-plan-failed = Not added to your list: { $error }
 find-show-gone = That show is no longer in the library on this phone.
 
 ## Shows as you type
 
 find-shows = Shows
-find-suggesting = Asking AniList...
-find-suggest-tap = Tap one to see who has it. Return searches release names.
-find-suggest-none = No show by that name. Return searches release names instead.
-find-suggest-hint = Shows come up as you type. Return searches release names.
+find-suggesting = Searching AniList...
+find-suggest-tap = Tap a show to search sources. Press Return to search release names.
+find-suggest-none = No show by that name. Press Return to search release names instead.
+find-suggest-hint = Shows appear as you type. Press Return to search release names.
 # { $error } is why the lookup failed.
-find-suggest-failed = AniList could not be asked: { $error }
+find-suggest-failed = Could not reach AniList: { $error }
 find-library-line = In your library
 find-library-line-none = In your library, none of { $total } on this phone
 find-library-line-some = In your library, { $here } of { $total } on this phone
@@ -854,23 +854,23 @@ find-stop-failed = Stopping did not finish: { $error }
 find-where = Where to get it
 find-where-pick = Pick a source to see what it has.
 find-where-nothing = Nothing downloads until you say so.
-find-source-idle = Tap to ask
+find-source-idle = Tap to search
 # { $name } is another name for the show being tried.
 find-source-trying = Trying { $name }
 find-source-searching = Searching
-find-source-silent = Not answering
-find-no-sites-title = No search sites yet
-find-no-sites-body = Add a repo of search sites, or a feed of your own, in More.
+find-source-silent = Not responding
+find-no-sites-title = No download sources yet
+find-no-sites-body = Add a source list or a custom feed in More.
 find-open-more = Open More
 find-pick-source-title = Pick a source
-find-pick-source-body = Its releases show up here as a grid, an episode to a cube.
+find-pick-source-body = Releases appear here in a grid, one square per episode.
 # { $count } is a number of releases.
 find-releases = { $count ->
     [one] { $count } release
    *[other] { $count } releases
 }
 # { $host } is the source's name.
-find-unreachable = { $host } could not be reached. Some networks and countries block release sites; Anibeam already gets past blocks on names, so this one blocks the site itself, or the site is down. A VPN gets past it, or try another source.
+find-unreachable = Could not reach { $host }. Some networks block release sites; Anibeam already bypasses DNS blocks, so this site may be blocked directly or down. Try a VPN or another source.
 find-the-source = The source
 
 # What a source has: the grid of releases.
@@ -888,28 +888,28 @@ find-on-computer = On { $name }
 
 # The plan under the grid.
 find-plan-no-releases = This source has no releases of this show.
-find-plan-nothing-picked = Nothing picked: tap a row or its cubes.
+find-plan-nothing-picked = Nothing selected: tap a row or individual episodes.
 # { $episodes } such as "episodes 1-3", { $groups } the release groups, { $size } the total size.
 find-plan-line = { $episodes } from { $groups }, { $size }
 find-plan-skipped = { $count ->
-    [one] { $count } episode you already have is left out. Turn on Replace to get it again.
-   *[other] Episodes you already have are left out. Turn on Replace to get them again.
+    [one] { $count } episode you already have is skipped. Turn on Replace to download it again.
+   *[other] Episodes you already have are skipped. Turn on Replace to download them again.
 }
 # { $query } is the search that will be followed.
-find-plan-follow-note = New episodes from { $query } will download by themselves.
+find-plan-follow-note = New episodes from { $query } will download automatically.
 find-plan-on-desk = They download on { $name }, into its library.
 find-follow-new = Follow new episodes
-find-follow-new-note = They download by themselves as they air.
-find-roll-title = Keep the next few ready
+find-follow-new-note = They download automatically as they air.
+find-roll-title = Rolling downloads
 find-roll-on = { $count ->
-    [one] { $count } episode downloads now, and each one you finish starts the next.
-   *[other] { $count } episodes download now, and each one you finish starts the next.
+    [one] { $count } episode downloads now, and finishing it starts the next.
+   *[other] { $count } episodes download now, and finishing one starts the next.
 }
 find-roll-on-delete = { $count ->
-    [one] { $count } episode downloads now, and each one you finish starts the next. Watched ones leave the phone.
-   *[other] { $count } episodes download now, and each one you finish starts the next. Watched ones leave the phone.
+    [one] { $count } episode downloads now, and finishing it starts the next. Watched episodes are deleted automatically.
+   *[other] { $count } episodes download now, and finishing one starts the next. Watched episodes are deleted automatically.
 }
-find-roll-off = Every picked episode downloads at once.
+find-roll-off = Every selected episode downloads at once.
 find-replace = Replace what you have
 find-replace-note = Downloads the picked episodes again over the ones on this phone.
 # The main button. { $mode } is replace, subscribe, both or plain; { $count } the picked episodes.
@@ -929,7 +929,7 @@ find-this-phone = This phone
 find-your-computer = Your computer
 # { $name } is the connected computer. "This phone" is the other choice in Download to.
 find-desk-asking = Asking { $name }...
-find-desk-silent = { $name } does not answer. Pick This phone, or try again when it is on.
+find-desk-silent = { $name } is not responding. Choose This phone, or try again when it is online.
 find-sending-to = Sending to { $name }...
 
 ## The release list
@@ -940,7 +940,7 @@ find-get = Get
 find-get-all = Get all { $count }
 find-subscribe = Subscribe
 find-back-step = Back a step
-find-narrow-placeholder = Narrow, or -word to leave out
+find-narrow-placeholder = Filter, or -word to exclude
 find-best-fit-searches = Best fit searches: { $query }
 find-fact-batch = batch
 find-fact-seeds = { $count } seeds
@@ -983,7 +983,7 @@ find-downloading = { $count ->
 }
 find-not-added = Not added: { $error }
 find-not-subscribed = Not subscribed: { $error }
-find-desk-refused = { $name } did not take it: { $error }
+find-desk-refused = { $name } rejected it: { $error }
 find-desk-not-subscribed = Not subscribed on { $name }: { $error }
 
 ## Player
@@ -1030,7 +1030,7 @@ player-android-only = the player runs on Android only
 ## Player: delays
 
 player-delay-title = Delay
-player-delay-note = Each tap moves it 0.1 s. Until the next file.
+player-delay-note = Each tap shifts by 0.1 s. Resets on the next episode.
 # { $value } is a signed number of seconds, like +0.1 or -0.25.
 phone-player-delay-seconds = { $value } s
 # The notice after a tap on the delay sheet. { $value } is like +0.1 s.
@@ -1087,30 +1087,30 @@ subs-position = Position
 subs-position-helper = 100 sits on the bottom edge. Lower numbers lift the lines up the frame.
 subs-style-title = Style
 subs-styled = Styled subtitles
-subs-styled-as-made = Styled (ASS) files look exactly as their makers set them.
-subs-styled-mine = Your style below goes on every file. Signs and karaoke can break.
-subs-styled-size-only = Styled subtitle files keep their look and take your size. Plain files take your style.
+subs-styled-as-made = Styled (ASS) subtitles display exactly as authored.
+subs-styled-mine = Your style below overrides every file. Signs and karaoke may break.
+subs-styled-size-only = Styled subtitle files keep their look and use your size. Plain files use your style.
 # The three choices of the Styled subtitles switch.
-subs-mode-as-made = As made
+subs-mode-as-made = Original
 subs-mode-size-only = Size only
-subs-mode-mine = Mine
+subs-mode-mine = Override
 subs-font = Font
 subs-font-bad = Type a font name, such as Noto Sans.
 subs-bold = Bold
-subs-colour = Text colour
-subs-colour-bad = Type a colour like #ffcc00.
+subs-colour = Text color
+subs-colour-bad = Type a color like #ffcc00.
 subs-outline = Outline
 subs-outline-bad-width = The width is a number, 0 or more.
-subs-outline-bad-colour = Type the colour like #000000.
-subs-outline-helper = Its width, then its colour.
+subs-outline-bad-colour = Type a color like #000000.
+subs-outline-helper = Its width, then its color.
 subs-shadow = Shadow
 subs-shadow-bad = A number, 0 or more. 0 means no shadow.
 subs-shadow-helper = How far the shadow falls, 0 for none.
 subs-box = Background box
 subs-box-helper = A dark box behind the lines. 0 leaves it out.
 # Heading of the row whose button puts every subtitle setting back.
-subs-reset-title = Start over
-subs-reset-helper = Puts the size, font, colours, outline, box and position back to how they came.
+subs-reset-title = Reset subtitle style
+subs-reset-helper = Resets size, font, colors, outline, box, and position to defaults.
 subs-reset = Reset
 
 ## Streaming
@@ -1120,14 +1120,14 @@ stream-quality-original = Original
 stream-app-starting = The app is still starting
 stream-no-computer = No computer yet. Add yours in More.
 # { $host } is the other device's name. "Stream episodes", "Settings" and "Phone app" are names on its screen.
-stream-off-on-host = Streaming is off on { $host }. Turn on Stream episodes there, under Settings, Phone app.
+stream-off-on-host = Streaming is off on { $host }. Turn on Stream episodes there under Settings > Accounts (Phone app).
 # { $host } is the other device's name, { $version } its Anibeam version.
 stream-cannot-stream = { $host } runs Anibeam { $version }, which cannot stream yet. Update it there.
-stream-no-session = The other device gave no session
+stream-no-session = The other device returned no stream session
 # { $why } is the technical reason, in English.
-stream-answer-unreadable = The answer did not read: { $why }
+stream-answer-unreadable = Could not read the response: { $why }
 # { $name } is the other device's name, { $status } an HTTP status like 502.
-stream-answered-status = { $name } answered { $status }
+stream-answered-status = { $name } returned HTTP { $status }
 
 ## Stats
 
@@ -1190,7 +1190,7 @@ backup-export-helper = One file with your folders, matches and what you have wat
 backup-private = Include private data
 backup-private-helper = Adds AniList and MyAnimeList sign-ins, watch history and preferences. Sign-ins are written as plain text, so keep the file to yourself.
 backup-restore = Restore from a backup
-backup-restore-helper = Reads a backup into this library. What is on disk wins; the file fills in the rest.
+backup-restore-helper = Restores a backup into this library. The backup's matches and settings win; nothing on this phone is deleted.
 backup-done = Backed up. The file is where you saved it.
 backup-not-saved = Not saved. Nothing was written.
 backup-starting = Anibeam is still starting. Try again in a moment.
@@ -1242,13 +1242,13 @@ backup-sum-resume = { $count ->
    *[other] { $count } resume points merged
 }
 backup-sum-accounts = { $count ->
-    [one] { $count } list account brought in
-   *[other] { $count } list accounts brought in
+    [one] { $count } list account imported
+   *[other] { $count } list accounts imported
 }
 # Sentences added after the list when they apply.
 backup-sum-fixes = { $count ->
-    [one] { $count } file takes a fix you made.
-   *[other] { $count } files take a fix you made.
+    [one] Applied saved fixes to { $count } file.
+   *[other] Applied saved fixes to { $count } files.
 }
 backup-sum-missing = { $count ->
     [one] { $count } folder was not found on this phone.
@@ -1269,7 +1269,7 @@ activity-clear-every-line = Clear every line
 # Button on the first line of an opened run of identical lines: closes it again.
 activity-fold = Fold
 activity-no-problems = No problems. Everything worked.
-activity-nothing-yet = Nothing to report yet. What Anibeam does for you shows up here.
+activity-nothing-yet = Nothing to report yet. Anibeam's activity will show up here.
 # The time on a log line, as strftime patterns (see the date patterns above). Today's lines
 # say the time; older ones say the day as well.
 activity-time-today = %H:%M:%S
@@ -1328,26 +1328,26 @@ fmt-bytes-tb = { $value } TB
 
 # { $host } is the computer's name or address.
 client-not-found = { $host } is not a name the phone can find. Is Tailscale connected?
-client-timeout = { $host } did not answer. Is it on, and is Tailscale connected on both?
-client-connect-failed = Could not reach { $host }. Is it on, and is Tailscale connected on both?
-client-refused = { $host } is on, but Anibeam there is closed or not sharing. Open Anibeam on it and switch on Share over Tailscale in Settings, Phone app.
+client-timeout = { $host } did not respond. Is it on, and is Tailscale connected on both devices?
+client-connect-failed = Could not reach { $host }. Is it on, and is Tailscale connected on both devices?
+client-refused = { $host } is on, but Anibeam there is closed or not sharing. Open Anibeam on it and turn on Share over Tailscale in Settings > Accounts.
 client-no-route = No route to { $host }. Is Tailscale connected?
 client-invalid-input = Could not connect to { $host }
 # { $why } is the system's own error text.
 client-unreachable = Could not reach { $host }: { $why }
 client-cannot-find = The phone cannot find { $host }. Is Tailscale connected?
-client-broke-off = The answer from { $host } broke off: { $why }
+client-broke-off = Connection to { $host } was interrupted: { $why }
 # { $status } is an HTTP status such as 404, { $path } the address asked.
-client-answered = { $host } answered { $status } for { $path }
-client-not-anibeam-status = Something answered, but not Anibeam ({ $host } answered { $status } for { $path })
-client-not-anibeam-hello = Something answered, but not Anibeam (its answer is not Anibeam's hello)
+client-answered = { $host } returned HTTP { $status } for { $path }
+client-not-anibeam-status = Something responded, but it is not Anibeam ({ $host } returned HTTP { $status } for { $path })
+client-not-anibeam-hello = Something responded, but it is not Anibeam (unexpected response)
 # { $name } is what the other program calls itself.
-client-not-anibeam-name = Something answered, but not Anibeam (it calls itself { $name })
+client-not-anibeam-name = Something responded, but it is not Anibeam (it identifies as { $name })
 # API numbers: the computer's and this app's.
-client-too-new = The host speaks API { $host_api }; this app reads { $app_api }. Update the app.
-client-snapshot-unreadable = The snapshot did not read: { $why }
-client-probe-unreadable = The file's details did not read: { $why }
-client-peers-unreadable = The list of Anibeams did not read: { $why }
+client-too-new = The host uses API { $host_api }, but this app only supports { $app_api }. Update the app.
+client-snapshot-unreadable = Could not read library snapshot: { $why }
+client-probe-unreadable = Could not read file details: { $why }
+client-peers-unreadable = Could not read device list: { $why }
 sync-save-failed = Could not save the snapshot: { $why }
 address-https = Your computer's Anibeam answers on plain http over Tailscale; drop the https://.
 address-empty = Type the host's name or address, for example my-computer:8790.
@@ -1381,13 +1381,13 @@ repos-index-placeholder = https://.../index.json
 # Button
 repos-add-site = Add site
 # Heading, and the name the settings search finds this part by.
-repos-add-title = Add a repo
-repos-add-note = Paste the address of a repo's index. Anibeam checks its signature and shows you its key before anything is saved.
+repos-add-title = Add a source list
+repos-add-note = Paste the address of a source list index. Anibeam verifies its signature and shows you its key before saving anything.
 # Button
-repos-add-repo = Add repo
-repos-trust-title = Trust this repo?
+repos-add-repo = Add source list
+repos-trust-title = Trust this source list?
 repos-fingerprint = Key fingerprint
-repos-trust-warning = Its sites decide where your searches go. Trust a repo only from someone you trust.
+repos-trust-warning = Its sources decide where your searches go. Only trust source lists from people you trust.
 # Button
 repos-trust = Trust
 # Button that opens a page. { $url } is its address.
@@ -1400,23 +1400,23 @@ repos-update = Update
 repos-edit-note = A key or token typed into the address is moved to this phone's secret store.
 repos-edit-note-keys = Leave each { "{key}" } in the address as it is; its value is kept on this phone.
 # Button. { $keys } is what the source asks for, such as "API key".
-repos-change-its = Change its { $keys }
+repos-change-its = Change { $keys }
 # Button, and the name the settings search finds it by.
-repos-check-repos = Check repos for new sites
+repos-check-repos = Check source lists for updates
 # Button, and the name the settings search finds it by.
-repos-check-sites = Check the sites
+repos-check-sites = Check sources
 # Only the settings search uses this name, to light up the part for adding a site by hand.
 repos-add-site-label = Add a site by hand
 # { $labels } is what the endpoint asks for, such as "API key, token".
 repos-needs-before-search = Needs its { $labels } before it searches
-repos-no-longer-offered = No longer offered by its repo
+repos-no-longer-offered = No longer offered by its source list
 # { $host } is the address of a site.
 repos-update-host = The update sends requests to { $host }
 repos-tap-change-custom = Tap to change its name or address
 # { $labels } is what the endpoint asks for, such as "API key, token".
 repos-tap-change-keys = Tap to change its { $labels }
 # A line of small print under an endpoint's name. { $host } is its address and { $kind } its type, such as rss.
-repos-line-custom = { $host }  { $kind }  added by you
+repos-line-custom = { $host }  { $kind }  added manually
 # Button. { $version } is a number.
 repos-update-to = Update to v{ $version }
 # Button
@@ -1425,12 +1425,12 @@ repos-add-its-value = Add its value
 repos-asks-for = Asks for your { $labels }
 # Under a repo about to be trusted.
 repos-preview-line = { $count ->
-    [one] { $count } site, signed
-   *[other] { $count } sites, signed
+    [one] { $count } source, signed
+   *[other] { $count } sources, signed
 }
 repos-preview-trusted = { $count ->
-    [one] { $count } site, signed, already trusted
-   *[other] { $count } sites, signed, already trusted
+    [one] { $count } source, signed, already trusted
+   *[other] { $count } sources, signed, already trusted
 }
 repos-ask-kept-empty = Kept on this phone only. A field left empty keeps what is stored.
 repos-ask-kept-never = Kept on this phone only, never in the library or an export.
@@ -1439,9 +1439,9 @@ repos-ask-new-host = The new version sends this to { $host }, so it asks again.
 repos-ask-new = The new version asks for these again.
 repos-type-value = Type a value first.
 # { $ms } is a number of milliseconds.
-repos-health-answered = Answered in { $ms } ms
+repos-health-answered = Responded in { $ms } ms
 # { $step } is what was tried, { $detail } why it failed.
-repos-health-failed = Did not answer. { $step }: { $detail }
+repos-health-failed = Did not respond. { $step }: { $detail }
 
 ## Downloads
 
@@ -1464,8 +1464,8 @@ dl-roll-line = { $watched ->
 dl-roll-more = Get { $count } more
 dl-roll-all = Get all
 dl-roll-all-ask = { $count ->
-    [one] Download the last episode left?
-   *[other] Download all { $count } episodes left?
+    [one] Download the remaining episode?
+   *[other] Download all { $count } remaining episodes?
 }
 dl-roll-keep = Keep rolling
 dl-roll-ahead = { $count } ahead
@@ -1532,9 +1532,9 @@ disk-delete-watched-title = Delete { $count ->
    *[other] { $count } watched episodes
 }, { $size }?
 # { $names } is a list of show names.
-disk-delete-finished-body = { $names }. Only shows the provider says have finished, every episode watched; a show still airing, or whose end is a guess, stays. Every file of them is deleted from this phone, extras too. Their downloads leave too, so they can be downloaded again.
-disk-delete-watched-body = Every episode you have watched, in every show. Episodes not watched yet and extras stay. The files and their subtitles are deleted from this phone for good.
-disk-no-finished = No finished show is watched all the way through
+disk-delete-finished-body = { $names }. Includes only shows marked as finished with every episode watched; airing or unconfirmed shows are kept. All of their files (including extras) will be deleted from this phone, and their downloads will be removed so they can be downloaded again.
+disk-delete-watched-body = Every episode you have watched across all shows. Unwatched episodes and extras are kept. Files and subtitles are permanently deleted from this phone.
+disk-no-finished = No finished shows have been completely watched
 disk-nothing-watched = Nothing watched is on this phone
 disk-deleted = Deleted { $count ->
     [one] { $count } episode
@@ -1707,8 +1707,8 @@ dates-summary-record =
     }
 dates-summary-record-unnamed =
     { $count ->
-        [one] { $count } dated by the record
-       *[other] { $count } dated by the record
+        [one] { $count } from metadata
+       *[other] { $count } from metadata
     }
 dates-summary-set =
     { $count ->
@@ -1730,8 +1730,8 @@ dates-told-season-ends = Season { $season } ends at episode { $episode }
 dates-told-by-you = { $told }, set by you
 dates-told-gave-way =
     { $count ->
-        [one] You set { $count } episode; that no longer applies
-       *[other] You set { $count } episodes; that no longer applies
+        [one] You set { $count } episode, which no longer applies
+       *[other] You set { $count } episodes, which no longer applies
     }
 
 ## The series page
@@ -1751,7 +1751,7 @@ series-runtime-each = { $runtime } each
 series-status-airing = Airing
 series-status-finished = Finished
 series-status-upcoming = Upcoming
-series-status-cancelled = Cancelled
+series-status-cancelled = Canceled
 series-status-hiatus = On hiatus
 # The scores line under the facts.
 series-average-score = Average score { $score }
@@ -1778,7 +1778,7 @@ mark-menu-cancel = Cancel
 mark-watched-up-to = Watched up to Episode { $episode }
 mark-unwatched-from = Unwatched from Episode { $episode }
 # A mark a tracker's show could not take, with no account signed in; $reason is the core's.
-mark-not-connected = { $reason } Sign in under More, Accounts.
+mark-not-connected = { $reason } Sign in under More > Accounts.
 # The progress line of a show no tracker counts.
 series-not-tracked = Not tracked
 series-not-tracked-on-phone =

@@ -195,7 +195,7 @@ pub fn join_html(code: &str, room: Option<&RoomView>) -> String {
         format!(
             r#"
 <div class="missed">
-<button class="open" id="copy" type="button">Copy code for Join room</button>
+<button class="open" id="copy" type="button">Copy room code</button>
 </div>
 <a class="open retry" id="open" href="anibeam://room/{code}">Open in Anibeam</a>
 <script>
@@ -366,7 +366,7 @@ mod tests {
     fn the_join_page_falls_back_to_the_code_when_the_app_does_not_open() {
         let html = join_html("K7QM2X", Some(&view("S", Some(1.0), None)));
         assert!(html.contains(r#"<p class="code" id="code">K7QM2X</p>"#));
-        assert!(html.contains(r#"id="copy" type="button">Copy code for Join room</button>"#));
+        assert!(html.contains(r#"id="copy" type="button">Copy room code</button>"#));
         assert!(!html.contains(r#"class="press""#));
         assert!(html.contains("setTimeout"));
         // Only the page going hidden cancels the fallback, never a blur

@@ -703,7 +703,7 @@ mod tests {
         }
         match parse_rss(r#"<error code="900"/>"#, "jackett").unwrap_err() {
             CoreError::Service { message, .. } => {
-                assert_eq!(message, "the indexer answered error 900");
+                assert_eq!(message, "indexer returned error 900");
             }
             other => panic!("{other:?}"),
         }
@@ -865,7 +865,7 @@ mod tests {
             got,
             [
                 ("refused".to_string(), "Invalid API Key".to_string()),
-                ("http_500".to_string(), "the feed answered 500".to_string()),
+                ("http_500".to_string(), "feed returned HTTP 500".to_string()),
             ]
         );
     }

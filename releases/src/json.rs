@@ -495,9 +495,9 @@ mod tests {
         let e = parse(br#"{"error": "bad query", "results": []}"#, &errs, "s").unwrap_err();
         assert!(e.contains("bad query"), "{e}");
         let e = parse(br#"{"error": true}"#, &errs, "s").unwrap_err();
-        assert_eq!(e, "the search answered with an error");
+        assert_eq!(e, "search returned an error");
         let e = parse(br#"{"error": 1}"#, &errs, "s").unwrap_err();
-        assert_eq!(e, "the search answered with an error");
+        assert_eq!(e, "search returned an error");
         assert!(parse(br#"{"error": false, "results": []}"#, &errs, "s").is_ok());
         assert!(parse(br#"{"error": "  ", "results": []}"#, &errs, "s").is_ok());
         assert!(

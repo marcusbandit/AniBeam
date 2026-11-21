@@ -1125,14 +1125,20 @@ pub(crate) mod tests {
             let mut d = jackett();
             d.url = url.into();
             assert!(
-                check(&d).unwrap_err().contains("placeholder in the host"),
+                check(&d)
+                    .unwrap_err()
+                    .contains("placeholder not allowed in the host"),
                 "{url}"
             );
         }
         // Another key as the authority.
         let mut d = jackett();
         d.url = "https://{apikey}/api?q={query}&h={host}".into();
-        assert!(check(&d).unwrap_err().contains("placeholder in the host"));
+        assert!(
+            check(&d)
+                .unwrap_err()
+                .contains("placeholder not allowed in the host")
+        );
         // A secret host field.
         let mut d = jackett();
         d.auth[0].secret = true;

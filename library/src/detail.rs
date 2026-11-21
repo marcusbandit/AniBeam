@@ -753,7 +753,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             fix.text,
-            "The one file here reads as episode 63. It looks like the film."
+            "The one file here reads as episode 63. It looks like the movie."
         );
         assert_eq!(numbers(&fix), vec![(7, 1.0)]);
         // Already episode 1, or a loose film file: nothing to say.
@@ -828,7 +828,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             fix.text,
-            "Episodes 13 to 24 look like this record's 1 to 12, numbered on from an earlier season."
+            "Episodes 13 to 24 look like episodes 1 to 12, continuing numbering from an earlier season."
         );
         assert_eq!(numbers(&fix)[0], (13, 1.0));
         // A gap, a run longer than the count, a TVmaze match or one file in range: no.
