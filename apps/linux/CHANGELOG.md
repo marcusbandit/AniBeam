@@ -26,7 +26,7 @@ We're happy to bring Watch together to Anibeam, along with 13 languages, persona
 - **Recommendations on Home.** Get show suggestions ranked from your own ratings, and open shows outside your library on their own page to grab their episodes.
 - **13 languages.** Pick your language during setup or in Settings > Appearance.
 - **Easier Linux installs.** Official apt (Ubuntu and Debian) and dnf (Fedora) repositories, a one-line installer on anibeam.app, and a much smaller AppImage.
-- **Smoother downloads & setup.** Paste a source list once to turn on its sources, right-click active downloads to open their folder, and open magnet links on Linux or paste them straight into Downloads, matched to a show. Built-in qBittorrent now saves straight into your library folder.
+- **Smoother downloads & setup.** Paste a source list once to turn on its sources, right-click active downloads to open their folder, and open magnet links on Linux or paste them into Downloads search, matched to a show. Built-in qBittorrent now saves straight into your library folder.
 - **Terminal control.** Drive an open Anibeam window from scripts or agents with `anibeam ctl`.
 
 ### Heads up
@@ -35,7 +35,7 @@ Anibeam is now spelled with a lowercase `b` and uses a new app ID, so you may ne
 
 ### Fixes & polish
 
-Fixes for multi-season episode tracking, season-pack folders, season matching and batch episode counts when getting episodes, long-running shows and outages on Jikan, AniList syncing, casting, converted streams, Mac dock icons, keyboard navigation, and narrow-window layouts.
+Fixes for multi-season episode tracking, season-pack folders, season matching and batch episode counts when getting episodes, long-running shows, Jikan outages, AniList syncing, casting, converted streams, Mac dock icons, keyboard navigation, and narrow-window layouts.
 
 ## 2.4.0 · Quality of life · 2026-10-30
 
