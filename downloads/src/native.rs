@@ -346,13 +346,9 @@ pub(super) async fn subscriptions(
 ) -> Result<Vec<SubscriptionRule>, CoreError> {
     let qbt = super::qbt_client(downloads).await?;
     let rules = qbt.rules().await?;
-    let rules: Vec<(String, Value)> = rules
-        .as_object()
-        .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-        .unwrap_or_default();
-    if rules.is_empty() {
+    let Some(rules) = rules.as_object().filter(|m| !m.is_empty()) else {
         return Ok(Vec::new());
-    }
+    };
     let mut counts: HashMap<String, u64> = HashMap::new();
     for t in qbt.torrents().await? {
         *counts.entry(paths::norm(&t.save_path)).or_default() += 1;
@@ -376,7 +372,7 @@ pub(super) async fn subscriptions(
             }
         })
         .collect();
-    out.sort_by_key(|r| r.name.to_lowercase());
+    out.sort_by_cached_key(|r| r.name.to_lowercase());
     if here {
         let folders: Vec<String> = out.iter().map(|r| r.save_path.clone()).collect();
         let found: Vec<u64> = blocking(move || {
@@ -454,9 +450,12 @@ pub(super) async fn remove(
     let qbt = super::qbt_client(downloads).await?;
     let saving = paths::resolve(&downloads.services, &qbt).await?;
     let _one = downloads.rules.lock().await;
-    let plans = plan(&qbt, &unique, torrents, files, here, &saving.save_base).await?;
+    let mut plans = plan(&qbt, &unique, torrents, files, here, &saving.save_base).await?;
     if files {
-        confined(&downloads.services, &plans, &saving, here)?;
+        // The checks walk folders and resolve links, so they run off the runtime
+        let services = downloads.services.clone();
+        plans =
+            blocking(move || confined(&services, &plans, &saving, here).map(|()| plans)).await??;
     }
     if !dry_run {
         execute(&qbt, &plans, torrents, files, here).await?;
@@ -674,53 +673,31 @@ fn only_its_own(p: &Plan) -> bool {
     if own.is_empty() {
         return false;
     }
-    fn videos(dir: &Path, out: &mut Vec<PathBuf>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Ok(meta) = path.symlink_metadata() else {
-                continue;
-            };
-            if meta.is_dir() {
-                videos(&path, out);
-            } else if anibeam_foundation::names::is_video(&path.to_string_lossy()) {
-                out.push(path);
-            }
-        }
-    }
-    let mut found = Vec::new();
-    videos(&folder, &mut found);
-    found
-        .iter()
-        .all(|f| own.iter().any(|o| f == o || f.starts_with(o)))
+    files_under(&folder)
+        .map(|e| e.into_path())
+        .filter(|f| anibeam_foundation::names::is_video(&f.to_string_lossy()))
+        .all(|f| own.iter().any(|o| f == *o || f.starts_with(o)))
 }
 
-/// The files under `dir` and their bytes, links not followed; nothing for
-/// a folder that is not there.
+/// Everything under `dir` that is not a folder, links not followed; nothing
+/// for a folder that is not there.
+fn files_under(dir: &Path) -> impl Iterator<Item = walkdir::DirEntry> {
+    walkdir::WalkDir::new(dir)
+        .min_depth(1)
+        .into_iter()
+        .flatten()
+        .filter(|e| !e.file_type().is_dir())
+}
+
+/// The files under `dir` and their bytes.
 fn walk(dir: &Path) -> (u64, u64) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return (0, 0);
-    };
-    let mut total = (0, 0);
-    for entry in entries.flatten() {
-        let Ok(meta) = entry.path().symlink_metadata() else {
-            continue;
-        };
-        if meta.is_dir() {
-            let (n, bytes) = walk(&entry.path());
-            total.0 += n;
-            total.1 += bytes;
-        } else {
-            total.0 += 1;
-            total.1 += meta.len();
-        }
-    }
-    total
+    files_under(dir).fold((0, 0), |(n, bytes), e| {
+        (n + 1, bytes + e.metadata().map_or(0, |m| m.len()))
+    })
 }
 
-async fn blocking<T: Send + 'static>(
+/// `f` on a blocking thread, a panic in it reported as an internal error.
+pub(crate) async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, CoreError> {
     tokio::task::spawn_blocking(f)

@@ -1,7 +1,7 @@
 //! Starting the service behind an on-demand endpoint: Jackett for a site behind a search proxy.
 //!
 //! anirss boots such a service on its own whenever a search reaches it, and
-//! the search guard in `mod.rs` keeps that from happening behind the user's
+//! the search guard in `lib.rs` keeps that from happening behind the user's
 //! back. This is the other door: the shell asks, after the user confirmed,
 //! and the core runs the start command itself, waits for the endpoint's
 //! ready URL to answer and reports what happened.
@@ -252,17 +252,21 @@ mod tests {
         dir.path().join("logs").join("start.log")
     }
 
+    /// How long a test that expects the service to come up gives it.
+    const WAIT: Duration = Duration::from_secs(3);
+
     async fn run(
         http: &FakeHttp,
         command: &str,
         ready: &str,
         dir: &tempfile::TempDir,
+        timeout: Duration,
     ) -> Result<(), StartFailure> {
         start(
             http,
             command,
             ready,
-            Duration::from_secs(3),
+            timeout,
             Duration::from_millis(20),
             &log(dir),
             &crate::home::AnirssHome::Shared,
@@ -271,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn the_command_is_the_setting_then_anirss_then_jackett() {
+    fn the_command_is_anirss_then_the_setting_then_jackett() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = dir.path().join("config.toml");
         std::fs::write(
@@ -316,7 +320,7 @@ mod tests {
         let http = FakeHttp::new();
         http.push(200, "ok");
         // A command that would fail if it ran
-        run(&http, "exit 9", READY, &dir).await.unwrap();
+        run(&http, "exit 9", READY, &dir, WAIT).await.unwrap();
         assert!(!log(&dir).exists());
     }
 
@@ -329,7 +333,9 @@ mod tests {
         http.fail_next("refused");
         http.fail_next("refused");
         http.push(200, "ok");
-        run(&http, "echo starting", READY, &dir).await.unwrap();
+        run(&http, "echo starting", READY, &dir, WAIT)
+            .await
+            .unwrap();
         assert_eq!(http.requests().len(), 4);
         // The fake answers on its own schedule, so the echo can land just after the
         // start returns; give the child a moment rather than racing it.
@@ -352,7 +358,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let http = FakeHttp::new();
         http.fail_next("refused");
-        let r = run(&http, "anibeam-no-such-jackett --port 9117", READY, &dir).await;
+        let r = run(
+            &http,
+            "anibeam-no-such-jackett --port 9117",
+            READY,
+            &dir,
+            WAIT,
+        )
+        .await;
         assert_eq!(
             r,
             Err(StartFailure::Missing("anibeam-no-such-jackett".to_string()))
@@ -374,6 +387,7 @@ mod tests {
             "echo 'no pod with name anirss-proxied found' >&2; exit 125",
             READY,
             &dir,
+            WAIT,
         )
         .await;
         assert_eq!(
@@ -388,16 +402,7 @@ mod tests {
     async fn a_service_that_never_answers_times_out() {
         let dir = tempfile::tempdir().unwrap();
         let http = FakeHttp::new();
-        let r = start(
-            http.as_ref(),
-            "true",
-            READY,
-            Duration::from_millis(200),
-            Duration::from_millis(20),
-            &log(&dir),
-            &crate::home::AnirssHome::Shared,
-        )
-        .await;
+        let r = run(&http, "true", READY, &dir, Duration::from_millis(200)).await;
         assert_eq!(r, Err(StartFailure::Timeout(0)));
         assert_eq!(
             explain("proxied", &StartFailure::Timeout(60)).1,
@@ -409,7 +414,7 @@ mod tests {
     async fn with_no_ready_url_a_clean_exit_is_enough() {
         let dir = tempfile::tempdir().unwrap();
         let http = FakeHttp::new();
-        run(&http, "true", "", &dir).await.unwrap();
+        run(&http, "true", "", &dir, WAIT).await.unwrap();
         assert!(http.requests().is_empty());
     }
 }

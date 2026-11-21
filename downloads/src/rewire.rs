@@ -176,9 +176,11 @@ pub fn feed_shared(rules: &Value, except: &str, feed_url: &str) -> bool {
 }
 
 /// The search a feed URL carries: the `q` parameter (torznab, filtered-rss), else
-/// `s` (show feeds), as (name, decoded value).
+/// `s` (show feeds), as (name, decoded value). A `#fragment` after the query is
+/// not part of it.
 pub fn search_param(url: &str) -> Option<(String, String)> {
     let query = url.split_once('?')?.1;
+    let query = query.split('#').next().unwrap_or(query);
     let pairs: Vec<(&str, &str)> = query.split('&').filter_map(|p| p.split_once('=')).collect();
     for want in ["q", "s"] {
         if let Some((k, v)) = pairs.iter().find(|(k, _)| *k == want) {
@@ -319,6 +321,18 @@ mod tests {
         assert_eq!(
             positive_fields("Helluva S03 -HEVC \"AMZN WEB\""),
             vec!["Helluva", "S03", "\"AMZN WEB\""]
+        );
+    }
+
+    #[test]
+    fn a_feeds_search_leaves_its_fragment_out() {
+        assert_eq!(
+            search_param("https://t.example/?q=Frieren#top"),
+            Some(("q".to_string(), "Frieren".to_string()))
+        );
+        assert_eq!(
+            search_param("https://t.example/rss?s=Frieren+1080p#latest"),
+            Some(("s".to_string(), "Frieren 1080p".to_string()))
         );
     }
 }
