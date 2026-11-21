@@ -23,7 +23,7 @@ pub fn adopt() {
 /// The old id, and the folder name the old builds saved screenshots in.
 #[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
 const OLD_ID: &str = concat!("com.marcusrosado.Ani", "Beam");
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
 const OLD_FOLDER: &str = concat!("Ani", "Beam");
 
 /// `name` under the new id, when it is one of the old id's files: the id itself or the id
@@ -34,12 +34,35 @@ fn renamed(name: &str) -> Option<String> {
     (rest.is_empty() || rest.starts_with('.')).then(|| format!("{}{rest}", crate::APP_ID))
 }
 
+/// A desktop entry under the new id: the id replaced everywhere, and the name the launcher
+/// shows (`Name=`, `Comment=`, `GenericName=`, `X-GNOME-FullName=`, translations too) spelled
+/// Anibeam. Other lines keep their words, so an `Exec=` path into a folder of the old name
+/// still runs.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn respelled_entry(text: &str) -> String {
+    text.replace(OLD_ID, crate::APP_ID)
+        .split_inclusive('\n')
+        .map(|line| {
+            let key = line.split_once('=').map(|(k, _)| k.trim());
+            let key = key.map(|k| k.split_once('[').map_or(k, |(k, _)| k).trim_end());
+            if matches!(
+                key,
+                Some("Name" | "Comment" | "GenericName" | "X-GNOME-FullName")
+            ) {
+                line.replace(OLD_FOLDER, "Anibeam")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect()
+}
+
 #[cfg(target_os = "linux")]
 mod linux {
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
-    use super::{OLD_FOLDER, OLD_ID, renamed};
+    use super::{OLD_FOLDER, OLD_ID, renamed, respelled_entry};
 
     fn data_home() -> Option<PathBuf> {
         xdg("XDG_DATA_HOME", ".local/share")
@@ -66,12 +89,12 @@ mod linux {
             .collect()
     }
 
-    /// Writes `text` with the old id replaced, at `to`, and removes `from`.
+    /// Writes the entry at `from` under the new id and name, at `to`, and removes `from`.
     fn rewrite(from: &Path, to: &Path) -> bool {
         let Ok(text) = std::fs::read_to_string(from) else {
             return false;
         };
-        let moved = std::fs::write(to, text.replace(OLD_ID, crate::APP_ID)).is_ok()
+        let moved = std::fs::write(to, respelled_entry(&text)).is_ok()
             && std::fs::metadata(from)
                 .and_then(|m| std::fs::set_permissions(to, m.permissions()))
                 .is_ok();
@@ -104,25 +127,70 @@ mod linux {
             .collect()
     }
 
+    /// Every regular desktop entry in `dir` named under the new id (`{APP_ID}.desktop` or
+    /// `{APP_ID}.*.desktop`).
+    fn new_desktop_entries(dir: &Path) -> Vec<PathBuf> {
+        let Ok(read) = std::fs::read_dir(dir) else {
+            return Vec::new();
+        };
+        read.flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+            .filter_map(|e| {
+                let name = e.file_name();
+                let name = name.to_string_lossy();
+                let rest = name.strip_prefix(crate::APP_ID)?;
+                (rest == ".desktop" || (rest.starts_with('.') && rest.ends_with(".desktop")))
+                    .then(|| e.path())
+            })
+            .collect()
+    }
+
+    /// Fixes the visible name in desktop entries already under the new id, for installs
+    /// that migrated under an earlier 2.5 build before the name lines were respelled.
+    pub(super) fn respell_entries_in(data: &Path) -> bool {
+        let apps = data.join("applications");
+        let mut changed = false;
+        for path in new_desktop_entries(&apps) {
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let next = respelled_entry(&text);
+            if next != text && crate::scheme::linux::replace(&path, &next) {
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    fn write_marker(path: &Path) {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(path, "");
+    }
+
     pub fn adopt() {
         let Some(data) = data_home() else { return };
         // Once per install: after the first launch of a renamed build there is nothing left
         // to look for, and a launch should not pay for the look.
-        let done = PathBuf::from(&crate::runtime::paths().core.data_dir).join("old-name-done");
-        if done.exists() {
-            return;
+        let data_dir = PathBuf::from(&crate::runtime::paths().core.data_dir);
+        let done = data_dir.join("old-name-done");
+        let respelled = data_dir.join("old-name-respelled");
+        let mut changed = false;
+        if !done.exists() {
+            let ledger = data_dir.join("launcher-icons.txt");
+            let config = xdg("XDG_CONFIG_HOME", ".config");
+            changed |= adopt_in(&data, config.as_deref(), &ledger, pictures().as_deref());
+            write_marker(&done);
         }
-        let ledger =
-            PathBuf::from(&crate::runtime::paths().core.data_dir).join("launcher-icons.txt");
-        let config = xdg("XDG_CONFIG_HOME", ".config");
-        if adopt_in(&data, config.as_deref(), &ledger, pictures().as_deref()) {
+        if !respelled.exists() {
+            changed |= respell_entries_in(&data);
+            write_marker(&respelled);
+        }
+        if changed {
             let apps = data.join("applications");
             crate::scheme::linux::quiet(Command::new("update-desktop-database").arg(&apps));
         }
-        if let Some(dir) = done.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(&done, "");
     }
 
     /// Does the renaming under these folders. True when a desktop entry moved or went, so
@@ -230,6 +298,76 @@ mod tests {
         assert_eq!(renamed("org.other.App.desktop"), None);
     }
 
+    #[test]
+    fn a_moved_entry_shows_the_new_name() {
+        let old = format!(
+            "[Desktop Entry]\nName={OLD_FOLDER} Dev\nName[da]={OLD_FOLDER} Dev\n\
+             GenericName = {OLD_FOLDER} player\nComment={OLD_FOLDER} for anime\n\
+             X-GNOME-FullName={OLD_FOLDER}\n\
+             Exec=/opt/{OLD_FOLDER}/anibeam\nIcon={OLD_ID}.Dev\nNoName={OLD_FOLDER}"
+        );
+        assert_eq!(
+            respelled_entry(&old),
+            format!(
+                "[Desktop Entry]\nName=Anibeam Dev\nName[da]=Anibeam Dev\n\
+                 GenericName = Anibeam player\nComment=Anibeam for anime\n\
+                 X-GNOME-FullName=Anibeam\n\
+                 Exec=/opt/{OLD_FOLDER}/anibeam\nIcon={}.Dev\nNoName={OLD_FOLDER}",
+                crate::APP_ID
+            )
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_already_moved_entry_still_gets_the_new_name() {
+        use std::fs;
+        let home =
+            std::env::temp_dir().join(format!("anibeam-old-name-respell-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&home);
+        let data = home.join("data");
+        let apps = data.join("applications");
+        fs::create_dir_all(&apps).unwrap();
+
+        let main = apps.join(format!("{}.desktop", crate::APP_ID));
+        let dev = apps.join(format!("{}.Dev.desktop", crate::APP_ID));
+        let other = apps.join(format!("{}Fan.desktop", crate::APP_ID));
+        fs::write(
+            &main,
+            format!(
+                "[Desktop Entry]\nName={OLD_FOLDER}\nExec=/opt/{OLD_FOLDER}/anibeam\nIcon={}\n",
+                crate::APP_ID
+            ),
+        )
+        .unwrap();
+        fs::write(
+            &dev,
+            format!("[Desktop Entry]\nName={OLD_FOLDER} Dev\nX-GNOME-FullName={OLD_FOLDER} Dev\n"),
+        )
+        .unwrap();
+        fs::write(&other, format!("[Desktop Entry]\nName={OLD_FOLDER} Fan\n")).unwrap();
+
+        assert!(linux::respell_entries_in(&data));
+        assert_eq!(
+            fs::read_to_string(&main).unwrap(),
+            format!(
+                "[Desktop Entry]\nName=Anibeam\nExec=/opt/{OLD_FOLDER}/anibeam\nIcon={}\n",
+                crate::APP_ID
+            )
+        );
+        assert_eq!(
+            fs::read_to_string(&dev).unwrap(),
+            "[Desktop Entry]\nName=Anibeam Dev\nX-GNOME-FullName=Anibeam Dev\n"
+        );
+        assert_eq!(
+            fs::read_to_string(&other).unwrap(),
+            format!("[Desktop Entry]\nName={OLD_FOLDER} Fan\n")
+        );
+        // A second pass sees nothing left to change.
+        assert!(!linux::respell_entries_in(&data));
+        let _ = fs::remove_dir_all(&home);
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn an_old_install_takes_the_new_id() {
@@ -247,8 +385,12 @@ mod tests {
         for dir in [&apps, &icons, &small, &config, &pictures.join(OLD_FOLDER)] {
             fs::create_dir_all(dir).unwrap();
         }
-        let entry =
-            format!("[Desktop Entry]\nName=Anibeam\nIcon={OLD_ID}\nStartupWMClass={OLD_ID}\n");
+        // The entry the way 2.4 wrote it, old spelling in the name and the id.
+        let entry = format!(
+            "[Desktop Entry]\nType=Application\nName={OLD_FOLDER}\n\
+             Comment=Browse, play, and track your local anime library\nExec=anibeam\n\
+             Icon={OLD_ID}\nKeywords=anibeam;anime;media;video;\nStartupWMClass={OLD_ID}\n"
+        );
         fs::write(apps.join(format!("{OLD_ID}.desktop")), &entry).unwrap();
         fs::write(apps.join(format!("{OLD_ID}.Dev.desktop")), &entry).unwrap();
         // The installer already wrote the new main entry's Dev twin: the old one only goes.
@@ -289,10 +431,17 @@ mod tests {
         ));
 
         let new = |rest: &str| format!("{}{rest}", crate::APP_ID);
+        let moved = fs::read_to_string(apps.join(new(".desktop"))).unwrap();
         assert_eq!(
-            fs::read_to_string(apps.join(new(".desktop"))).unwrap(),
-            entry.replace(OLD_ID, crate::APP_ID)
+            moved,
+            format!(
+                "[Desktop Entry]\nType=Application\nName=Anibeam\n\
+                 Comment=Browse, play, and track your local anime library\nExec=anibeam\n\
+                 Icon={0}\nKeywords=anibeam;anime;media;video;\nStartupWMClass={0}\n",
+                crate::APP_ID
+            )
         );
+        assert!(!moved.contains(OLD_FOLDER));
         assert_eq!(fs::read_to_string(apps.join(&dev)).unwrap(), "installer's");
         assert!(!apps.join(format!("{OLD_ID}.Dev.desktop")).exists());
         assert!(!apps.join(format!("{OLD_ID}.desktop")).exists());
