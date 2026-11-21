@@ -79,7 +79,9 @@ Item {
     readonly property bool searchingNow: !!current && current.state === "searching"
     // ---- Only the releases that name this show. A search matches a release group as well
     // as a title ("Naruto" finds Naruto-Kun.Hu's One Piece), so a release must carry at
-    // least half of the show's words outside its leading [group]
+    // least half of the show's words outside its leading [group]. Nor may it be another
+    // season of the show: "Season 04" is not the first season's. The core's
+    // releases::grid::of_show reads both the same way, and the two are kept alike.
     // One word list per name the show goes by; a release passes on any of them
     readonly property var showWords: {
         if (!show) return []
@@ -88,9 +90,51 @@ Item {
         return names.map(function(q) { return String(q).toLowerCase().split(/[^a-z0-9]+/).filter(function(w) { return w.length >= 3 && !stop[w] }) })
                     .filter(function(ws) { return ws.length > 0 })
     }
+    // The names the show goes by: its queries and its title
+    readonly property var showNames: show ? (show.queries || []).concat([show.title || ""]) : []
+    // The season one of the show's names states (2nd Season, Season 4, S2), else null
+    readonly property var statedSeason: {
+        for (var i = 0; i < showNames.length; i++) { var s = seasonWordOf(showNames[i]); if (s !== null) return s }
+        return null
+    }
+    // A season word or code a name or a title states, as releases::facts::season_word reads it;
+    // null when none does. A code right after a dash is the far end of a span ("S01-S04").
+    function seasonWordOf(name) {
+        var text = String(name || ""), re = /(?:\bseason\s*(\d{1,2})|\b(\d{1,2})(?:st|nd|rd|th)\s+season|\bs(\d{1,2}))\b(?![-~]\s*s?\d)/gi, m
+        while ((m = re.exec(text)) !== null) {
+            if (m[3] !== undefined && m.index > 0 && "-~".indexOf(text.charAt(m.index - 1)) >= 0) continue
+            return parseInt(m[1] || m[2] || m[3], 10)
+        }
+        return null
+    }
+    // Whether a name hints at a season statedSeason cannot read: a number that is not a year, a
+    // roman numeral, a word such as Part or Final, or a non-Latin season mark.
+    function seasonHint(name) {
+        var text = String(name || "")
+        return /\d/.test(text.replace(/\b(?:19|20)\d{2}\b/g, " "))
+            || /\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\b/.test(text)
+            || /\b(?:season|part|cour|final|zoku|second|third|fourth|fifth|sequel)\b/i.test(text)
+            || /[第期季기]|ภาค|ซีซั่น|сезон/i.test(text)
+    }
+    // A release title's words: lower case, without its leading [group], spaced at either end
+    function titleWords(title) { return " " + String(title || "").toLowerCase().replace(/^\s*\[[^\]]*\]/, "").replace(/[^a-z0-9]+/g, " ") + " " }
+    // Whether the release `title`, `f` its facts, is another season of the show. Against a
+    // season the show's names state, any other is. A show whose names state none is taken for
+    // its first season only when nothing says otherwise: it is an AniList entry, 52 episodes
+    // at most (a longer run's releases cut seasons of their own), none of its names hints at a
+    // season, and the release carries every word of one of its names. One that says only
+    // "Season 2" may be a later season known by its arc's name (Yuukaku-hen).
+    function anotherSeason(title, f) {
+        if (!show || !f || f.season === null || f.season === undefined) return false
+        if (statedSeason !== null) return f.season !== statedSeason
+        if (f.season === 1 || !(show.anilistId > 0) || !(show.total > 0 && show.total <= 52)) return false
+        if (showNames.some(function(n) { return seasonHint(n) })) return false
+        var t = titleWords(title)
+        return showWords.some(function(ws) { return ws.every(function(w) { return t.indexOf(" " + w) >= 0 }) })
+    }
     function namesShow(title) {
         if (!showWords.length) return true
-        var t = " " + String(title || "").toLowerCase().replace(/^\s*\[[^\]]*\]/, "").replace(/[^a-z0-9]+/g, " ") + " "
+        var t = titleWords(title)
         return showWords.some(function(ws) {
             var hit = ws.filter(function(w) { return t.indexOf(" " + w) >= 0 }).length
             return hit >= Math.ceil(ws.length / 2)
@@ -99,7 +143,7 @@ Item {
     function ofShow(r) {
         if (!r || !r.items) return r
         var items = [], facts = []
-        for (var i = 0; i < r.items.length; i++) if (namesShow(r.items[i].title)) { items.push(r.items[i]); facts.push(r.facts[i]) }
+        for (var i = 0; i < r.items.length; i++) if (namesShow(r.items[i].title) && !anotherSeason(r.items[i].title, r.facts[i])) { items.push(r.items[i]); facts.push(r.facts[i]) }
         if (items.length === r.items.length) return r
         var out = {}
         for (var k in r) out[k] = r[k]
