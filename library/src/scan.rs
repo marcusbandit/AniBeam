@@ -1375,6 +1375,13 @@ fn spawn(library: &Arc<Library>, scope: ScanScope) -> (u64, bool) {
                         if target.available {
                             set_available(&library, &ctx, source_id, &path, false).await?;
                         }
+                        // Watched from above, so a drive mounted later is
+                        // seen without a restart or a poll (#1191).
+                        let owner = library.clone();
+                        let root = path.clone();
+                        tokio::task::spawn_blocking(move || owner.await_source(&root))
+                            .await
+                            .map_err(|e| CoreError::internal(e.to_string()))?;
                         continue;
                     }
 
@@ -1385,9 +1392,13 @@ fn spawn(library: &Arc<Library>, scope: ScanScope) -> (u64, bool) {
                     // later scan asking again costs a string compare.
                     let owner = library.clone();
                     let root = path.clone();
-                    let watched = tokio::task::spawn_blocking(move || owner.install_watch(&root))
-                        .await
-                        .map_err(|e| CoreError::internal(e.to_string()))?;
+                    let watched = tokio::task::spawn_blocking(move || {
+                        let watched = owner.install_watch(&root);
+                        owner.source_present(&root);
+                        watched
+                    })
+                    .await
+                    .map_err(|e| CoreError::internal(e.to_string()))?;
                     if let Err(e) = watched {
                         ctx.emit(
                             Level::Warn,

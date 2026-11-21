@@ -6,6 +6,7 @@
 //! returns. Everything after that is a Scan job on the runtime, so notify's
 //! event thread is never the thing waiting on a disk walk.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, TryLockError, Weak};
 use std::time::Duration;
@@ -42,6 +43,106 @@ pub enum Trigger {
     /// finished (FSEvents on a Mac): it becomes an `Ingest` once its size
     /// holds still. Linux's inotify has close-write and never makes one.
     Settling(String),
+    /// A source that was not there is a directory again (a drive mounted,
+    /// a share reconnected): scan it, which marks it available and watches it.
+    Returned(String),
+    /// A watched source is no longer a directory (a drive unplugged): scan
+    /// it, which marks it unavailable rather than every file missing.
+    Gone(String),
+    /// More of the path to a source that is not there exists than before:
+    /// watch the deeper directory too, so the next step down is seen.
+    Closer(String),
+}
+
+/// A source whose folder is not there, and the directories above it that
+/// are watched so its return is seen.
+#[derive(Clone, Debug)]
+struct Awaited {
+    source: String,
+    dirs: Vec<String>,
+}
+
+/// The non-recursive watches on directories above sources (#1191). Only
+/// ever touched by the calls below, never by the event handler, so it may
+/// be held across a call into the debouncer.
+#[derive(Default)]
+struct Guards {
+    /// Each watched directory: how many holds it has, and whether a notify
+    /// watch was actually installed for it (a directory inside a watched
+    /// root already reports through that root's recursive watch).
+    refs: HashMap<String, (usize, bool)>,
+    /// The directories each unavailable source holds while it is awaited.
+    awaits: HashMap<String, Vec<String>>,
+    /// The directory above each available source's mount point, which is
+    /// where an unmount shows when the source's own watch goes quiet.
+    mounts: HashMap<String, String>,
+}
+
+/// The deepest directory at or above `path` that exists, if any.
+pub fn nearest_existing(path: &Path) -> Option<PathBuf> {
+    path.ancestors().find(|a| a.is_dir()).map(Path::to_path_buf)
+}
+
+/// The directory holding the mount point `path` sits on: the first parent
+/// on another filesystem. `None` when `path` is on the root filesystem, or
+/// on a platform that cannot tell.
+#[cfg(unix)]
+pub fn mount_parent(path: &Path) -> Option<PathBuf> {
+    use std::os::unix::fs::MetadataExt;
+    let dev = std::fs::metadata(path).ok()?.dev();
+    let mut top = path;
+    while let Some(parent) = top.parent() {
+        match std::fs::metadata(parent) {
+            Ok(m) if m.dev() == dev => top = parent,
+            Ok(_) => return Some(parent.to_path_buf()),
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+#[cfg(not(unix))]
+pub fn mount_parent(_path: &Path) -> Option<PathBuf> {
+    None
+}
+
+/// What one batch of events says about where sources are, whatever the
+/// events themselves were: an awaited source that is a directory again, an
+/// awaited source with more of its path in place, and a watched root that
+/// is no longer a directory. A returned source leaves `awaiting` here, so a
+/// later batch does not ask for it again before its scan has run.
+fn presence(awaiting: &mut Vec<Awaited>, roots: &[String]) -> Vec<Trigger> {
+    let mut out = Vec::new();
+    awaiting.retain(|a| {
+        let source = Path::new(&a.source);
+        if source.is_dir() {
+            out.push(Trigger::Returned(a.source.clone()));
+            return false;
+        }
+        if let Some(near) = nearest_existing(source)
+            && !a.dirs.iter().any(|d| Path::new(d) == near)
+        {
+            out.push(Trigger::Closer(a.source.clone()));
+        }
+        true
+    });
+    for root in roots {
+        if !Path::new(root).is_dir() {
+            out.push(Trigger::Gone(root.clone()));
+        }
+    }
+    out
+}
+
+/// Whether an event is about the library at all, rather than about a
+/// directory above a source that is watched only for presence.
+fn in_library(event: &DebouncedEvent, roots: &[String]) -> bool {
+    event.flag() == Some(Flag::Rescan)
+        || event.paths.is_empty()
+        || event
+            .paths
+            .iter()
+            .any(|p| roots.iter().any(|r| p.starts_with(r)))
 }
 
 /// How often a settling file's size is looked at, and how long it has to
@@ -279,6 +380,11 @@ pub struct Watcher {
     /// a library-scale walk: the path waits here instead, and whichever
     /// call next holds the debouncer drops it.
     pending_unwatch: Mutex<Vec<String>>,
+    /// The sources that are not there, read by the handler on every batch.
+    /// Like `roots`, never held across a call into the debouncer.
+    awaiting: Arc<Mutex<Vec<Awaited>>>,
+    /// The presence watches. The handler never takes this lock.
+    guards: Mutex<Guards>,
 }
 
 /// Every queued drop, applied. `installed` is the path the caller has just
@@ -309,6 +415,8 @@ impl Watcher {
     pub fn new(library: Weak<Library>) -> Result<Watcher, CoreError> {
         let roots: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let handler_roots = roots.clone();
+        let awaiting: Arc<Mutex<Vec<Awaited>>> = Arc::new(Mutex::new(Vec::new()));
+        let handler_awaiting = awaiting.clone();
         let handler = move |result: DebounceEventResult| {
             // The core is already going away: there is nothing left to tell.
             let Some(library) = library.upgrade() else {
@@ -317,8 +425,16 @@ impl Watcher {
             match result {
                 Ok(events) => {
                     let roots = recover(&handler_roots).clone();
-                    let triggers: Vec<Trigger> =
-                        events.iter().flat_map(|e| classify(e, &roots)).collect();
+                    // Any batch is a reason to look at where the sources
+                    // are: a mount or an unmount shows as an event in a
+                    // directory above a source, not inside it.
+                    let mut triggers = presence(&mut recover(&handler_awaiting), &roots);
+                    triggers.extend(
+                        events
+                            .iter()
+                            .filter(|e| in_library(e, &roots))
+                            .flat_map(|e| classify(e, &roots)),
+                    );
                     if triggers.is_empty() {
                         return;
                     }
@@ -354,7 +470,36 @@ impl Watcher {
             debouncer: Mutex::new(Some(debouncer)),
             roots,
             pending_unwatch: Mutex::new(Vec::new()),
+            awaiting,
+            guards: Mutex::new(Guards::default()),
         })
+    }
+
+    /// One notify watch, the queued drops applied while the lock is held.
+    fn install(&self, path: &str, mode: RecursiveMode) -> Result<(), CoreError> {
+        let mut held = self.debouncer();
+        let Some(debouncer) = held.as_mut() else {
+            return Ok(());
+        };
+        let installed = debouncer
+            .watch(Path::new(path), mode)
+            .map_err(|e| CoreError::Io {
+                path: Some(path.to_string()),
+                message: e.to_string(),
+            });
+        // Whatever the install did, this thread is holding the lock the
+        // queued drops could not get, so it is the one that owes them.
+        drain_unwatches(&self.pending_unwatch, debouncer, Some(path));
+        installed
+    }
+
+    /// One notify drop, never waiting on an install walk.
+    fn drop_notify(&self, path: &str) {
+        match self.debouncer.try_lock() {
+            Ok(mut held) => drop_watch(held.as_mut(), path),
+            Err(TryLockError::Poisoned(held)) => drop_watch(held.into_inner().as_mut(), path),
+            Err(TryLockError::WouldBlock) => recover(&self.pending_unwatch).push(path.to_string()),
+        }
     }
 
     /// Installs one recursive watch on a source. Idempotent per root, which
@@ -363,24 +508,114 @@ impl Watcher {
         if recover(&self.roots).iter().any(|r| r == path) {
             return Ok(());
         }
-        {
-            let mut held = self.debouncer();
-            let Some(debouncer) = held.as_mut() else {
-                return Ok(());
-            };
-            let installed = debouncer
-                .watch(Path::new(path), RecursiveMode::Recursive)
-                .map_err(|e| CoreError::Io {
-                    path: Some(path.to_string()),
-                    message: e.to_string(),
-                });
-            // Whatever the install did, this thread is holding the lock the
-            // queued drops could not get, so it is the one that owes them.
-            drain_unwatches(&self.pending_unwatch, debouncer, Some(path));
-            installed?;
-        }
+        self.install(path, RecursiveMode::Recursive)?;
         recover(&self.roots).push(path.to_string());
         Ok(())
+    }
+
+    /// Takes one hold on a presence watch, installing it on the first.
+    fn hold(&self, guards: &mut Guards, dir: &str) {
+        if let Some((n, _)) = guards.refs.get_mut(dir) {
+            *n += 1;
+            return;
+        }
+        // Inside a watched root the recursive watch already reports it,
+        // and a second watch on the same directory would be dropped with
+        // the first. The filesystem root is never watched: FSEvents has no
+        // shallow watch, so notify would take in every event on the disk
+        // to filter out all but a few.
+        let covered = dir == "/"
+            || recover(&self.roots)
+                .iter()
+                .any(|r| Path::new(dir).starts_with(r));
+        let installed = !covered && self.install(dir, RecursiveMode::NonRecursive).is_ok();
+        guards.refs.insert(dir.to_string(), (1, installed));
+    }
+
+    /// Gives one hold back, dropping the watch with the last.
+    fn release(&self, guards: &mut Guards, dir: &str) {
+        let Some((n, installed)) = guards.refs.get_mut(dir) else {
+            return;
+        };
+        *n -= 1;
+        if *n > 0 {
+            return;
+        }
+        let installed = *installed;
+        guards.refs.remove(dir);
+        if installed {
+            self.drop_notify(dir);
+        }
+    }
+
+    /// A source's folder is not there: its recursive watch goes (so it is
+    /// installed afresh when it comes back) and the nearest directory above
+    /// it that exists is watched, non-recursively, for it to return. Called
+    /// again on `Closer`, which adds the deeper directory; the shallower
+    /// ones stay, since a mount over a watched directory may report only to
+    /// the directory above it.
+    ///
+    /// False, and nothing done, when the folder is there after all: it came
+    /// back between the look that found it gone and this call, so the
+    /// caller owes it a scan rather than a wait.
+    pub fn await_source(&self, path: &str) -> bool {
+        let mut guards = recover(&self.guards);
+        if Path::new(path).is_dir() {
+            return false;
+        }
+        self.unwatch(path);
+        let held = guards.awaits.get(path).cloned().unwrap_or_default();
+        let dir = nearest_existing(Path::new(path)).map(|d| text(&d));
+        let mut dirs = held.clone();
+        if let Some(dir) = &dir
+            && !held.contains(dir)
+        {
+            self.hold(&mut guards, dir);
+            dirs.push(dir.clone());
+            guards.awaits.insert(path.to_string(), dirs.clone());
+        }
+        let mut awaiting = recover(&self.awaiting);
+        match awaiting.iter_mut().find(|a| a.source == path) {
+            Some(a) => a.dirs = dirs,
+            None => awaiting.push(Awaited {
+                source: path.to_string(),
+                dirs,
+            }),
+        }
+        true
+    }
+
+    /// A source is readable again: what watched for its return goes, and
+    /// the directory above its mount point is watched so an unmount is seen
+    /// even when the source's own watch says nothing about it.
+    pub fn source_present(&self, path: &str) {
+        recover(&self.awaiting).retain(|a| a.source != path);
+        let mut guards = recover(&self.guards);
+        for dir in guards.awaits.remove(path).unwrap_or_default() {
+            self.release(&mut guards, &dir);
+        }
+        let parent = mount_parent(Path::new(path)).map(|p| text(&p));
+        if guards.mounts.get(path) == parent.as_ref() {
+            return;
+        }
+        if let Some(old) = guards.mounts.remove(path) {
+            self.release(&mut guards, &old);
+        }
+        if let Some(parent) = parent {
+            self.hold(&mut guards, &parent);
+            guards.mounts.insert(path.to_string(), parent);
+        }
+    }
+
+    /// A source left the library: every presence watch it held goes.
+    pub fn forget_source(&self, path: &str) {
+        recover(&self.awaiting).retain(|a| a.source != path);
+        let mut guards = recover(&self.guards);
+        let mut dirs = guards.awaits.remove(path).unwrap_or_default();
+        dirs.extend(guards.mounts.remove(path));
+        for dir in dirs {
+            self.release(&mut guards, &dir);
+        }
     }
 
     /// Drops a source's watch, without ever waiting for one to be installed.
@@ -396,11 +631,7 @@ impl Watcher {
         // this list is what `watch` tests for idempotence, so a path still
         // in it could never be watched again.
         recover(&self.roots).retain(|r| r != path);
-        match self.debouncer.try_lock() {
-            Ok(mut held) => drop_watch(held.as_mut(), path),
-            Err(TryLockError::Poisoned(held)) => drop_watch(held.into_inner().as_mut(), path),
-            Err(TryLockError::WouldBlock) => recover(&self.pending_unwatch).push(path.to_string()),
-        }
+        self.drop_notify(path);
     }
 
     /// Stops the debouncer and waits for its thread, so nothing can still be
@@ -416,6 +647,8 @@ impl Watcher {
         }
         recover(&self.pending_unwatch).clear();
         recover(&self.roots).clear();
+        recover(&self.awaiting).clear();
+        *recover(&self.guards) = Guards::default();
     }
 
     /// How many drops are waiting on an install walk. For the test that
