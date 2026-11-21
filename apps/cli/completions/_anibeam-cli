@@ -1,0 +1,64 @@
+#compdef anibeam-cli
+# zsh completion for anibeam-cli, Anibeam's core from the terminal.
+
+_anibeam-cli() {
+  local curcontext="$curcontext" state line
+  typeset -A opt_args
+  local -a commands
+  commands=(
+    'call:send any call and print the reply as JSON'
+    'events:print recent events, then the live stream with --follow'
+    'sources:the sources: id, path, available, series count'
+    'scan:run a scan to its end'
+    'list:one line per card: id, code, title, watched/total'
+    'show:one series page as JSON'
+    'jobs:the jobs running right now'
+    'import:read an anibeam-export document into this library'
+    'export:write this library out as an anibeam-export document'
+    'help:print help for a subcommand'
+  )
+  _arguments -C \
+    '--root[put every directory under this root]:root:_directories' \
+    '(- *)'{--help,-h}'[print help]' \
+    '(- *)'{--version,-V}'[print the version]' \
+    '1:command:->command' \
+    '*::arg:->args'
+  case $state in
+    command) _describe -t commands 'anibeam-cli command' commands ;;
+    args)
+      case $line[1] in
+        call)
+          _arguments \
+            '--json[the call fields as a JSON object]:json:' \
+            '--wait[print the events of the jobs the call starts]' \
+            '1:call name:' ;;
+        events)
+          _arguments \
+            '--follow[keep printing the live stream]' \
+            '--level[the lowest level printed]:level:(debug info warn error)' ;;
+        scan)
+          _arguments \
+            '--source[the source id to scan]:source id:' \
+            '--wait[print the scan events on the way]' ;;
+        list)
+          _arguments \
+            '--tab[which tab]:tab:(all series movies watched hidden)' \
+            '--sort[the sort]:sort:(alpha lastViewed progress communityScore myScore downloaded)' \
+            '--direction[the direction]:direction:(asc desc)' \
+            '--query[a search]:query:' ;;
+        show) _arguments '1:series id:' ;;
+        import)
+          _arguments \
+            '--wait[print the import events on the way]' \
+            '1:file:_files -g "*.json"' ;;
+        export)
+          _arguments \
+            '--private[also carry the accounts, the keys, the history and the preferences]' \
+            '--wait[print the export events on the way]' \
+            '1:file:_files' ;;
+        help) _describe -t commands 'anibeam-cli command' commands ;;
+      esac ;;
+  esac
+}
+
+_anibeam-cli "$@"

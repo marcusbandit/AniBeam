@@ -38,3 +38,21 @@ async fn main() -> ExitCode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    /// Every flag is in both completions, so neither falls behind the relay.
+    #[test]
+    fn the_completions_know_every_flag() {
+        let zsh = include_str!("../completions/_anibeam-relay");
+        let bash = include_str!("../completions/anibeam-relay.bash");
+        for arg in super::Args::command().get_arguments() {
+            let Some(long) = arg.get_long() else { continue };
+            let flag = format!("--{long}");
+            assert!(zsh.contains(&flag), "zsh completion lacks {flag}");
+            assert!(bash.contains(&flag), "bash completion lacks {flag}");
+        }
+    }
+}

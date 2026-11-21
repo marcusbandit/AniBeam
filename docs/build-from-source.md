@@ -64,6 +64,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
+Completion for zsh and bash ships beside it, in `apps/cli/completions/`: copy
+`_anibeam-cli` into a folder on your `fpath`, or source `anibeam-cli.bash`.
+
 CI runs these on the Rust version `rust-toolchain.toml` names, and with rustup a checkout
 uses that version too, so a local fmt or clippy run matches CI's. Bump it there, nowhere else
 in CI. The AUR package is the exception: it builds with `RUSTUP_TOOLCHAIN=stable`, the Rust an
