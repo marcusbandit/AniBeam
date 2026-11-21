@@ -52,3 +52,8 @@ impl Teams {
         self.running.shutdown();
     }
 }
+
+/// A release with only its title and link, the rest left as a feed leaves it.
+pub(crate) fn release(title: &str, link: &str) -> anibeam_contract::Release {
+    serde_json::from_value(serde_json::json!({ "title": title, "link": link })).unwrap()
+}
