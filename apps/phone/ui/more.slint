@@ -6,6 +6,7 @@
 
 import { Theme } from "theme.slint";
 import { AppData, EpisodeVersionLine, Nav } from "data.slint";
+import { PlayerData } from "player.slint";
 import { Button, Field, Figure, ListGroup, ListRow, Lit, PageTitle, SearchField, SectionHead, Segmented, Slider } from "widgets.slint";
 import { RepoData, RepoPanes } from "repos.slint";
 import { Area, Fold } from "fold.slint";
@@ -1088,7 +1089,9 @@ export component MorePage inherits Rectangle {
         // A newer version counts as seen only while About is on screen: More stays alive
         // behind the other tabs, with this page open in it
         property <string> offered: AppData.update-version;
-        property <bool> on-screen: Nav.page == 3 && AppData.foreground;
+        // Nor while What's new, onboarding or the player covers it
+        property <bool> on-screen: Nav.page == 3 && AppData.foreground
+            && !AppData.notes-open && !AppData.onboarding && !PlayerData.open;
         init => { AppData.mark-update-seen(); }
         changed offered => {
             if (self.on-screen) {

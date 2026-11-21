@@ -50,6 +50,9 @@ struct Kept {
     /// The build that last asked, and when its answer came, in seconds since 1970.
     asked_by: String,
     answered_at: u64,
+    /// When the last check failed, in seconds since 1970; 0 once one answers. The half
+    /// hour's wait after it outlives a restart.
+    failed_at: u64,
     /// What that answer offered.
     offer: Option<PhoneUpdate>,
 }
@@ -73,6 +76,7 @@ static STATE: Mutex<State> = Mutex::new(State {
         picked: false,
         asked_by: String::new(),
         answered_at: 0,
+        failed_at: 0,
         offer: None,
     },
     due: None,
@@ -130,18 +134,32 @@ fn on_start(mut kept: Kept, running: &str) -> Kept {
     if kept.asked_by != running {
         kept.asked_by = running.to_string();
         kept.answered_at = 0;
+        kept.failed_at = 0;
         kept.offer = None;
     }
     kept
 }
 
-/// When the next check is due for what was kept: six hours after its answer.
+/// When the next check is due for what was kept: six hours after its answer, or half an
+/// hour after a failure since, whichever is later. A damaged file's time past what the
+/// clock can hold counts as none.
 fn due_for(kept: &Kept) -> Option<(SystemTime, Duration)> {
-    // A damaged file's time past what the clock can hold asks at once
-    let at = UNIX_EPOCH
-        .checked_add(Duration::from_secs(kept.answered_at))?
-        .checked_add(AGAIN_AFTER)?;
-    (kept.answered_at > 0).then_some((at, AGAIN_AFTER))
+    let wait_from = |secs: u64, wait: Duration| {
+        (secs > 0)
+            .then(|| {
+                UNIX_EPOCH
+                    .checked_add(Duration::from_secs(secs))?
+                    .checked_add(wait)
+            })
+            .flatten()
+            .map(|at| (at, wait))
+    };
+    let answered = wait_from(kept.answered_at, AGAIN_AFTER);
+    let failed = wait_from(kept.failed_at, RETRY_AFTER);
+    match (answered, failed) {
+        (Some(a), Some(f)) => Some(if f.0 > a.0 { f } else { a }),
+        (a, f) => a.or(f),
+    }
 }
 
 fn file_in(data_dir: &Path) -> PathBuf {
@@ -214,6 +232,26 @@ pub fn tick() {
     }
 }
 
+/// `at` in seconds since 1970, 0 for a time before it.
+fn secs(at: SystemTime) -> u64 {
+    at.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// What covers More's About right now, as the app knows it.
+pub(crate) struct View {
+    pub foreground: bool,
+    pub notes: bool,
+    pub onboarding: bool,
+    pub player: bool,
+}
+
+impl View {
+    /// About is what the person sees: the window in front and nothing drawn over it.
+    pub(crate) fn shows_about(&self) -> bool {
+        self.foreground && !self.notes && !self.onboarding && !self.player
+    }
+}
+
 /// What a pick did to the state.
 #[derive(Debug, PartialEq)]
 enum Pick {
@@ -283,12 +321,14 @@ impl State {
         match answer {
             Ok(update) => {
                 self.due = Some((now + AGAIN_AFTER, AGAIN_AFTER));
-                self.kept.answered_at = now.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+                self.kept.answered_at = secs(now);
+                self.kept.failed_at = 0;
                 self.kept.offer = update;
                 Heard::Answered
             }
             Err(_) => {
                 self.due = Some((now + RETRY_AFTER, RETRY_AFTER));
+                self.kept.failed_at = secs(now);
                 Heard::Failed
             }
         }
@@ -325,11 +365,16 @@ fn heard(number: u64, answer: Result<Reply, CoreError>) {
     }
     let offer = {
         let mut st = state();
-        if st.hear(number, answer, SystemTime::now()) != Heard::Answered {
+        let heard = st.hear(number, answer, SystemTime::now());
+        if heard == Heard::Stale {
             return;
         }
+        // A failure is kept too, so its half hour holds across a restart
         if let Some(file) = &st.file {
             save(file, &st.kept);
+        }
+        if heard == Heard::Failed {
+            return;
         }
         st.kept.offer.clone()
     };
@@ -415,6 +460,15 @@ mod tests {
         }
     }
 
+    impl State {
+        /// Sends the next check at `now` and answers it with no offer.
+        fn hear_again(&mut self, now: SystemTime) -> Heard {
+            let number = self.asked + 1;
+            self.sent(number, now);
+            self.hear(number, Ok(None), now)
+        }
+    }
+
     fn offer(version: &str) -> Option<PhoneUpdate> {
         Some(PhoneUpdate {
             version: version.into(),
@@ -479,6 +533,85 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_check_waits_its_half_hour_across_a_restart() {
+        let answered = 1_800_000_000;
+        let failed = answered + 7 * 60 * 60;
+        let kept = Kept {
+            asked_by: "2.4.3-nightly.20261117.97".into(),
+            answered_at: answered,
+            failed_at: failed,
+            ..Kept::default()
+        };
+        // The answer's six hours are past; the failure after it holds for half an hour
+        let restarted = on_start(kept.clone(), "2.4.3-nightly.20261117.97");
+        let at_failure = UNIX_EPOCH + Duration::from_secs(failed);
+        assert_eq!(
+            due_for(&restarted),
+            Some((at_failure + RETRY_AFTER, RETRY_AFTER))
+        );
+        assert!(!due(
+            due_for(&restarted),
+            at_failure + Duration::from_secs(60)
+        ));
+        assert!(due(due_for(&restarted), at_failure + RETRY_AFTER));
+        // A failure inside the answer's six hours does not shorten them
+        let early = Kept {
+            failed_at: answered + 60,
+            ..kept.clone()
+        };
+        let six_hours = UNIX_EPOCH + Duration::from_secs(answered) + AGAIN_AFTER;
+        assert_eq!(due_for(&early), Some((six_hours, AGAIN_AFTER)));
+        // And a failure is what the state keeps when a check fails
+        let now = SystemTime::now();
+        let mut st = fresh();
+        let number = st.next(now).unwrap();
+        st.sent(number, now);
+        assert_eq!(st.hear(number, Err("refused".into()), now), Heard::Failed);
+        assert_eq!(st.kept.failed_at, secs(now));
+        assert_eq!(st.hear_again(now), Heard::Answered);
+        assert_eq!(st.kept.failed_at, 0);
+    }
+
+    #[test]
+    fn about_counts_as_seen_only_when_nothing_covers_it() {
+        let shown = View {
+            foreground: true,
+            notes: false,
+            onboarding: false,
+            player: false,
+        };
+        assert!(shown.shows_about());
+        assert!(
+            !View {
+                foreground: false,
+                ..shown
+            }
+            .shows_about()
+        );
+        assert!(
+            !View {
+                notes: true,
+                ..shown
+            }
+            .shows_about()
+        );
+        assert!(
+            !View {
+                onboarding: true,
+                ..shown
+            }
+            .shows_about()
+        );
+        assert!(
+            !View {
+                player: true,
+                ..shown
+            }
+            .shows_about()
+        );
+    }
+
+    #[test]
     fn a_picked_track_holds_whatever_build_runs() {
         let stable = Kept {
             nightly: false,
@@ -517,6 +650,7 @@ mod tests {
             picked: false,
             asked_by: "2.4.3-nightly.20261117.97".into(),
             answered_at: 1_800_000_000,
+            failed_at: 0,
             offer: Some(offer.clone()),
         };
         let same = on_start(answered.clone(), "2.4.3-nightly.20261117.97");

@@ -1691,7 +1691,17 @@ impl App {
 
     /// About was open with a newer version on it: the More tab stops pointing at it.
     fn mark_update_seen(&mut self) {
-        let version = self.data().get_update_version().to_string();
+        let data = self.data();
+        let view = crate::newer::View {
+            foreground: data.get_foreground(),
+            notes: data.get_notes_open(),
+            onboarding: data.get_onboarding(),
+            player: self.window.global::<crate::PlayerData>().get_open(),
+        };
+        if !view.shows_about() {
+            return;
+        }
+        let version = data.get_update_version().to_string();
         if version.is_empty() || version == self.prefs.update_seen {
             return;
         }
