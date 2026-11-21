@@ -268,7 +268,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
     (6, "more-set-whats-new", "more-words-whats-new"),
     (6, "more-set-onboarding", "more-words-onboarding"),
     (6, "about-ratings", "more-words-ratings"),
-    (6, "more-set-version", "more-words-version"),
+    (6, UPDATES, "more-words-updates"),
     (8, "more-stats", "more-words-stats"),
     (9, "backup-export", "more-words-backup"),
     (9, "backup-restore", "more-words-restore"),
@@ -284,6 +284,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
 
 const FEEDS: &str = "more-set-feeds";
 const REPOS_CHECK: &str = "repos-check-repos";
+const UPDATES: &str = "more-updates";
 
 /// The settings a search names: each word in the label, the words or the section's name, the
 /// ones whose label holds the whole search first.
@@ -297,6 +298,8 @@ fn find_settings(query: &str, has_feeds: bool, has_repos: bool) -> Vec<SettingHi
         .iter()
         .filter(|(_, label, _)| has_feeds || *label != FEEDS)
         .filter(|(_, label, _)| has_repos || *label != REPOS_CHECK)
+        // A build that never asks for its updates has no Updates choice to land on
+        .filter(|(_, label, _)| crate::newer::offered() || *label != UPDATES)
         .filter_map(|&(section, label_id, words_id)| {
             let label = tr!(label_id);
             let place = tr!(SECTIONS[section as usize]);
@@ -734,6 +737,7 @@ impl App {
     /// the clock moves the count; a tick asked for by a tap or a reply redraws and no more.
     fn second(&mut self) {
         self.tick();
+        crate::newer::tick();
         self.ticks = self.ticks.wrapping_add(1);
     }
 
@@ -1331,61 +1335,57 @@ impl App {
 
     /// Runs the connection check on a thread and lists what it found, failures first.
     fn run_check(&mut self) {
-        let Some(core) = crate::local::core() else {
-            return;
-        };
-        self.data().set_checking(true);
-        self.data().set_check_summary("".into());
-        let _ = std::thread::Builder::new()
-            .name("check".into())
-            .spawn(move || {
-                let answer = core.call(Call::PhoneNetCheck);
-                let _ = slint::invoke_from_event_loop(move || {
-                    with_app(|app| {
-                        let window = app.window.clone_strong();
-                        let data = window.global::<AppData>();
-                        data.set_checking(false);
-                        let Ok(Reply::PhoneNetCheck { checks }) = answer else {
-                            return;
-                        };
-                        app.check_text = std::iter::once(format!(
-                            "Anibeam {} connection check",
-                            env!("ANIBEAM_PHONE_VERSION")
-                        ))
-                        .chain(checks.iter().map(|c| {
-                            format!(
-                                "{} {}: {} ({} ms)",
-                                if c.ok { "OK  " } else { "FAIL" },
-                                c.name,
-                                c.detail,
-                                c.ms
-                            )
-                        }))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                        let failed = checks.iter().filter(|c| !c.ok).count();
-                        data.set_check_failed(failed as i32);
-                        data.set_check_summary(
-                            if failed == 0 {
-                                tr!("more-check-all-ok")
-                            } else {
-                                tr!("more-check-failed", failed = failed, total = checks.len())
-                            }
-                            .into(),
-                        );
-                        let rows: Vec<CheckRow> = checks
-                            .iter()
-                            .map(|c| CheckRow {
-                                name: tr!("more-check-row", step = c.name.as_str(), ms = c.ms)
-                                    .into(),
-                                detail: c.detail.clone().into(),
-                                ok: c.ok,
-                            })
-                            .collect();
-                        data.set_checks(ModelRc::new(VecModel::from(rows)));
+        let started = crate::local::call_off_thread("check", Call::PhoneNetCheck, |answer| {
+            with_app(|app| {
+                let window = app.window.clone_strong();
+                let data = window.global::<AppData>();
+                data.set_checking(false);
+                let checks = match answer {
+                    Ok(Reply::PhoneNetCheck { checks }) => checks,
+                    Ok(_) => return,
+                    // A check that could not run says why, rather than nothing
+                    Err(e) => return data.set_check_summary(e.to_string().into()),
+                };
+                app.check_text = std::iter::once(format!(
+                    "Anibeam {} connection check",
+                    env!("ANIBEAM_PHONE_VERSION")
+                ))
+                .chain(checks.iter().map(|c| {
+                    format!(
+                        "{} {}: {} ({} ms)",
+                        if c.ok { "OK  " } else { "FAIL" },
+                        c.name,
+                        c.detail,
+                        c.ms
+                    )
+                }))
+                .collect::<Vec<_>>()
+                .join("\n");
+                let failed = checks.iter().filter(|c| !c.ok).count();
+                data.set_check_failed(failed as i32);
+                data.set_check_summary(
+                    if failed == 0 {
+                        tr!("more-check-all-ok")
+                    } else {
+                        tr!("more-check-failed", failed = failed, total = checks.len())
+                    }
+                    .into(),
+                );
+                let rows: Vec<CheckRow> = checks
+                    .iter()
+                    .map(|c| CheckRow {
+                        name: tr!("more-check-row", step = c.name.as_str(), ms = c.ms).into(),
+                        detail: c.detail.clone().into(),
+                        ok: c.ok,
                     })
-                });
-            });
+                    .collect();
+                data.set_checks(ModelRc::new(VecModel::from(rows)));
+            })
+        });
+        if started {
+            self.data().set_checking(true);
+            self.data().set_check_summary("".into());
+        }
     }
 
     /// Asks the engine for its torrents on a thread, one ask at a time.
@@ -1623,6 +1623,7 @@ impl App {
             )
             .into(),
         );
+        data.set_update_seen(self.prefs.update_seen.as_str().into());
         data.set_ratings_label(tr!("about-ratings").into());
         data.set_mark_watched_label(tr!("mark-menu-watched").into());
         data.set_mark_unwatched_label(tr!("mark-menu-unwatched").into());
@@ -1709,6 +1710,27 @@ impl App {
             self.save_prefs();
             self.data().set_notify_ask(true);
         }
+    }
+
+    /// About was open with a newer version on it: the More tab stops pointing at it.
+    fn mark_update_seen(&mut self) {
+        let data = self.data();
+        let view = crate::newer::View {
+            foreground: data.get_foreground(),
+            notes: data.get_notes_open(),
+            onboarding: data.get_onboarding(),
+            player: self.window.global::<crate::PlayerData>().get_open(),
+        };
+        if !view.shows_about() {
+            return;
+        }
+        let version = data.get_update_version().to_string();
+        if version.is_empty() || version == self.prefs.update_seen {
+            return;
+        }
+        self.data().set_update_seen(version.as_str().into());
+        self.prefs.update_seen = version;
+        self.save_prefs();
     }
 
     fn save_prefs(&mut self) {
@@ -2472,6 +2494,7 @@ pub fn run(
         }
     });
     data.on_close_notes(|| with_app(App::close_notes));
+    data.on_mark_update_seen(|| with_app(App::mark_update_seen));
     data.on_restart_onboarding(|| {
         with_app(|app| {
             app.prefs.onboarded = false;
@@ -2541,6 +2564,7 @@ pub fn run(
     crate::activity::install(&window);
     crate::listmove::install(&window);
     crate::look::install(&window, &data_dir);
+    crate::newer::install(&window, &data_dir);
 
     let mut app = App {
         window: window.clone_strong(),

@@ -78,6 +78,28 @@ pub fn log(line: &str) {
     crate::platform::log(line);
 }
 
+/// Sends `call` to the core on a thread named `name` and hands the answer to `done` on the
+/// UI thread. A panic in the call answers as an error. False when the core is not open yet
+/// or no thread could start, and `done` then never runs; nor does it when the UI loop has
+/// ended before the answer came, so a caller that waits on it keeps a deadline of its own.
+pub fn call_off_thread(
+    name: &str,
+    call: Call,
+    done: impl FnOnce(Result<Reply, anibeam_core::CoreError>) + Send + 'static,
+) -> bool {
+    let Some(core) = core() else {
+        return false;
+    };
+    std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            let answer = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| core.call(call)))
+                .unwrap_or_else(|_| Err(anibeam_core::CoreError::internal("the call panicked")));
+            let _ = slint::invoke_from_event_loop(move || done(answer));
+        })
+        .is_ok()
+}
+
 /// The process's one core and the logcat listener on it. Android may destroy and recreate
 /// the activity in the same process; the core outlives that, and later the download
 /// service, so it is opened once and kept for the life of the process.

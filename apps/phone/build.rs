@@ -2,13 +2,15 @@ fn main() {
     changes();
     // scripts/build.sh works out the version the APK ships as (2.4.3-nightly.20261113.41 on a
     // nightly) and its versionCode; the app shows both in More. A plain cargo run, the tests
-    // say, has neither and shows the crate's version.
+    // say, has neither and shows the crate's version. The flavor is `play` for the Play
+    // Store's bundle, which the store updates, and empty for the APK, which asks GitHub.
     for (key, fallback) in [
         (
             "ANIBEAM_PHONE_VERSION",
             std::env::var("CARGO_PKG_VERSION").unwrap(),
         ),
         ("ANIBEAM_VERSION_CODE", "0".to_string()),
+        ("ANIBEAM_FLAVOR", String::new()),
     ] {
         println!("cargo:rerun-if-env-changed={key}");
         let value = std::env::var(key).unwrap_or(fallback);

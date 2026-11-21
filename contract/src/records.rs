@@ -1445,3 +1445,11 @@ pub enum PresenceProblem {
     /// plays, in its own words.
     Refused { message: String },
 }
+
+/// A phone release newer than the running build (#809): its version, and where to get it,
+/// the release's APK when it carries one and its page on GitHub when not.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct PhoneUpdate {
+    pub version: String,
+    pub url: String,
+}

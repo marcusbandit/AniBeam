@@ -245,13 +245,14 @@ export component AppWindow inherits Window {
 
     property <int> page: Nav.page;
 
-    // Each tab, in the order the bar shows them, with the page it opens.
-    property <[{icon: image, label: string, page: int}]> destinations: [
-        { icon: @image-url("icons/house.svg"), label: Tr.t("phone-nav-home"), page: 0 },
-        { icon: @image-url("icons/calendar-days.svg"), label: Tr.t("nav-calendar"), page: 4 },
-        { icon: @image-url("icons/layers.svg"), label: Tr.t("phone-nav-library"), page: 1 },
-        { icon: @image-url("icons/download.svg"), label: Tr.t("phone-nav-downloads"), page: 2 },
-        { icon: @image-url("icons/ellipsis.svg"), label: Tr.t("nav-more"), page: 3 },
+    // Each tab, in the order the bar shows them, with the page it opens and whether
+    // something new waits behind it.
+    property <[{icon: image, label: string, page: int, dot: bool}]> destinations: [
+        { icon: @image-url("icons/house.svg"), label: Tr.t("phone-nav-home"), page: 0, dot: false },
+        { icon: @image-url("icons/calendar-days.svg"), label: Tr.t("nav-calendar"), page: 4, dot: false },
+        { icon: @image-url("icons/layers.svg"), label: Tr.t("phone-nav-library"), page: 1, dot: false },
+        { icon: @image-url("icons/download.svg"), label: Tr.t("phone-nav-downloads"), page: 2, dot: false },
+        { icon: @image-url("icons/ellipsis.svg"), label: Tr.t("nav-more"), page: 3, dot: AppData.update-unseen },
     ];
 
     // The system bars draw over the window; keep touch targets out from under them.
@@ -573,6 +574,7 @@ export component AppWindow inherits Window {
                 icon: destination.icon;
                 label: destination.label;
                 active: root.page == destination.page;
+                dot: destination.dot;
                 clicked => { root.go(destination.page); }
             }
         }
