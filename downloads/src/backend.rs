@@ -128,17 +128,7 @@ impl DownloadsBackend {
     ) -> Result<Analysis, CoreError> {
         match self {
             DownloadsBackend::Anirss(client) => client.analyze(query, endpoint, items).await,
-            DownloadsBackend::Native(native, _) => {
-                let a = native.analyze(query, endpoint, items, true)?;
-                Ok(Analysis {
-                    query: a.query,
-                    items: a.items,
-                    groups: a.groups,
-                    best_fit: a.best_fit,
-                    client_side: a.client_side,
-                    auto_resolution: a.auto_resolution,
-                })
-            }
+            DownloadsBackend::Native(native, _) => native.analyze(query, endpoint, items, true),
         }
     }
 

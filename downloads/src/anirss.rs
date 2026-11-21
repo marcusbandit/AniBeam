@@ -13,15 +13,17 @@
 
 use std::collections::VecDeque;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Child;
 
 use anibeam_contract::*;
+use anibeam_foundation::percent;
 use anibeam_foundation::sync::recover;
 use anibeam_net::{Body, BoxFuture, Http, HttpRequest, HttpResponse, Method};
 
@@ -38,6 +40,8 @@ const REMOVE_TIMEOUT: Duration = Duration::from_secs(60);
 /// How long a fresh sidecar gets to answer `/health`.
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
 const READY_POLL: Duration = Duration::from_millis(200);
+/// How many lines of the sidecar's stderr a failure message quotes.
+const STDERR_QUOTED: usize = 3;
 /// Lines of the sidecar's stderr kept for the failure message.
 const STDERR_TAIL: usize = 40;
 /// How long `anirss --version` gets when a sidecar failed to come up.
@@ -52,11 +56,6 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 /// (`the_bundled_anirss_is_new_enough`). Whether a running sidecar will do is
 /// decided by the features it lists, not by this.
 pub const MIN_VERSION: &str = "0.6.0";
-
-/// The first anirss that lists `subscription_save_path`, so a subscription for a
-/// library show is written straight into its folder (#503). The bundles pin this or
-/// newer; an older anirss still works, and its rule is moved after (`rehome_rule`).
-pub const SAVE_PATH_SINCE: &str = "0.7.1";
 
 /// The feature a sidecar has to list in `/health`: an address only the
 /// environment names keeps its own session and saved password. Anibeam points
@@ -92,6 +91,7 @@ impl Health {
 pub fn lists(features: &[String], feature: &str) -> bool {
     features.iter().any(|f| f == feature)
 }
+
 /// Set by a shell whose package carries its own anirss.
 const BUNDLED_ENV: &str = "ANIBEAM_ANIRSS";
 
@@ -113,7 +113,10 @@ pub struct QbtView {
     pub login_failed: bool,
 }
 
-/// `GET /search` before the analysis is folded in.
+/// `POST /refine/analyze` answers what the core's own engine computes.
+pub use anibeam_releases::native::Analysis;
+
+/// `POST /search` before the analysis is folded in.
 #[derive(Debug)]
 pub struct SearchRaw {
     pub query: String,
@@ -121,17 +124,6 @@ pub struct SearchRaw {
     pub items: Vec<Release>,
     pub tried: Vec<EndpointTry>,
     pub fell_back: bool,
-}
-
-/// `POST /refine/analyze`.
-#[derive(Debug)]
-pub struct Analysis {
-    pub query: String,
-    pub items: Vec<Release>,
-    pub groups: Vec<ReleaseGroup>,
-    pub best_fit: BestFit,
-    pub client_side: bool,
-    pub auto_resolution: Option<String>,
 }
 
 impl AnirssClient {
@@ -151,54 +143,25 @@ impl AnirssClient {
 
     /// `GET /health`: the version and the features. No token needed.
     pub async fn health(&self) -> Result<Health, CoreError> {
-        let v = self.get("/health", &[], None).await?;
-        let features = v["features"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|f| f.as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let v = self.get("/health", None).await?;
         Ok(Health {
             version: v["version"].as_str().unwrap_or("").to_string(),
-            features,
+            features: list(&v["features"]),
         })
     }
 
     /// Each endpoint's kind comes back under its shape name, whatever anirss calls it.
     pub async fn endpoints(&self) -> Result<Vec<SearchEndpoint>, CoreError> {
-        let v = self.get("/endpoints", &[], None).await?;
-        let mut endpoints: Vec<SearchEndpoint> =
-            serde_json::from_value(v["endpoints"].clone()).unwrap_or_default();
+        let v = self.get("/endpoints", None).await?;
+        let mut endpoints = Vec::<SearchEndpoint>::deserialize(&v["endpoints"]).unwrap_or_default();
         for e in &mut endpoints {
             e.kind = anibeam_releases::kinds::shape_of(&e.kind).to_string();
         }
         Ok(endpoints)
     }
 
-    /// `POST /endpoints` (anirss 0.6): writes an endpoint into anirss's config, or replaces
-    /// the one with its name.
-    pub async fn put_endpoint(&self, spec: Value) -> Result<(), CoreError> {
-        self.post("/endpoints", spec, None).await.map(|_| ())
-    }
-
-    /// `DELETE /endpoints/<name>` (anirss 0.6).
-    pub async fn delete_endpoint(&self, name: &str) -> Result<(), CoreError> {
-        let response = self
-            .send(
-                HttpRequest::new(
-                    Method::Delete,
-                    format!("{}/endpoints/{}", self.base, encode(name)),
-                )
-                .headers(self.headers()),
-            )
-            .await?;
-        judge(response).map(|_| ())
-    }
-
     pub async fn qbt_status(&self) -> Result<QbtView, CoreError> {
-        let v = self.get("/qbt/status", &[], None).await?;
+        let v = self.get("/qbt/status", None).await?;
         Ok(QbtView {
             url: v["url"].as_str().unwrap_or("").to_string(),
             reachable: v["reachable"].as_bool().unwrap_or(false),
@@ -224,8 +187,8 @@ impl AnirssClient {
         Ok(SearchRaw {
             query: v["query"].as_str().unwrap_or(query).to_string(),
             endpoint: v["endpoint"].as_str().unwrap_or("").to_string(),
-            items: releases(&v["items"]),
-            tried: serde_json::from_value(v["tried"].clone()).unwrap_or_default(),
+            items: list(&v["items"]),
+            tried: Vec::deserialize(&v["tried"]).unwrap_or_default(),
             fell_back: v["fell_back"].as_bool().unwrap_or(false),
         })
     }
@@ -245,8 +208,8 @@ impl AnirssClient {
         let auto = &v["auto_resolution"];
         Ok(Analysis {
             query: v["query"].as_str().unwrap_or(query).to_string(),
-            items: releases(&v["items"]),
-            groups: groups(&v["groups"]),
+            items: list(&v["items"]),
+            groups: list(&v["groups"]),
             best_fit: best_fit(&v["best_fit"]),
             client_side: v["client_side"].as_bool().unwrap_or(false),
             auto_resolution: auto["applied"]
@@ -281,8 +244,8 @@ impl AnirssClient {
             mode: v["mode"].as_str().unwrap_or("").to_string(),
             query: v["query"].as_str().unwrap_or(query).to_string(),
             endpoint: v["endpoint"].as_str().unwrap_or(endpoint).to_string(),
-            items: releases(&v["items"]),
-            groups: groups(&v["groups"]),
+            items: list(&v["items"]),
+            groups: list(&v["groups"]),
             best_fit: best_fit(&v["best_fit"]),
             previous_count: previous,
             delta: v["delta"].as_i64().unwrap_or(count - previous as i64),
@@ -351,7 +314,7 @@ impl AnirssClient {
             save_path: v["save_path"].as_str().unwrap_or("").to_string(),
             must_contain: v["must_contain"].as_str().unwrap_or("").to_string(),
             must_not_contain: v["must_not_contain"].as_str().unwrap_or("").to_string(),
-            tags: strings(&v["tags"]),
+            tags: list(&v["tags"]),
         })
     }
 
@@ -393,9 +356,9 @@ impl AnirssClient {
     }
 
     pub async fn subscriptions(&self) -> Result<Vec<SubscriptionRule>, CoreError> {
-        let v = self.get("/subscriptions", &[], Some(STEP_TIMEOUT)).await?;
-        let mut rules: Vec<SubscriptionRule> =
-            serde_json::from_value(v["subscriptions"].clone()).unwrap_or_default();
+        let v = self.get("/subscriptions", Some(STEP_TIMEOUT)).await?;
+        let mut rules =
+            Vec::<SubscriptionRule>::deserialize(&v["subscriptions"]).unwrap_or_default();
         for r in &mut rules {
             r.query = crate::query::decode_search_query(&r.feed_url).unwrap_or_default();
         }
@@ -417,9 +380,10 @@ impl AnirssClient {
         let v = self
             .post("/subscriptions/remove", body, Some(REMOVE_TIMEOUT))
             .await?;
-        let plans = v["plans"].as_array().cloned().unwrap_or_default();
-        Ok(plans
-            .iter()
+        Ok(v["plans"]
+            .as_array()
+            .into_iter()
+            .flatten()
             .map(|p| RemovePlan {
                 name: p["name"].as_str().unwrap_or("").to_string(),
                 feed_url: p["feed_url"].as_str().unwrap_or("").to_string(),
@@ -440,28 +404,8 @@ impl AnirssClient {
 
     // The wire --------------------------------------------------------------
 
-    async fn get(
-        &self,
-        path: &str,
-        query: &[(&str, &str)],
-        timeout: Option<Duration>,
-    ) -> Result<Value, CoreError> {
-        let mut url = format!("{}{}", self.base, path);
-        if !query.is_empty() {
-            let q: Vec<String> = query
-                .iter()
-                .map(|(k, v)| format!("{k}={}", encode(v)))
-                .collect();
-            url = format!("{url}?{}", q.join("&"));
-        }
-        let response = self
-            .send(
-                HttpRequest::get(url)
-                    .headers(self.headers())
-                    .timeout(timeout),
-            )
-            .await?;
-        judge(response)
+    async fn get(&self, path: &str, timeout: Option<Duration>) -> Result<Value, CoreError> {
+        self.call(Method::Get, path, None, timeout).await
     }
 
     async fn post(
@@ -470,31 +414,24 @@ impl AnirssClient {
         body: Value,
         timeout: Option<Duration>,
     ) -> Result<Value, CoreError> {
-        let mut headers = self.headers();
-        headers.push(("Content-Type".to_string(), "application/json".to_string()));
-        let response = self
-            .send(
-                HttpRequest::post(format!("{}{}", self.base, path))
-                    .headers(headers)
-                    .body(Body::Json(body))
-                    .timeout(timeout),
-            )
-            .await?;
-        judge(response)
+        self.call(Method::Post, path, Some(body), timeout).await
     }
 
-    fn headers(&self) -> Vec<(String, String)> {
-        vec![
-            ("Accept".to_string(), "application/json".to_string()),
-            (
-                "Authorization".to_string(),
-                format!("Bearer {}", self.token),
-            ),
-        ]
-    }
-
-    async fn send(&self, req: HttpRequest) -> Result<HttpResponse, CoreError> {
-        self.http.send(req).await.map_err(|e| {
+    /// One request with the bearer, its reply into JSON or the envelope's error. A JSON
+    /// body brings its own `Content-Type`.
+    async fn call(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+        timeout: Option<Duration>,
+    ) -> Result<Value, CoreError> {
+        let request = HttpRequest::new(method, format!("{}{}", self.base, path))
+            .header("Accept", "application/json")
+            .header("Authorization", format!("Bearer {}", self.token))
+            .body(body.map(Body::Json))
+            .timeout(timeout);
+        let response = self.http.send(request).await.map_err(|e| {
             CoreError::service(
                 SERVICE,
                 "unreachable",
@@ -503,18 +440,22 @@ impl AnirssClient {
                     &[("message", e.message.into())],
                 ),
             )
-        })
+        })?;
+        judge(response)
     }
 }
 
-/// The endpoint writes the releases below sync the installed endpoints with (#854).
+/// The endpoint writes the releases below sync the installed endpoints with (#854):
+/// `POST /endpoints` writes one into anirss's config or replaces the one of its name, and
+/// `DELETE /endpoints/<name>` takes it out (anirss 0.6).
 impl anibeam_releases::repos::AnirssEndpoints for AnirssClient {
     fn put_endpoint(&self, spec: Value) -> BoxFuture<'_, Result<(), CoreError>> {
-        Box::pin(AnirssClient::put_endpoint(self, spec))
+        Box::pin(async move { self.post("/endpoints", spec, None).await.map(drop) })
     }
 
     fn delete_endpoint<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<(), CoreError>> {
-        Box::pin(AnirssClient::delete_endpoint(self, name))
+        let path = format!("/endpoints/{}", percent::encode(name));
+        Box::pin(async move { self.call(Method::Delete, &path, None, None).await.map(drop) })
     }
 }
 
@@ -547,67 +488,31 @@ fn judge(response: HttpResponse) -> Result<Value, CoreError> {
     Err(CoreError::service(SERVICE, code, message))
 }
 
-/// Percent-encodes a query value the way a form does.
-fn encode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
-            b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
-}
-
-/// An item list, one malformed item dropped rather than the whole reply.
-fn releases(v: &Value) -> Vec<Release> {
+/// Each item of a JSON array that reads as a `T`, one malformed item dropped rather than
+/// the whole reply.
+fn list<T: DeserializeOwned>(v: &Value) -> Vec<T> {
     v.as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|i| serde_json::from_value(i.clone()).ok())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn groups(v: &Value) -> Vec<ReleaseGroup> {
-    v.as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|g| serde_json::from_value(g.clone()).ok())
-                .collect()
-        })
-        .unwrap_or_default()
+        .into_iter()
+        .flatten()
+        .filter_map(|i| T::deserialize(i).ok())
+        .collect()
 }
 
 fn best_fit(v: &Value) -> BestFit {
     BestFit {
         available: v["available"].as_bool().unwrap_or(false),
         query: v["query"].as_str().unwrap_or("").to_string(),
-        item: serde_json::from_value(v["item"].clone()).ok(),
-        profile: strings(&v["profile"]),
+        item: Release::deserialize(&v["item"]).ok(),
+        profile: list(&v["profile"]),
     }
-}
-
-fn strings(v: &Value) -> Vec<String> {
-    v.as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|s| s.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 fn added(v: &Value) -> AddedTorrents {
     AddedTorrents {
         count: v["count"].as_u64().unwrap_or(0),
         save_path: v["save_path"].as_str().unwrap_or("").to_string(),
-        tags: strings(&v["tags"]),
-        hashes: strings(&v["hashes"]),
+        tags: list(&v["tags"]),
+        hashes: list(&v["hashes"]),
     }
 }
 
@@ -616,7 +521,7 @@ fn added(v: &Value) -> AddedTorrents {
 /// `anirss --serve` as a child of the core.
 pub struct Sidecar {
     child: Child,
-    pub port: u16,
+    port: u16,
     pub token: String,
     stderr: Arc<Mutex<VecDeque<String>>>,
 }
@@ -746,7 +651,12 @@ impl Sidecar {
                     ),
                 });
             }
-            if let Ok(health) = client.health().await {
+            // A server that binds but stalls must not stretch the wait past its timeout,
+            // and the last look still gets a poll's worth of time to answer.
+            let left = READY_TIMEOUT
+                .saturating_sub(started.elapsed())
+                .max(READY_POLL);
+            if let Ok(Ok(health)) = tokio::time::timeout(left, client.health()).await {
                 return Ok(health);
             }
             if started.elapsed() > READY_TIMEOUT {
@@ -778,17 +688,10 @@ impl Sidecar {
 
     /// The last few lines stderr said, joined, or `None` when it said nothing.
     fn stderr_tail(&self) -> Option<String> {
-        let t = recover(&self.stderr);
-        let lines: Vec<&str> = t
-            .iter()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
-        if lines.is_empty() {
-            None
-        } else {
-            Some(lines[lines.len().saturating_sub(3)..].join(" / "))
-        }
+        super::managed::last_lines(
+            recover(&self.stderr).iter().map(String::as_str),
+            STDERR_QUOTED,
+        )
     }
 }
 
@@ -838,66 +741,54 @@ fn parse_version(word: &str) -> Option<(u32, u32, u32)> {
 /// How this platform installs anirss, for the message a missing command
 /// shows.
 pub fn install_hint() -> String {
-    if cfg!(target_os = "macos") {
-        anibeam_contract::i18n::tr(
+    let (key, command) = if cfg!(target_os = "macos") {
+        (
             "core-downloads-anirss-install-mac",
-            &[
-                ("version", MIN_VERSION.into()),
-                ("command", "brew install marcusbandit/anirss/anirss".into()),
-            ],
+            "brew install marcusbandit/anirss/anirss",
         )
     } else {
-        anibeam_contract::i18n::tr(
+        (
             "core-downloads-anirss-install-linux",
-            &[
-                ("version", MIN_VERSION.into()),
-                (
-                    "command",
-                    "uv tool install git+https://github.com/marcusbandit/anirss".into(),
-                ),
-            ],
+            "uv tool install git+https://github.com/marcusbandit/anirss",
         )
-    }
+    };
+    anibeam_contract::i18n::tr(
+        key,
+        &[("version", MIN_VERSION.into()), ("command", command.into())],
+    )
 }
 
 /// What an anirss older than [`MIN_VERSION`] reports, `version` being its own.
 pub fn too_old_message(version: &str) -> String {
-    anibeam_contract::i18n::tr(
-        "core-downloads-anirss-too-old",
-        &[
-            ("version", version.into()),
-            ("minimum", MIN_VERSION.into()),
-            ("update", update_hint().into()),
-        ],
-    )
+    needs_update("core-downloads-anirss-too-old", version)
 }
 
 /// What a sidecar that does not list [`SIDECAR_FEATURE`] reports, `version`
 /// being its own.
 pub fn lacks_feature_message(version: &str) -> String {
+    needs_update("core-downloads-anirss-lacks-feature", version)
+}
+
+/// The message `key` names for an anirss at `version`, with the minimum and how this
+/// platform updates it.
+fn needs_update(key: &str, version: &str) -> String {
+    let (update, command) = if cfg!(target_os = "macos") {
+        ("core-downloads-anirss-update-mac", "brew upgrade anirss")
+    } else {
+        (
+            "core-downloads-anirss-update-linux",
+            "uv tool upgrade anirss",
+        )
+    };
+    let update = anibeam_contract::i18n::tr(update, &[("command", command.into())]);
     anibeam_contract::i18n::tr(
-        "core-downloads-anirss-lacks-feature",
+        key,
         &[
             ("version", version.into()),
             ("minimum", MIN_VERSION.into()),
-            ("update", update_hint().into()),
+            ("update", update.into()),
         ],
     )
-}
-
-/// How this platform updates anirss, for the message an old one shows.
-pub fn update_hint() -> String {
-    if cfg!(target_os = "macos") {
-        anibeam_contract::i18n::tr(
-            "core-downloads-anirss-update-mac",
-            &[("command", "brew upgrade anirss".into())],
-        )
-    } else {
-        anibeam_contract::i18n::tr(
-            "core-downloads-anirss-update-linux",
-            &[("command", "uv tool upgrade anirss".into())],
-        )
-    }
 }
 
 /// A port nobody is listening on right now. Bound and released, so there
@@ -921,12 +812,11 @@ fn random_token() -> String {
 /// launch from a `.desktop` entry with a sparse `PATH` still finds a
 /// user-installed anirss. A Mac app opened from Finder gets launchd's
 /// `/usr/bin:/bin:/usr/sbin:/sbin`, so there Homebrew's two prefixes join it.
-/// `None` when nothing needs changing, or when a test switched the extra
-/// directories off with `set_child_path_extras`. The subscriptions call
-/// uses it too.
+/// `None` when nothing needs changing. An endpoint's start command (`jackett`) and the
+/// lookup of Anibeam's own qBittorrent (`managed`) use it too.
 pub(crate) fn child_path() -> Option<String> {
     // Windows apps get the user's whole PATH; there is nothing to add.
-    if cfg!(windows) || !EXTRA_DIRS.load(Ordering::Relaxed) {
+    if cfg!(windows) {
         return None;
     }
     let home = std::env::var("HOME").ok()?;
@@ -938,21 +828,6 @@ pub(crate) fn child_path() -> Option<String> {
         ]);
     }
     with_dirs(&std::env::var("PATH").unwrap_or_default(), &wanted)
-}
-
-/// Whether `child_path` may add directories at all. Only a test turns it
-/// off.
-static EXTRA_DIRS: AtomicBool = AtomicBool::new(true);
-
-/// With `false`, `child_path` adds no directory until it is called again
-/// with `true`, so a child sees exactly the `PATH` a test set and a fake
-/// `anirss` on it is the one that runs, whatever the machine has in
-/// `~/.local/bin` or Homebrew's prefixes. Process-wide. Not part of the
-/// contract: public only so the integration tests can reach it, and no
-/// shell may call it.
-#[doc(hidden)]
-pub fn set_child_path_extras(on: bool) {
-    EXTRA_DIRS.store(on, Ordering::Relaxed);
 }
 
 /// `path` with each of `dirs` it lacks put in front, in order; `None` when
@@ -1186,8 +1061,10 @@ mod tests {
         http.push_json(
             200,
             json!({"applied": false, "reason": "noop", "mode": "client", "query": "q", "endpoint": "keyed",
-                   "items": [], "previous_count": 0, "delta": 0, "groups": [],
-                   "best_fit": {"available": false, "query": "", "item": null, "profile": []}}),
+                   "items": [{"title": "[Lumen] Show - 01", "link": "magnet:?a"}, {"title": 7}],
+                   "previous_count": 2, "delta": -1,
+                   "groups": [{"label": "1080p", "tokens": ["1080p"], "member_count": 1}, {"label": "x"}],
+                   "best_fit": {"available": false, "query": "", "item": null, "profile": ["1080p", 3]}}),
         );
         let r = client(&http)
             .apply(
@@ -1202,6 +1079,11 @@ mod tests {
             .unwrap();
         assert!(!r.applied);
         assert_eq!(r.reason.as_deref(), Some("noop"));
+        // A malformed item, group or profile word is dropped, never the whole reply.
+        assert_eq!(r.items.len(), 1);
+        assert_eq!(r.groups.len(), 1);
+        assert_eq!(r.groups[0].label, "1080p");
+        assert_eq!(r.best_fit.profile, ["1080p"]);
         let body = match &http.requests()[0].body {
             Some(Body::Json(v)) => v.clone(),
             _ => panic!("json body"),
@@ -1209,6 +1091,11 @@ mod tests {
         assert_eq!(body["op"]["type"], "tokens");
         assert_eq!(body["op"]["tokens"][0], "[Lumen]");
     }
+
+    /// The first anirss that lists `subscription_save_path`, so a subscription for a
+    /// library show is written straight into its folder (#503). The bundles pin this or
+    /// newer; an older anirss still works, and its rule is moved after (`rehome_rule`).
+    const SAVE_PATH_SINCE: &str = "0.7.1";
 
     /// The anirss the app bundle and the AppImage carry, and the one the AUR
     /// package asks for, have to be ones the core accepts: MIN_VERSION or newer.
@@ -1225,20 +1112,22 @@ mod tests {
             ("aur/anibeam/PKGBUILD", "'anirss>="),
             ("aur/anibeam-bin/PKGBUILD", "'anirss>="),
         ];
+        let mut bundled = Vec::new();
         for (file, prefix) in pins {
             let text = std::fs::read_to_string(packaging.join(file)).unwrap();
             let pinned = text
                 .split(prefix)
                 .nth(1)
                 .and_then(|rest| rest.split(['\n', '\'', ' ']).next())
-                .unwrap_or_else(|| panic!("{file} names no anirss version"));
+                .unwrap_or_else(|| panic!("{file} names no anirss version"))
+                .to_string();
             assert_eq!(
-                too_old(pinned),
+                too_old(&pinned),
                 None,
                 "{file} pins anirss {pinned}, older than the {MIN_VERSION} the core needs: \
                  pin a release that has it, with its sha256"
             );
-            let version = parse_version(pinned)
+            let version = parse_version(&pinned)
                 .unwrap_or_else(|| panic!("{file} pins {pinned:?}, which is no version"));
             // The bundles save a library show's subscription straight into its folder. The
             // AUR asks for what the AUR has, until it carries SAVE_PATH_SINCE (#542).
@@ -1248,22 +1137,10 @@ mod tests {
                     "{file} pins anirss {pinned}, which writes a show's rule under its own \
                      root: pin {SAVE_PATH_SINCE} or newer, with its sha256"
                 );
+                bundled.push(pinned);
             }
         }
         // The three bundles ship one release, and each smoke check expects that one.
-        let bundled: Vec<String> = pins[..3]
-            .iter()
-            .map(|(file, prefix)| {
-                let text = std::fs::read_to_string(packaging.join(file)).unwrap();
-                text.split(prefix)
-                    .nth(1)
-                    .unwrap()
-                    .lines()
-                    .next()
-                    .unwrap()
-                    .to_string()
-            })
-            .collect();
         assert!(
             bundled.iter().all(|v| v == &bundled[0]),
             "the bundles pin different anirss releases: {bundled:?}"
@@ -1279,24 +1156,11 @@ mod tests {
     }
 
     #[test]
-    fn encode_is_form_style() {
-        assert_eq!(encode("Frieren 1080p"), "Frieren+1080p");
-        assert_eq!(encode("a&b"), "a%26b");
-    }
-
-    #[test]
     fn tokens_are_32_hex() {
         let t = random_token();
         assert_eq!(t.len(), 32);
         assert!(t.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(t, random_token());
-    }
-
-    fn health(version: &str, features: &[&str]) -> Health {
-        Health {
-            version: version.to_string(),
-            features: features.iter().map(|f| f.to_string()).collect(),
-        }
     }
 
     /// The installed endpoints go into anirss through this client (#499): the releases'
@@ -1330,10 +1194,14 @@ mod tests {
             running: None,
             followable: true,
         };
-        // An anirss that does not list endpoint writes has no endpoint API, whatever its
-        // version says: nothing is sent.
-        let have = vec![theirs("proxied", "http://elsewhere/")];
+        // An anirss whose `/health` does not list endpoint writes has no endpoint API,
+        // whatever its version says: nothing is sent.
+        let health = |version: &str, features: &[&str]| Health {
+            version: version.into(),
+            features: features.iter().map(|f| f.to_string()).collect(),
+        };
         let without = health("0.6.0", &["qbt_env_session"]);
+        let have = vec![theirs("proxied", "http://elsewhere/")];
         assert!(!teams.services.handle.block_on(sync_anirss(
             &teams.services,
             &anirss,
@@ -1368,7 +1236,7 @@ mod tests {
         assert!(!teams.services.handle.block_on(sync_anirss(
             &teams.services,
             &anirss,
-            writes.has(ENDPOINT_WRITES),
+            true,
             &have
         )));
         assert_eq!(http.requests().len(), 1);
@@ -1390,12 +1258,12 @@ mod tests {
             theirs("proxied", "http://elsewhere/"),
             theirs("mine", "https://a.example/rss?q={query}&token={token}"),
         ];
-        assert!(teams.services.handle.block_on(sync_anirss(
-            &teams.services,
-            &anirss,
-            writes.has(ENDPOINT_WRITES),
-            &have
-        )));
+        assert!(
+            teams
+                .services
+                .handle
+                .block_on(sync_anirss(&teams.services, &anirss, true, &have))
+        );
         let sent = http.requests();
         assert_eq!(sent.len(), 2);
         assert_eq!(sent[1].method, Method::Delete);
@@ -1405,7 +1273,7 @@ mod tests {
         assert!(!teams.services.handle.block_on(sync_anirss(
             &teams.services,
             &anirss,
-            writes.has(ENDPOINT_WRITES),
+            true,
             &have
         )));
         assert_eq!(http.requests().len(), 2);
