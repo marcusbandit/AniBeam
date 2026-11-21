@@ -42,10 +42,20 @@ cannot filter webhook deliveries yet, so every label change would start a run.
 | `needs-triage` | the issue forms, or the owner by hand before a first pass | waiting for a triage pass; the pass takes it off |
 | `needs more info` | triage | waiting on the reporter; `stale-needs-more-info.yml` closes the issue after 7 days with no comment since the label went on |
 | `via-triage` | the triage report form | filed by the reporter's own coding agent, which already looked at their machine |
+| `agent-ready` | the agent loop | a coding agent can take it alone; the loop hands it to an issue agent when the owner or a write collaborator filed it |
+| `needs-human` | the agent loop | the owner has to decide or do something before an agent can go on, or the loop could not sort the issue with confidence |
+| `unclear` | the agent loop | the issue does not say what is wrong or what done looks like |
+| `duplicate` | the agent loop | an open issue already asks for the same change |
+| `risky` | the agent loop | the loop rated the PR's head commit high risk, so it waits for the owner instead of merging on a clean review; the loop rates every new head commit and takes the label off when the rating drops |
 | `bug`, `enhancement`, `question`, `documentation` | triage, or the bug form for `bug` | the one category an open issue carries |
 
-Colours and GitHub descriptions live in `.github/workflows/issue-labels.yml`, which recreates a
-triage label when someone deletes it.
+The agent loop runs on the owner's machine, outside this repo: it sorts each new issue with one
+of its four labels, hands `agent-ready` issues to an issue agent, and reviews every PR head
+commit before that agent may merge.
+
+Colours and GitHub descriptions live in `.github/workflows/issue-labels.yml`, which recreates any of
+these labels when someone deletes it. The agent loop's five copy the text its `jev-label.py`
+and `jev-risk.py` force on every pass, so change a description there first.
 
 ## Reproducing in Anibeam
 

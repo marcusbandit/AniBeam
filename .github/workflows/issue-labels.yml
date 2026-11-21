@@ -1,8 +1,9 @@
 name: Issue labels
 
-# Creates the labels the issue forms, triage (docs/agents/triage.md), issue-state.yml, pr-build.yml, pr-issue.yml and pr-labels.yml use, with these colours
-# and descriptions, and puts them back when the forms or this list change on main, or when one
-# of them is deleted.
+# Creates the labels the issue forms, triage (docs/agents/triage.md), issue-state.yml,
+# pr-build.yml, pr-issue.yml, pr-labels.yml and the agent loop use, with these colours and
+# descriptions, and puts them back when the forms or this list change on main, or when one of
+# them is deleted.
 on:
   push:
     branches: [main]
@@ -32,6 +33,13 @@ jobs:
           gh label create "no issue" --force --color c5def5 --description "A typo-sized PR that may merge without closing an issue (pr-issue.yml)."
           gh label create "test build" --force --color 0e8a16 --description "Builds installers for this PR onto the pr-builds pre-release."
           gh label create "via-triage" --force --color 7dd3fc --description "Filed by a coding agent through the triage report form"
+          # The agent loop owns these five: jev-label.py and jev-risk.py force their text on every
+          # pass, so these lines copy it word for word. Change the text there first.
+          gh label create "agent-ready" --force --color 0e8a16 --description "A coding agent can do this alone"
+          gh label create "needs-human" --force --color d93f0b --description "The owner has to decide or do something first"
+          gh label create "unclear" --force --color fef2c0 --description "The issue does not say what is wrong or what done looks like, so nobody could start without asking t"
+          gh label create "duplicate" --force --color cfd3d7 --description "One of the open issues in the state already asks for the same change."
+          gh label create "risky" --force --color b60205 --description "Jev rated this PR high risk: a person reads it before it merges"
           gh label create "bug" --force --color d73a4a --description "Something isn't working"
           gh label create "enhancement" --force --color a2eeef --description "New feature or request"
           gh label create "documentation" --force --color 0075ca --description "Improvements or additions to documentation"
