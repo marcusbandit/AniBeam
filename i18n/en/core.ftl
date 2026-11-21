@@ -418,7 +418,7 @@ core-phone-new-episode = A new episode of { $name } is downloading.
 core-phone-name-taken = { $name }: another source has that name
 core-phone-nothing-to-download = nothing to download
 # $used and $cap are in GB, with one decimal.
-core-phone-over-cap = this would exceed { -app-name }'s storage limit ({ $used } of { $cap } GB used or queued); delete episodes or raise the limit
+core-phone-over-cap = this would exceed { -app-name }'s storage cap ({ $used } of { $cap } GB used or queued); delete episodes or raise the cap
 core-phone-empty-search = the search is empty
 core-phone-no-results = no results for { $query }
 # Ends "... is not supported yet." (core-error-unsupported).
@@ -626,7 +626,7 @@ core-presence-no-room = That Discord invite has no room yet. Ask them to start o
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = No client ID set for { $tracker }.
 core-trackers-mal-reconnect = Reconnect MyAnimeList in Settings.
-core-trackers-mal-wants-secret = MyAnimeList requires this app's client secret. Add it in your account settings, or register the app with App Type "other".
+core-trackers-mal-wants-secret = MyAnimeList requires this app's client secret. Add it under Accounts in Anibeam's settings, or register the app with App Type "other".
 # $error is the parser's own message.
 core-trackers-token-reply-unreadable = could not read token response: { $error }
 core-trackers-token-reply-no-token = token response did not include an access token
@@ -1448,7 +1448,7 @@ core-releases-search-answered = search returned HTTP { $status }
 
 ## releases/src/native.rs
 
-core-releases-no-endpoints = no download sources yet: add a source list or a custom source in your download settings
+core-releases-no-endpoints = no download sources yet: add a source list or a custom source first
 core-releases-no-source-named = no source named { $name }
 core-releases-empty-query = type something to search for
 core-releases-cannot-follow = { $name } cannot be followed: it supports search, but has no feed for new episodes

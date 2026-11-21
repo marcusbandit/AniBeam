@@ -70,7 +70,7 @@ onb-lists-note = Sign in so what you watch here counts on AniList or MyAnimeList
 onb-wifi-title = Wi-Fi only
 onb-wifi-note = Episodes are big. Anibeam downloads on Wi-Fi unless you say otherwise.
 onb-storage-title = Storage
-onb-storage-note = Sets a limit on how much Anibeam can download. No space is reserved upfront: storage stays free until episodes are downloaded.
+onb-storage-note = Sets a cap on how much Anibeam can download. No space is reserved upfront: storage stays free until episodes are downloaded.
 onb-notify-title = Notifications
 onb-notify-note = While episodes download, a notification shows how far along they are, and another says when one is ready to watch. Downloads run either way.
 onb-sites-title = Source lists
@@ -1417,7 +1417,7 @@ repos-tap-change-custom = Tap to change its name or address
 # { $labels } is what the endpoint asks for, such as "API key, token".
 repos-tap-change-keys = Tap to change its { $labels }
 # A line of small print under an endpoint's name. { $host } is its address and { $kind } its type, such as rss.
-repos-line-custom = { $host }  { $kind }  added manually
+repos-line-custom = { $host }  { $kind }  added by hand
 # Button. { $version } is a number.
 repos-update-to = Update to v{ $version }
 # Button
