@@ -2494,6 +2494,9 @@ pub fn run(
         }
     });
     data.on_close_notes(|| with_app(App::close_notes));
+    data.on_open_notes_github(|| {
+        crate::platform::open_url("https://github.com/marcusbandit/Anibeam/releases");
+    });
     data.on_mark_update_seen(|| with_app(App::mark_update_seen));
     data.on_restart_onboarding(|| {
         with_app(|app| {

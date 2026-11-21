@@ -1,43 +1,58 @@
-// What's new: the app's notes, newest version first, the way Mojang writes patch notes, a
-// version over its sections over one short line per change. A line marks how far is new:
-// everything above it came after the version this phone had, and reads brighter. It opens
-// by itself once after an update, and from More; Got it or Back closes it.
+// What's new: the app's curated release notes, newest version first. Each release opens
+// with a short note on what's new, followed by a concise list of highlights and a brief
+// roundup of smaller fixes. A line marks how far is new since the previous version, and
+// older entries read dimmer. It opens once after an update, and from More; Got it or Back
+// closes it.
 
 import { Theme } from "theme.slint";
 import { AppData, NoteLine } from "data.slint";
 import { Button, PageTitle } from "widgets.slint";
 import { Tr } from "tr.slint";
 
-// A version: its number in the display cut, the day it was made beside it on the number's
-// baseline, the way a section head carries its note.
-component VersionHead inherits Rectangle {
+// A version: its number in the display cut, the date beside it, and its optional title below.
+component VersionHead inherits VerticalLayout {
     in property <NoteLine> line;
-    property <length> size: Theme.section;
-    height: number.y + number.preferred-height;
-    number := Text {
-        x: 0;
-        y: 8 * Theme.unit;
-        width: self.preferred-width;
-        height: self.preferred-height;
-        text: root.line.text;
-        color: root.line.lit ? Theme.text : Theme.dim;
-        font-size: root.size;
-        font-family: Theme.display-face;
-        letter-spacing: -0.3px;
+    padding-top: 8 * Theme.unit;
+    spacing: Theme.unit;
+    HorizontalLayout {
+        spacing: 3 * Theme.unit;
+        alignment: start;
+        Text {
+            text: root.line.text;
+            color: root.line.lit ? Theme.text : Theme.dim;
+            font-size: Theme.section;
+            font-family: Theme.display-face;
+            letter-spacing: -0.3px;
+            vertical-alignment: bottom;
+        }
+        Text {
+            text: root.line.note;
+            color: Theme.faint;
+            font-size: Theme.small + 1px;
+            vertical-alignment: bottom;
+        }
     }
-    // The display cut's descent is about a fifth of its size.
-    Text {
-        x: number.preferred-width + 3 * Theme.unit;
-        y: number.y + number.preferred-height - root.size * 0.24 - self.preferred-height * 0.8;
-        width: self.preferred-width;
-        height: self.preferred-height;
-        text: root.line.note;
-        color: Theme.faint;
-        font-size: Theme.small + 1px;
+    if root.line.lead != "": Text {
+        text: root.line.lead;
+        color: root.line.lit ? Theme.dim : Theme.faint;
+        font-size: Theme.normal;
+        font-family: Theme.strong-face;
+        wrap: word-wrap;
     }
 }
 
-// A section's name, quiet: New, Changed, Fixed, Removed.
+// A freeform paragraph, such as an opening note or a short fixes roundup.
+component Paragraph inherits VerticalLayout {
+    in property <NoteLine> line;
+    padding-top: 2.5 * Theme.unit;
+    Text {
+        text: root.line.text;
+        color: root.line.lit ? Theme.text : Theme.dim;
+        wrap: word-wrap;
+    }
+}
+
+// An optional subheading, quiet: Heads up, Fixes & polish.
 component SectionName inherits Text {
     in property <NoteLine> line;
     text: root.line.text;
@@ -47,11 +62,11 @@ component SectionName inherits Text {
     letter-spacing: 0.6px;
 }
 
-// One change: a dot, then the line, wrapping when it has to.
+// One highlight: a dot, an optional bold lead-in, and its description.
 component Change inherits HorizontalLayout {
     in property <NoteLine> line;
     spacing: 3 * Theme.unit;
-    padding-top: Theme.unit;
+    padding-top: 2 * Theme.unit;
     Rectangle {
         width: 5px;
         Rectangle {
@@ -59,14 +74,23 @@ component Change inherits HorizontalLayout {
             width: 5px;
             height: 5px;
             border-radius: 2.5px;
-            background: root.line.lit ? Theme.text : Theme.faint;
+            background: root.line.lit ? Theme.dim : Theme.faint;
         }
     }
-    Text {
+    VerticalLayout {
         horizontal-stretch: 1;
-        text: root.line.text;
-        color: root.line.lit ? Theme.text : Theme.dim;
-        wrap: word-wrap;
+        spacing: 2px;
+        if root.line.lead != "": Text {
+            text: root.line.lead;
+            color: root.line.lit ? Theme.text : Theme.dim;
+            font-family: Theme.strong-face;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.line.text;
+            color: root.line.lit ? Theme.text : Theme.dim;
+            wrap: word-wrap;
+        }
     }
 }
 
@@ -146,6 +170,18 @@ export component NotesPage inherits Rectangle {
                 }
                 if row.kind == 2: Change { line: row; }
                 if row.kind == 3: Marker { line: row; }
+                if row.kind == 4: Paragraph { line: row; }
+            }
+            VerticalLayout {
+                padding-top: 6 * Theme.unit;
+                alignment: start;
+                Button {
+                    text: Tr.t("notes-github");
+                    icon: @image-url("icons/globe.svg");
+                    has-icon: true;
+                    small: true;
+                    clicked => { AppData.open-notes-github(); }
+                }
             }
         }
     }

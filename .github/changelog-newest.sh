@@ -1,66 +1,68 @@
 #!/usr/bin/env bash
-# Refuses a patch note added under any version heading but the newest one. A merge of main
-# into an old branch moves the branch's lines under a heading that has since shipped, and the
-# format check in core/tests/changelog.rs cannot tell (#480). CI runs it on every pull request
-# against the base it merges into, and on main against the commit before; run it by hand
-# against any ref. It checks committed work, HEAD, never the working tree:
+# Refuses lines added under any version heading in CHANGELOG.md except the newest one. A
+# merge of main into an old branch can land lines under a heading that has since shipped,
+# and the format check in core/tests/changelog.rs cannot tell (#480). CI runs it on every
+# pull request against the base it merges into, and on main against the commit before; run
+# it by hand against any ref. It checks committed work, HEAD, never the working tree:
 #
 #   .github/changelog-newest.sh origin/main
 #
-# A line changed in place, a typo fixed in a shipped note, is an edit, not a new line, and
-# passes: within one hunk, as many added lines as were removed count as edits. So does a
-# line folded in from a change file the same diff deletes (.github/changelog-fold.sh): a
-# hotfix branch folds the shipped version's change files under it, then adds its own heading.
-#
-# A file the diff moves is compared with its old path, so a renamed app folder adds nothing.
-#
-# A pull request writes its notes in <app>/changes/, which always ship under the newest
-# version, so this only ever catches a line written straight into CHANGELOG.md.
+# Fixing a typo or tightening a shipped version in place passes: every version below the
+# newest heading may keep at most as many non-blank lines as it had at the base. A file
+# the diff moves is compared with its old path, so a renamed app folder adds nothing.
 set -euo pipefail
 base="${1:-origin/main}"
 root="$(git rev-parse --show-toplevel)"
+mb="$(git -C "$root" merge-base "$base" HEAD 2>/dev/null || echo "$base")"
 status=0
 for file in apps/linux/CHANGELOG.md apps/phone/CHANGELOG.md; do
   git -C "$root" cat-file -e "HEAD:$file" 2>/dev/null || continue
   # Where the file was at the base, when this diff moved it there.
-  old="$(git -C "$root" diff --name-status -M --diff-filter=R "$base...HEAD" |
+  old="$(git -C "$root" diff --name-status -M --diff-filter=R "$mb" HEAD |
     awk -v f="$file" '$3 == f { print $2 }')"
   old="${old:-$file}"
-  # The lines of the change files this diff deletes, which may land in the file as they are.
-  moved="$(git -C "$root" diff -U0 -M --no-color --diff-filter=D "$base...HEAD" -- "${old%CHANGELOG.md}changes" "${file%CHANGELOG.md}changes" |
-    awk '/^---/ { next } /^-- / { s = substr($0, 3); sub(/^ +/, "", s); sub(/[ \t\r]+$/, "", s); print s }')"
-  git -C "$root" diff -U0 -M --no-color "$base...HEAD" -- "$old" "$file" | MOVED="$moved" awk -v file="$file" '
-    BEGIN {
-      count_moved = split(ENVIRON["MOVED"], m, "\n")
-      for (i = 1; i <= count_moved; i++) if (m[i] != "") folded[m[i]]++
-      cmd = "git -C \"'"$root"'\" show \"HEAD:" file "\""
-      while ((cmd | getline l) > 0) {
-        text[++count] = l
-        if (l ~ /^## /) { if (!newest) newest = count; else if (!from) from = count }
-      }
-      close(cmd)
-      if (!from) exit
+  git -C "$root" cat-file -e "$mb:$old" 2>/dev/null || continue
+  awk -v file="$file" '
+    function ver(line,    a) {
+      sub(/^## /, "", line)
+      split(line, a, /[[:space:]]+/)
+      sub(/^v/, "", a[1])
+      return a[1]
     }
-    /^@@/ {
-      hunk = 1
-      split($2, o, ","); edits = (o[2] == "") ? 1 : o[2] + 0
-      split($3, n, ","); line = substr(n[1], 2) + 0
+    FNR == 1 { comment = 0 }
+    comment || /^[[:space:]]*<!--/ {
+      if (!comment) comment = 1
+      if (index($0, "-->")) comment = 0
       next
     }
-    !hunk || /^-/ || /^\\/ { next }
-    /^\+/ {
-      item = $0; sub(/^\+- */, "", item); sub(/[ \t\r]+$/, "", item)
-      if (edits > 0) edits--
-      else if ($0 ~ /^\+- / && folded[item] > 0) folded[item]--
-      else if (line >= from && $0 !~ /^\+[[:space:]]*$/) {
-        for (i = line; i > 0; i--) if (text[i] ~ /^## /) break
-        note = substr($0, 2); gsub(/%/, "%25", note); gsub(/\r/, "%0D", note)
-        printf "::error file=%s,line=%d::%s:%d adds \"%s\" under \"%s\", which has shipped. Move it under the newest heading, \"%s\".\n", file, line, file, line, note, text[i], text[newest]
+    FNR == NR {
+      if ($0 ~ /^## /) { v = ver($0); base_seen[v] = 1; next }
+      if (v != "" && $0 !~ /^[[:space:]]*$/) base_lines[v]++
+      next
+    }
+    $0 ~ /^## / {
+      if (cur != "" && idx > 1) check(cur, cur_head, cur_line)
+      idx++
+      cur = ver($0)
+      cur_head = $0
+      cur_line = FNR
+      if (idx == 1) newest_head = $0
+      next
+    }
+    cur != "" && $0 !~ /^[[:space:]]*$/ { head_lines[cur]++ }
+    END {
+      if (cur != "" && idx > 1) check(cur, cur_head, cur_line)
+      exit bad
+    }
+    function check(v, head, line) {
+      if (!(v in base_seen)) {
+        printf "::error file=%s,line=%d::%s:%d adds a shipped version \"%s\" below \"%s\".\n", file, line, file, line, head, newest_head
+        bad = 1
+      } else if (head_lines[v] + 0 > base_lines[v] + 0) {
+        printf "::error file=%s,line=%d::%s:%d adds %d line(s) under \"%s\", which has shipped. Move new notes under \"%s\".\n", file, line, file, line, head_lines[v] - base_lines[v], head, newest_head
         bad = 1
       }
-      line++
     }
-    END { exit bad }
-  ' || status=1
+  ' <(git -C "$root" show "$mb:$old") <(git -C "$root" show "HEAD:$file") || status=1
 done
 exit "$status"

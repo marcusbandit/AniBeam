@@ -1,95 +1,168 @@
-//! Patch notes: an app's CHANGELOG.md read into its versions, newest first, and where What's
+//! Release notes: an app's CHANGELOG.md read into its versions, newest first, and where What's
 //! new draws the line between what a person has read and what is new to them. Each shell
 //! keeps a [`Seen`] between runs and draws the [`WhatsNew`] this hands back; every rule for
 //! both lives here, so the desktop and the phone open, mark, dim and close the notes the same
 //! way.
 //!
-//! The file, which [`lint`] holds every app's copy to:
+//! Each release is curated for the person using the app, not dumped PR by PR:
 //!
 //! ```text
-//! ## 2.0.8 · 2026-10-24
+//! ## 2.5.0 · Watch together · 2026-11-21
 //!
-//! ### Fixed
-//! - The seek bar previews in the bubble while you drag
+//! We're happy to bring Watch together to Anibeam, along with 13 languages and a simpler layout.
+//!
+//! - **Watch together.** Start a room from the player and invite friends with a code or link.
+//! - **13 languages.** Pick your language during setup or in Settings > Appearance.
+//!
+//! ### Fixes & polish
+//!
+//! Fixes for multi-season tracking, Jikan outages, casting, and narrow-window layouts.
 //! ```
 //!
-//! A heading per version, newest first, with the day it was made and, when the version has
-//! one, a title to remember it by between the two: `## 2.5.0 · Quality of life · 2026-11-02`.
-//! The Release workflow names the GitHub release after it. Under each heading one or more of
-//! the sections New, Changed, Fixed and Removed, in that order; under each, one line per
-//! change. The `# ` title and `<!-- -->` comments are skipped.
-//!
-//! A pull request never writes into the file: it adds a change file beside it, which
-//! [`parse_with`] reads under the newest version and the release folds in.
+//! A heading per version, newest first, with the day it was made and an optional title between
+//! the two (`## 2.5.0 · Watch together · 2026-11-21`). Under each heading, freeform paragraphs,
+//! bullet lists (with optional `**bold**` lead-ins and inline `` `code` ``), and optional `### `
+//! subheadings appear in the order written. `# ` titles and `<!-- -->` comments are skipped.
 
 use serde::{Deserialize, Serialize};
 
-#[path = "changelog_files.rs"]
-mod files;
-pub use files::change_files;
-
-/// The section names a version may use, in the order a version lists them.
-pub const KINDS: [&str; 4] = ["New", "Changed", "Fixed", "Removed"];
-
-/// The most characters a line may have: two lines on a phone.
-pub const MAX_LINE: usize = 80;
-
 /// The most characters a version's title may have: one line beside its number.
 pub const MAX_TITLE: usize = 40;
+
+/// The most bullet items one version may list before it starts reading like a commit log.
+pub const MAX_ITEMS_PER_VERSION: usize = 15;
 
 /// One version's notes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Notes {
     pub version: String,
-    /// `Quality of life`, the version's own name; empty for a version known by its number.
+    /// `Watch together`, the version's own name; empty for a version known by its number.
     pub title: String,
-    /// `2026-10-24`, as the heading has it; empty when it has none.
+    /// `2026-11-21`, as the heading has it; empty when it has none.
     pub date: String,
-    pub sections: Vec<Section>,
+    /// Ordered content blocks: prose paragraphs, optional subheadings, and bullet lists.
+    pub blocks: Vec<Block>,
 }
 
-/// One section of a version.
+/// One block inside a version's notes, in the order written.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct Section {
-    /// One of [`KINDS`], as the file spells it.
-    pub kind: String,
-    pub lines: Vec<String>,
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Block {
+    /// A freeform paragraph, such as an opening note or a short fixes roundup.
+    Paragraph {
+        /// Plain text with Markdown emphasis and backticks removed.
+        text: String,
+        /// Inline HTML (`<b>`, `<code>`, escaped) for rich text renderers.
+        rich: String,
+    },
+    /// An optional short subheading, such as `Heads up` or `Fixes & polish`.
+    Heading { text: String },
+    /// A bullet list of notable changes.
+    List { items: Vec<Item> },
 }
 
-/// The versions in `text`, in the file's order. Forgiving: a line it cannot place is
-/// skipped, so a slip in the file costs that line, never the sheet. [`lint`] is the strict
+/// One bullet item inside a [`Block::List`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Item {
+    /// Optional bold lead-in parsed from `- **Lead.** Body` or `- **Lead:** Body`, with
+    /// trailing punctuation removed (e.g. `Watch together`); empty when the item has none.
+    pub lead: String,
+    /// Plain text after the lead-in, or the full plain text when `lead` is empty.
+    pub body: String,
+    /// Full plain text of the item, with Markdown emphasis and backticks removed.
+    pub text: String,
+    /// Full inline HTML (`<b>`, `<code>`, escaped) for rich text renderers.
+    pub rich: String,
+}
+
+/// The versions in `text`, in the file's order. Forgiving: anything it cannot place before the
+/// first version heading is skipped, so a slip never costs the sheet. [`lint`] is the strict
 /// reading.
 pub fn parse(text: &str) -> Vec<Notes> {
     let mut out: Vec<Notes> = Vec::new();
+    let mut para: Vec<String> = Vec::new();
+    let mut list: Vec<String> = Vec::new();
+
+    let flush_para = |out: &mut Vec<Notes>, para: &mut Vec<String>| {
+        if para.is_empty() {
+            return;
+        }
+        let raw = para.join(" ");
+        para.clear();
+        if let Some(n) = out.last_mut() {
+            let (text, rich) = inline(&raw);
+            n.blocks.push(Block::Paragraph { text, rich });
+        }
+    };
+    let flush_list = |out: &mut Vec<Notes>, list: &mut Vec<String>| {
+        if list.is_empty() {
+            return;
+        }
+        let items: Vec<Item> = list.drain(..).map(|raw| make_item(&raw)).collect();
+        if let Some(n) = out.last_mut() {
+            n.blocks.push(Block::List { items });
+        }
+    };
+
     for (_, line) in read(text) {
         match line {
+            Line::Blank => {
+                flush_para(&mut out, &mut para);
+                flush_list(&mut out, &mut list);
+            }
+            Line::Title => {}
             Line::Heading {
                 version,
                 title,
                 date,
                 ..
-            } => out.push(Notes {
-                version,
-                title,
-                date,
-                sections: Vec::new(),
-            }),
-            Line::Section(kind) => {
-                if let Some(n) = out.last_mut() {
-                    n.sections.push(Section {
-                        kind,
-                        lines: Vec::new(),
-                    });
+            } => {
+                flush_para(&mut out, &mut para);
+                flush_list(&mut out, &mut list);
+                out.push(Notes {
+                    version,
+                    title,
+                    date,
+                    blocks: Vec::new(),
+                });
+            }
+            Line::Subheading(heading) => {
+                if out.is_empty() {
+                    continue;
+                }
+                flush_para(&mut out, &mut para);
+                flush_list(&mut out, &mut list);
+                if !heading.is_empty()
+                    && let Some(n) = out.last_mut()
+                {
+                    n.blocks.push(Block::Heading { text: heading });
                 }
             }
-            Line::Item(text) => {
-                if let Some(s) = out.last_mut().and_then(|n| n.sections.last_mut()) {
-                    s.lines.push(text);
+            Line::Item(item) => {
+                if out.is_empty() {
+                    continue;
+                }
+                flush_para(&mut out, &mut para);
+                if !item.is_empty() {
+                    list.push(item);
                 }
             }
-            Line::Title | Line::Other(_) => {}
+            Line::Text { text, indented } => {
+                if out.is_empty() {
+                    continue;
+                }
+                if indented && let Some(last) = list.last_mut() {
+                    last.push(' ');
+                    last.push_str(&text);
+                } else {
+                    flush_list(&mut out, &mut list);
+                    para.push(text);
+                }
+            }
         }
     }
+    flush_para(&mut out, &mut para);
+    flush_list(&mut out, &mut list);
     out
 }
 
@@ -97,34 +170,61 @@ pub fn parse(text: &str) -> Vec<Notes> {
 /// fine. `version` is the app's own, which the newest heading has to be.
 pub fn lint(text: &str, version: &str) -> Vec<String> {
     let mut problems = dashes(text);
-    // The heading above, its sections so far, and the open section's line count.
     let mut above: Option<String> = None;
-    let mut kinds: Vec<String> = Vec::new();
-    let mut open: Option<(usize, usize)> = None;
     let mut first = true;
-    let mut heading_at = 0;
-    // The newest version may have no sections yet: main moves to it the moment the last
-    // one ships, before anything is written under it.
-    let mut headings = 0;
+    let mut headings = 0usize;
+    let mut heading_at = 0usize;
+    let mut has_content = false;
+    let mut list_items = 0usize;
+    let mut open_sub: Option<usize> = None;
+    let mut in_list = false;
+
+    let close_sub = |problems: &mut Vec<String>, open_sub: &mut Option<usize>| {
+        if let Some(at) = open_sub.take() {
+            problems.push(format!("line {at}: a subheading with nothing under it"));
+        }
+    };
+    let close_version = |problems: &mut Vec<String>,
+                         headings: usize,
+                         heading_at: usize,
+                         has_content: bool,
+                         list_items: usize| {
+        if headings > 1 && !has_content {
+            problems.push(format!("line {heading_at}: a version with no notes"));
+        }
+        if list_items > MAX_ITEMS_PER_VERSION {
+            problems.push(format!(
+                "line {heading_at}: {list_items} list items, {MAX_ITEMS_PER_VERSION} at most; group related changes and sum up small fixes in a line or two"
+            ));
+        }
+    };
+
     for (n, line) in read(text) {
         match line {
-            Line::Title => {}
+            Line::Blank => {
+                in_list = false;
+            }
+            Line::Title => {
+                in_list = false;
+            }
             Line::Heading {
                 version: v,
                 title,
                 date,
                 exact,
             } => {
-                close(&mut problems, open.take());
-                if headings > 1 && kinds.is_empty() {
-                    problems.push(format!("line {heading_at}: a version with no sections"));
+                in_list = false;
+                close_sub(&mut problems, &mut open_sub);
+                if headings > 0 {
+                    close_version(&mut problems, headings, heading_at, has_content, list_items);
                 }
                 headings += 1;
                 heading_at = n;
-                kinds.clear();
+                has_content = false;
+                list_items = 0;
                 if !exact {
                     problems.push(format!(
-                        "line {n}: write a heading as \"## 2.0.8 · 2026-10-24\", or with a title as \"## 2.0.8 · Quality of life · 2026-10-24\""
+                        "line {n}: write a heading as \"## 2.5.0 · 2026-11-21\", or with a title as \"## 2.5.0 · Watch together · 2026-11-21\""
                     ));
                 }
                 let len = title.chars().count();
@@ -134,10 +234,10 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
                     ));
                 }
                 if parts(&v).is_none() {
-                    problems.push(format!("line {n}: \"{v}\" is not a version like 2.0.8"));
+                    problems.push(format!("line {n}: \"{v}\" is not a version like 2.5.0"));
                 }
                 if !date.is_empty() && day_parts(&date).is_none() {
-                    problems.push(format!("line {n}: \"{date}\" is not a day like 2026-10-24"));
+                    problems.push(format!("line {n}: \"{date}\" is not a day like 2026-11-21"));
                 }
                 if first && v != version {
                     problems.push(format!(
@@ -152,135 +252,51 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
                 first = false;
                 above = Some(v);
             }
-            Line::Section(kind) => {
-                close(&mut problems, open.take());
+            Line::Subheading(heading) => {
+                in_list = false;
+                close_sub(&mut problems, &mut open_sub);
                 if above.is_none() {
-                    problems.push(format!("line {n}: a section before any version"));
+                    problems.push(format!("line {n}: a subheading before any version"));
+                } else if heading.is_empty() {
+                    problems.push(format!("line {n}: an empty subheading"));
+                } else {
+                    open_sub = Some(n);
                 }
-                section(&mut problems, n, kind, &mut kinds, "one version");
-                open = Some((n, 0));
             }
             Line::Item(item) => {
-                match open.as_mut() {
-                    Some((_, count)) => *count += 1,
-                    None => problems.push(format!("line {n}: a line before any section")),
+                if above.is_none() {
+                    problems.push(format!("line {n}: a list item before any version"));
+                    continue;
                 }
-                problems.extend(item_problems(n, &item));
+                if item.is_empty() {
+                    problems.push(format!("line {n}: an empty list item"));
+                    continue;
+                }
+                open_sub = None;
+                has_content = true;
+                list_items += 1;
+                in_list = true;
             }
-            // Words above the first version are the file's own; under one, nothing but
-            // sections and their lines.
-            Line::Other(text) => {
-                if above.is_some() {
-                    problems.push(format!(
-                        "line {n}: \"{text}\" is not a heading, a section or a \"- \" line"
-                    ));
+            Line::Text { indented, .. } => {
+                // Words above the first version heading are the file's own.
+                if above.is_none() {
+                    continue;
                 }
+                if !(indented && in_list) {
+                    in_list = false;
+                }
+                open_sub = None;
+                has_content = true;
             }
         }
     }
-    close(&mut problems, open);
-    match above {
-        None => problems.push("no version heading".to_string()),
-        Some(_) if headings > 1 && kinds.is_empty() => {
-            problems.push(format!("line {heading_at}: a version with no sections"))
-        }
-        Some(_) => {}
+    close_sub(&mut problems, &mut open_sub);
+    if headings == 0 {
+        problems.push("no version heading".to_string());
+    } else {
+        close_version(&mut problems, headings, heading_at, has_content, list_items);
     }
     problems
-}
-
-/// The versions in `text` with each of `changes` under the newest. A change file is one pull
-/// request's lines under their sections, with no heading (`apps/linux/changes/`): the apps
-/// build them in so a nightly shows them, and `.github/changelog-fold.sh` writes them into
-/// the file the same way when a version ships. In each section their lines follow the
-/// file's own, in the order given; a section the newest version lacks takes its place in
-/// [`KINDS`] order.
-pub fn parse_with(text: &str, changes: &[&str]) -> Vec<Notes> {
-    let mut notes = parse(text);
-    let Some(newest) = notes.first_mut() else {
-        return notes;
-    };
-    for change in changes {
-        let mut kind: Option<String> = None;
-        for (_, line) in read(change) {
-            match line {
-                Line::Section(k) => kind = Some(k),
-                Line::Item(text) => {
-                    if let Some(kind) = &kind {
-                        add(newest, kind, text);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    notes
-}
-
-fn add(notes: &mut Notes, kind: &str, line: String) {
-    if let Some(s) = notes.sections.iter_mut().find(|s| s.kind == kind) {
-        s.lines.push(line);
-        return;
-    }
-    let rank = |k: &str| KINDS.iter().position(|x| *x == k).unwrap_or(KINDS.len());
-    let at = notes
-        .sections
-        .iter()
-        .position(|s| rank(&s.kind) > rank(kind))
-        .unwrap_or(notes.sections.len());
-    notes.sections.insert(
-        at,
-        Section {
-            kind: kind.to_string(),
-            lines: vec![line],
-        },
-    );
-}
-
-/// Each way a change file breaks its shape, one sentence naming the line; empty when it is
-/// fine. It holds sections and their lines as a version does, and no heading: the version
-/// is whichever one it ships in.
-pub fn lint_change(text: &str) -> Vec<String> {
-    let mut problems = dashes(text);
-    let mut kinds: Vec<String> = Vec::new();
-    let mut open: Option<(usize, usize)> = None;
-    let mut lines = 0;
-    for (n, line) in read(text) {
-        match line {
-            Line::Title | Line::Heading { .. } => problems.push(format!(
-                "line {n}: a heading; a change file has only sections and lines, and ships under the newest version"
-            )),
-            Line::Section(kind) => {
-                close(&mut problems, open.take());
-                section(&mut problems, n, kind, &mut kinds, "one change file");
-                open = Some((n, 0));
-            }
-            Line::Item(item) => {
-                lines += 1;
-                match open.as_mut() {
-                    Some((_, count)) => *count += 1,
-                    None => problems.push(format!("line {n}: a line before any section")),
-                }
-                problems.extend(item_problems(n, &item));
-            }
-            Line::Other(text) => problems.push(format!(
-                "line {n}: \"{text}\" is not a section or a \"- \" line"
-            )),
-        }
-    }
-    close(&mut problems, open);
-    if lines == 0 {
-        problems.push("no lines; a change file holds at least one".to_string());
-    }
-    problems
-}
-
-/// The section that just ended, opened at its line with its count of lines, when it
-/// had none.
-fn close(problems: &mut Vec<String>, open: Option<(usize, usize)>) {
-    if let Some((at, 0)) = open {
-        problems.push(format!("line {at}: a section with no lines under it"));
-    }
 }
 
 fn dashes(text: &str) -> Vec<String> {
@@ -296,47 +312,100 @@ fn dashes(text: &str) -> Vec<String> {
     problems
 }
 
-/// A `### kind` at line `n` after `kinds`, the sections above it in `within`.
-fn section(
-    problems: &mut Vec<String>,
-    n: usize,
-    kind: String,
-    kinds: &mut Vec<String>,
-    within: &str,
-) {
-    match KINDS.iter().position(|k| *k == kind) {
-        None => problems.push(format!(
-            "line {n}: \"### {kind}\" is not one of {}",
-            KINDS.join(", ")
-        )),
-        Some(r) => {
-            if kinds.contains(&kind) {
-                problems.push(format!("line {n}: a second {kind} section in {within}"));
-            } else if let Some(last) = kinds.last()
-                && KINDS.iter().position(|k| *k == *last) > Some(r)
-            {
-                problems.push(format!(
-                    "line {n}: {kind} comes before {last}; the order is {}",
-                    KINDS.join(", ")
-                ));
-            }
-        }
+/// Turns a raw bullet line into an [`Item`], extracting an optional leading `**Lead.**` or
+/// `**Lead:**` span for shells that render lead-ins separately (such as Slint on phones).
+fn make_item(raw: &str) -> Item {
+    let (text, rich) = inline(raw);
+    let (lead, body) = split_lead(raw).unwrap_or_else(|| (String::new(), text.clone()));
+    Item {
+        lead,
+        body,
+        text,
+        rich,
     }
-    kinds.push(kind);
 }
 
-fn item_problems(n: usize, item: &str) -> Vec<String> {
-    let mut problems = Vec::new();
-    let len = item.chars().count();
-    if len > MAX_LINE {
-        problems.push(format!(
-            "line {n}: {len} characters, {MAX_LINE} at most: \"{item}\""
-        ));
+fn split_lead(raw: &str) -> Option<(String, String)> {
+    let rest = raw.strip_prefix("**")?;
+    let end = rest.find("**")?;
+    let lead_raw = &rest[..end];
+    if lead_raw.is_empty() {
+        return None;
     }
-    if item.ends_with('.') {
-        problems.push(format!("line {n}: no full stop at the end of a line"));
+    let after = &rest[end + 2..];
+    // Optional trailing punctuation right outside the closing `**`, then whitespace + body.
+    let after = after.strip_prefix(['.', ':']).unwrap_or(after);
+    let first_char = after.chars().next()?;
+    if !first_char.is_whitespace() {
+        return None;
     }
-    problems
+    let body_raw = after.trim();
+    if body_raw.is_empty() {
+        return None;
+    }
+    let (lead_plain, _) = inline(lead_raw);
+    let lead = lead_plain.trim().trim_end_matches(['.', ':']).trim();
+    if lead.is_empty() {
+        return None;
+    }
+    let (body, _) = inline(body_raw);
+    Some((lead.to_string(), body))
+}
+
+/// Converts inline Markdown (`**bold**` and `` `code` ``) into `(plain, rich)` where `rich` is
+/// HTML-escaped and uses `<b>` and `<code>` tags for Qt `Text.StyledText`.
+fn inline(raw: &str) -> (String, String) {
+    let mut plain = String::with_capacity(raw.len());
+    let mut rich = String::with_capacity(raw.len() + 16);
+    let mut i = 0;
+    let bytes = raw.as_bytes();
+    while i < bytes.len() {
+        if bytes[i] == b'`'
+            && let Some(rel) = raw[i + 1..].find('`')
+            && rel > 0
+        {
+            let span = &raw[i + 1..i + 1 + rel];
+            plain.push_str(span);
+            rich.push_str("<code>");
+            push_escaped(&mut rich, span);
+            rich.push_str("</code>");
+            i += rel + 2;
+            continue;
+        }
+        if raw[i..].starts_with("**")
+            && let Some(rel) = raw[i + 2..].find("**")
+            && rel > 0
+        {
+            let span = &raw[i + 2..i + 2 + rel];
+            let (inner_plain, inner_rich) = inline(span);
+            plain.push_str(&inner_plain);
+            rich.push_str("<b>");
+            rich.push_str(&inner_rich);
+            rich.push_str("</b>");
+            i += rel + 4;
+            continue;
+        }
+        let ch = raw[i..].chars().next().unwrap();
+        plain.push(ch);
+        push_escaped_char(&mut rich, ch);
+        i += ch.len_utf8();
+    }
+    (plain, rich)
+}
+
+fn push_escaped(out: &mut String, text: &str) {
+    for ch in text.chars() {
+        push_escaped_char(out, ch);
+    }
+}
+
+fn push_escaped_char(out: &mut String, ch: char) {
+    match ch {
+        '&' => out.push_str("&amp;"),
+        '<' => out.push_str("&lt;"),
+        '>' => out.push_str("&gt;"),
+        _ => out.push(ch),
+    }
 }
 
 /// Whether `a` is a later version than `b`. Versions are three numbers, 2.0.8; one that is
@@ -430,7 +499,7 @@ pub struct Shown {
     /// Drawn at full strength: every version, except those under a line that marks where
     /// the person came from, which they have read.
     pub lit: bool,
-    pub sections: Vec<Section>,
+    pub blocks: Vec<Block>,
 }
 
 /// What's new for `current`, read with `seen` and whether this install ran before the
@@ -484,7 +553,7 @@ pub fn whats_new(notes: &[Notes], current: &str, seen: &Seen, used_before: bool)
                 title: n.title.clone(),
                 day: day(&n.date),
                 lit: !known || i < above,
-                sections: n.sections.clone(),
+                blocks: n.blocks.clone(),
             })
             .collect(),
     }
@@ -502,24 +571,30 @@ pub fn day(date: &str) -> String {
 }
 
 enum Line {
+    Blank,
     /// `# Anibeam for Android`
     Title,
-    /// `## 2.0.8 · 2026-10-24` or `## 2.5.0 · Quality of life · 2026-11-02`, read
-    /// leniently; `exact` when it is written just so.
+    /// `## 2.0.8 · 2026-10-24` or `## 2.5.0 · Watch together · 2026-11-21`, read leniently;
+    /// `exact` when it is written just so.
     Heading {
         version: String,
         title: String,
         date: String,
         exact: bool,
     },
-    /// `### Fixed`
-    Section(String),
-    /// `- The seek bar previews in the bubble`
+    /// `### Fixes & polish`
+    Subheading(String),
+    /// `- **Watch together.** Start a room...`
     Item(String),
-    Other(String),
+    /// A prose line, or an indented continuation of a bullet item.
+    Text {
+        text: String,
+        indented: bool,
+    },
 }
 
-/// The file's lines with their numbers, counted from 1, less the blank ones and comments.
+/// The file's lines with their numbers, counted from 1, skipping HTML comments while keeping
+/// blank lines so paragraph and list breaks stay intact.
 fn read(text: &str) -> Vec<(usize, Line)> {
     let mut out = Vec::new();
     let mut comment = false;
@@ -534,18 +609,25 @@ fn read(text: &str) -> Vec<(usize, Line)> {
             continue;
         }
         if line.is_empty() {
+            out.push((i + 1, Line::Blank));
             continue;
         }
-        let read = if let Some(rest) = line.strip_prefix("### ") {
-            Line::Section(rest.trim().to_string())
+        let read = if let Some(rest) = line.strip_prefix("###")
+            && (rest.is_empty() || rest.starts_with(' '))
+        {
+            Line::Subheading(rest.trim().to_string())
         } else if let Some(rest) = line.strip_prefix("## ") {
             heading(rest.trim())
         } else if line.starts_with("# ") {
             Line::Title
-        } else if let Some(rest) = line.strip_prefix("- ") {
-            Line::Item(rest.trim().to_string())
+        } else if line == "-" || line.starts_with("- ") {
+            Line::Item(line.strip_prefix('-').unwrap_or("").trim().to_string())
         } else {
-            Line::Other(line.to_string())
+            let indented = raw.starts_with("  ") || raw.starts_with('\t');
+            Line::Text {
+                text: line.to_string(),
+                indented,
+            }
         };
         out.push((i + 1, read));
     }
@@ -604,13 +686,13 @@ pub(crate) fn digits<const N: usize>(s: &str) -> Option<[u64; N]> {
     parts.next().is_none().then_some(out)
 }
 
-/// Whether `version` has anything to show: main moves to a new version before a line is
-/// written under it, and notes with nothing in them never open What's new by themselves.
+/// Whether `version` has anything to show: main moves to a new version before its notes are
+/// written, and an empty heading never opens What's new by itself.
 pub fn has_lines(notes: &[Notes], version: &str) -> bool {
     notes
         .iter()
         .find(|n| n.version == version)
-        .is_some_and(|n| n.sections.iter().any(|s| !s.lines.is_empty()))
+        .is_some_and(|n| !n.blocks.is_empty())
 }
 
 fn day_parts(date: &str) -> Option<(i32, u32, u32)> {
@@ -638,26 +720,28 @@ mod tests {
     const NOTES: &str = "# Anibeam for Android
 
 <!--
-How to write a line.
+How to write release notes.
 -->
 
 ## 2.0.8 · 2026-10-24
 
-### Fixed
-- Letting go near the start does not seek
+Smoother seek bar dragging that waits until you let go before jumping.
 
-## 2.0.7 · 2026-10-24
+## 2.0.7 · Seek previews · 2026-10-24
 
-### New
-- A thumbnail over the seek bar while you drag
+We're happy to bring frame previews to the player seek bar.
 
-### Fixed
-- Countdowns read in 3d, not in in 3d
+- **Seek thumbnails.** Drag along the seek bar to preview the frame under your finger.
+- **Smoother scrubbing.** Run `anibeam` & watch the video follow your drag.
+
+### Fixes & polish
+
+Fixed duplicate \"in\" in episode countdowns.
 
 ## 2.0.4 · 2026-10-24
 
-### Removed
-- The preloaded sources
+- Delete episodes right from a series page.
+- Removed the preloaded sources.
 ";
 
     fn lit(w: &WhatsNew) -> Vec<bool> {
@@ -665,35 +749,130 @@ How to write a line.
     }
 
     #[test]
-    fn a_file_reads_into_its_versions_sections_and_lines() {
+    fn a_file_reads_into_versions_paragraphs_headings_and_items() {
         let notes = parse(NOTES);
         assert_eq!(notes.len(), 3);
         assert_eq!(notes[0].version, "2.0.8");
-        assert_eq!(notes[0].date, "2026-10-24");
-        assert_eq!(notes[1].sections.len(), 2);
-        assert_eq!(notes[1].sections[0].kind, "New");
-        assert_eq!(
-            notes[1].sections[1].lines,
-            ["Countdowns read in 3d, not in in 3d"]
-        );
-        assert_eq!(notes[2].sections[0].kind, "Removed");
         assert_eq!(notes[0].title, "");
+        assert_eq!(notes[0].date, "2026-10-24");
+        assert_eq!(
+            notes[0].blocks,
+            vec![Block::Paragraph {
+                text: "Smoother seek bar dragging that waits until you let go before jumping."
+                    .into(),
+                rich: "Smoother seek bar dragging that waits until you let go before jumping."
+                    .into(),
+            }]
+        );
+
+        assert_eq!(notes[1].version, "2.0.7");
+        assert_eq!(notes[1].title, "Seek previews");
+        assert_eq!(notes[1].blocks.len(), 4);
+        assert_eq!(
+            notes[1].blocks[0],
+            Block::Paragraph {
+                text: "We're happy to bring frame previews to the player seek bar.".into(),
+                rich: "We're happy to bring frame previews to the player seek bar.".into(),
+            }
+        );
+        assert_eq!(
+            notes[1].blocks[1],
+            Block::List {
+                items: vec![
+                    Item {
+                        lead: "Seek thumbnails".into(),
+                        body: "Drag along the seek bar to preview the frame under your finger."
+                            .into(),
+                        text: "Seek thumbnails. Drag along the seek bar to preview the frame under your finger."
+                            .into(),
+                        rich: "<b>Seek thumbnails.</b> Drag along the seek bar to preview the frame under your finger."
+                            .into(),
+                    },
+                    Item {
+                        lead: "Smoother scrubbing".into(),
+                        body: "Run anibeam & watch the video follow your drag.".into(),
+                        text: "Smoother scrubbing. Run anibeam & watch the video follow your drag."
+                            .into(),
+                        rich: "<b>Smoother scrubbing.</b> Run <code>anibeam</code> &amp; watch the video follow your drag."
+                            .into(),
+                    },
+                ],
+            }
+        );
+        assert_eq!(
+            notes[1].blocks[2],
+            Block::Heading {
+                text: "Fixes & polish".into()
+            }
+        );
+        assert_eq!(
+            notes[1].blocks[3],
+            Block::Paragraph {
+                text: "Fixed duplicate \"in\" in episode countdowns.".into(),
+                rich: "Fixed duplicate \"in\" in episode countdowns.".into(),
+            }
+        );
+
+        assert_eq!(notes[2].blocks.len(), 1);
+        match &notes[2].blocks[0] {
+            Block::List { items } => {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0].lead, "");
+                assert_eq!(items[0].body, "Delete episodes right from a series page.");
+            }
+            other => panic!("expected list, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wrapped_paragraphs_and_bullets_join_cleanly() {
+        let md = "## 2.5.0 · 2026-11-21\n\nFirst line of a paragraph\nthat wraps cleanly.\n\n- **Heads up:** First line of a bullet\n  continued on the next line with `a < b`.\n";
+        let notes = parse(md);
+        assert_eq!(lint(md, "2.5.0"), Vec::<String>::new());
+        assert_eq!(
+            notes[0].blocks[0],
+            Block::Paragraph {
+                text: "First line of a paragraph that wraps cleanly.".into(),
+                rich: "First line of a paragraph that wraps cleanly.".into(),
+            }
+        );
+        match &notes[0].blocks[1] {
+            Block::List { items } => {
+                assert_eq!(items[0].lead, "Heads up");
+                assert_eq!(
+                    items[0].body,
+                    "First line of a bullet continued on the next line with a < b."
+                );
+                assert_eq!(
+                    items[0].rich,
+                    "<b>Heads up:</b> First line of a bullet continued on the next line with <code>a &lt; b</code>."
+                );
+            }
+            other => panic!("expected list, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn code_spans_keep_asterisks_literal() {
+        let (plain, rich) = inline("Use `a**b` and **real bold** here.");
+        assert_eq!(plain, "Use a**b and real bold here.");
+        assert_eq!(rich, "Use <code>a**b</code> and <b>real bold</b> here.");
     }
 
     #[test]
     fn a_heading_may_name_its_version() {
-        let named = "## 2.5.0 · Quality of life · 2026-11-02\n### New\n- One\n";
+        let named = "## 2.5.0 · Watch together · 2026-11-21\n\nWatch with friends.\n";
         let notes = parse(named);
         assert_eq!(notes[0].version, "2.5.0");
-        assert_eq!(notes[0].title, "Quality of life");
-        assert_eq!(notes[0].date, "2026-11-02");
+        assert_eq!(notes[0].title, "Watch together");
+        assert_eq!(notes[0].date, "2026-11-21");
         assert_eq!(lint(named, "2.5.0"), Vec::<String>::new());
         let w = whats_new(&notes, "2.5.0", &Seen::default(), false);
-        assert_eq!(w.versions[0].title, "Quality of life");
+        assert_eq!(w.versions[0].title, "Watch together");
 
-        let long = "## 2.5.0 · A title that goes on far longer than any name should · 2026-11-02\n### New\n- One\n";
+        let long = "## 2.5.0 · A title that goes on far longer than any name should · 2026-11-21\n\nNote.\n";
         assert!(lint(long, "2.5.0")[0].contains("40 at most"));
-        let sloppy = "## 2.5.0 ·Quality of life· 2026-11-02\n### New\n- One\n";
+        let sloppy = "## 2.5.0 ·Watch together· 2026-11-21\n\nNote.\n";
         assert!(lint(sloppy, "2.5.0")[0].contains("write a heading as"));
     }
 
@@ -703,21 +882,14 @@ How to write a line.
     }
 
     #[test]
-    fn lint_names_each_slip() {
-        let bad = "## 2.0.9 (2026-10-25)
-### Fixes
-- This line runs on and on well past the eighty characters that two lines on a phone hold.
-- Ends with a full stop.
-wraps onto a second line
-## 2.0.9 · 2026-10-25
-### New
-## 2.0.8 · 2026-02-30
-### Fixed
-- One
-### New
-- Two
-";
-        let problems = lint(bad, "2.1.0");
+    fn lint_catches_structural_slips_and_bloat() {
+        let mut many = String::from(
+            "## 2.0.9 (2026-10-25)\n### Dangling\n## 2.0.9 · 2026-10-25\n- \n## 2.0.8 · 2026-02-30\n",
+        );
+        for i in 1..=16 {
+            many.push_str(&format!("- Item {i}.\n"));
+        }
+        let problems = lint(&many, "2.1.0");
         let has = |s: &str| problems.iter().any(|p| p.contains(s));
         assert!(has("line 1: write a heading as"), "{problems:?}");
         assert!(
@@ -725,37 +897,31 @@ wraps onto a second line
             "{problems:?}"
         );
         assert!(
-            has("\"### Fixes\" is not one of New, Changed, Fixed, Removed"),
+            has("line 2: a subheading with nothing under it"),
             "{problems:?}"
         );
-        assert!(has("line 3: 88 characters, 80 at most"), "{problems:?}");
-        assert!(has("line 4: no full stop"), "{problems:?}");
-        assert!(
-            has("line 5: \"wraps onto a second line\" is not a heading"),
-            "{problems:?}"
-        );
-        assert!(has("line 6: 2.0.9 is not older than 2.0.9"), "{problems:?}");
-        assert!(has("line 7: a section with no lines"), "{problems:?}");
-        assert!(has("line 8: \"2026-02-30\" is not a day"), "{problems:?}");
-        assert!(has("line 11: New comes before Fixed"), "{problems:?}");
+        assert!(has("line 3: 2.0.9 is not older than 2.0.9"), "{problems:?}");
+        assert!(has("line 4: an empty list item"), "{problems:?}");
+        assert!(has("line 3: a version with no notes"), "{problems:?}");
+        assert!(has("line 5: \"2026-02-30\" is not a day"), "{problems:?}");
+        assert!(has("16 list items, 15 at most"), "{problems:?}");
     }
 
     #[test]
     fn only_the_newest_version_may_be_empty() {
-        let just_begun = "## 2.1.0 · 2026-10-30\n## 2.0.8 · 2026-10-24\n### Fixed\n- One\n";
+        let just_begun = "## 2.1.0 · 2026-10-30\n\n## 2.0.8 · 2026-10-24\n\nOne fix.\n";
         assert_eq!(lint(just_begun, "2.1.0"), Vec::<String>::new());
-        let hollow = "## 2.1.0 · 2026-10-30\n### New\n- One\n## 2.0.8 · 2026-10-24\n";
-        assert_eq!(
-            lint(hollow, "2.1.0"),
-            ["line 4: a version with no sections"]
-        );
+        assert!(!has_lines(&parse(just_begun), "2.1.0"));
+        assert!(has_lines(&parse(just_begun), "2.0.8"));
+        let hollow = "## 2.1.0 · 2026-10-30\n\nReady.\n\n## 2.0.8 · 2026-10-24\n";
+        assert_eq!(lint(hollow, "2.1.0"), ["line 5: a version with no notes"]);
     }
 
     #[test]
     fn lint_refuses_long_dashes_and_an_empty_file() {
         assert!(
             lint(
-                "## 2.0.8 · 2026-10-24\n### Fixed\n- Fast \u{2014} and done\n",
+                "## 2.0.8 · 2026-10-24\n\nFast \u{2014} and done.\n",
                 "2.0.8"
             )[0]
             .contains("long dash")
@@ -819,7 +985,6 @@ wraps onto a second line
         assert_eq!(lit(&w), [true, true, false]);
         assert_eq!(w.versions[0].day, "24 Oct 2026");
 
-        // Closed: it does not open again, and opened by hand it still shows the update.
         let kept = seen.closed("2.0.8");
         assert_eq!(
             kept,
@@ -881,61 +1046,5 @@ wraps onto a second line
         assert_eq!(w.note, "Version 2.0.7");
         assert_eq!((w.line.as_str(), w.above), ("", 0));
         assert_eq!(lit(&w), [true, true]);
-    }
-
-    #[test]
-    fn change_files_read_under_the_newest_version_after_its_own_lines() {
-        let fixed = "### Fixed\n- The seek bar holds after a drag\n";
-        let more =
-            "### New\n- Delete episodes from a series page\n\n### Removed\n- The old player\n";
-        let notes = parse_with(NOTES, &[fixed, more]);
-        let newest = &notes[0];
-        assert_eq!(newest.version, "2.0.8");
-        let kinds: Vec<&str> = newest.sections.iter().map(|s| s.kind.as_str()).collect();
-        assert_eq!(kinds, ["New", "Fixed", "Removed"]);
-        assert_eq!(
-            newest.sections[1].lines,
-            [
-                "Letting go near the start does not seek",
-                "The seek bar holds after a drag"
-            ]
-        );
-        assert_eq!(notes[1..], parse(NOTES)[1..]);
-        assert_eq!(parse_with(NOTES, &[]), parse(NOTES));
-    }
-
-    #[test]
-    fn change_files_fill_a_version_that_has_no_lines_yet() {
-        let begun = "## 2.1.0 · 2026-10-25\n\n## 2.0.8 · 2026-10-24\n\n### Fixed\n- A line\n";
-        let notes = parse_with(begun, &["### Changed\n- Sources answer sooner\n"]);
-        assert!(has_lines(&notes, "2.1.0"));
-        assert_eq!(notes[0].sections[0].lines, ["Sources answer sooner"]);
-    }
-
-    #[test]
-    fn a_change_file_holds_sections_and_lines_and_nothing_else() {
-        assert_eq!(
-            lint_change("### New\n- A thing\n\n### Fixed\n- Another thing\n"),
-            Vec::<String>::new()
-        );
-        let has = |text: &str, what: &str| lint_change(text).iter().any(|p| p.contains(what));
-        assert!(has(
-            "## 2.1.0 · 2026-10-25\n\n### New\n- A thing\n",
-            "a heading"
-        ));
-        assert!(has(
-            "### Fixed\n- One\n\n### New\n- Two\n",
-            "New comes before Fixed"
-        ));
-        assert!(has("### Fixes\n- One\n", "is not one of"));
-        assert!(has("- One\n", "a line before any section"));
-        assert!(has("### New\n", "no lines"));
-        assert!(has("### New\n- Ends with a stop.\n", "no full stop"));
-        assert!(has("### New\n- One \u{2014} two\n", "long dash"));
-        assert!(has("### New\nloose words\n", "is not a section"));
-        assert!(has(
-            &format!("### New\n- {}\n", "x".repeat(81)),
-            "80 at most"
-        ));
     }
 }

@@ -337,7 +337,7 @@ The guard on a destructive action: the row's controls give way to a line naming 
 _Avoid_: confirm dialog, modal, alert
 
 **Patch notes**:
-An app's `CHANGELOG.md`: every version newest first, each a few one-line changes under New, Changed, Fixed or Removed. The desktop and the phone keep their own, since each has its own version, and each build carries its own copy. A pull request adds its lines as a **change file** in the app's `changes/`, which shows under the newest version until the release folds it into the file.
+An app's curated `CHANGELOG.md`, newest version first: a short, natural intro saying what we're happy to bring to the app, a concise list of highlights, an optional Heads up, and a 1-2 line Fixes & polish roundup. The desktop and the phone keep their own, since each has its own version, and each build carries its own copy. Curated before shipping rather than dumped PR by PR; GitHub Releases holds the full PR list.
 _Avoid_: release notes (the GitHub page), changelog entry, commit log
 
 **First run**:

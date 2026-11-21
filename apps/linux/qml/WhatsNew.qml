@@ -1,9 +1,9 @@
-// What's new: the desktop's CHANGELOG.md, newest version first, the way Mojang writes patch
-// notes, a version over its sections over one short line per change. A line marks how far
-// is new: what sits above it came after the version this install had, and what sits under
-// it reads dimmer. The frame opens it by itself once after an update; the version in the
-// rail and in Settings, Data, About open it any time. Got it, Return, Escape, a press
-// outside or a move to another page closes it, and closing it counts the notes as read.
+// What's new: the desktop's curated CHANGELOG.md, newest version first. Each release opens
+// with a short note on what's new, followed by a concise list of highlights and a brief
+// roundup of smaller fixes. A divider marks how far is new since the previous version, and
+// older entries read dimmer. The frame opens this once after an update; the version in the
+// rail and Settings > About open it any time. Got it, Return, Escape, clicking outside or
+// switching pages closes it and marks the notes as read.
 //
 // The two versions that takes live in shell.conf. Every rule about them, where the line
 // goes and what reads dimmer included, is the core's (changelog), reached through
@@ -174,40 +174,63 @@ Item {
                             }
                         }
                         Repeater {
-                            model: release.modelData.sections
+                            model: release.modelData.blocks
                             Column {
-                                id: section
+                                id: block
                                 required property var modelData
+                                required property int index
                                 width: release.width
-                                topPadding: theme.space(2.5)
-                                spacing: theme.space(1)
+
                                 Label {
-                                    text: section.modelData.kind
+                                    visible: block.modelData.kind === "paragraph"
+                                    width: block.width
+                                    topPadding: block.index === 0 ? theme.space(2) : theme.space(1.5)
+                                    text: block.modelData.kind === "paragraph" ? block.modelData.rich : ""
+                                    textFormat: Text.StyledText
+                                    wrapMode: Text.Wrap
+                                    lineHeight: 1.35
+                                    color: release.dim ? theme.textDim : theme.text
+                                }
+
+                                Label {
+                                    visible: block.modelData.kind === "heading"
+                                    width: block.width
+                                    topPadding: theme.space(3.5)
+                                    bottomPadding: theme.space(0.5)
+                                    text: block.modelData.kind === "heading" ? block.modelData.text : ""
                                     role: "title"
                                     font.pointSize: theme.typeSmall
                                     font.letterSpacing: 0.4
                                     color: release.dim ? theme.textFaint : theme.textDim
-                                    bottomPadding: theme.space(0.5)
                                 }
-                                Repeater {
-                                    model: section.modelData.lines
-                                    Item {
-                                        id: change
-                                        required property var modelData
-                                        width: section.width
-                                        height: changeWords.implicitHeight
-                                        Rectangle {
-                                            y: Math.round((bodyMetrics.height - height) / 2)
-                                            width: theme.space(1.25); height: width; radius: width / 2
-                                            color: release.dim ? theme.textFaint : theme.text
-                                        }
-                                        Label {
-                                            id: changeWords
-                                            x: theme.space(4)
-                                            width: parent.width - x
-                                            text: change.modelData
-                                            wrapMode: Text.Wrap
-                                            color: release.dim ? theme.textDim : theme.text
+
+                                Column {
+                                    visible: block.modelData.kind === "list"
+                                    width: block.width
+                                    topPadding: theme.space(1.5)
+                                    spacing: theme.space(2)
+                                    Repeater {
+                                        model: block.modelData.kind === "list" ? block.modelData.items : []
+                                        Item {
+                                            id: change
+                                            required property var modelData
+                                            width: block.width
+                                            height: changeWords.implicitHeight
+                                            Rectangle {
+                                                y: Math.round((bodyMetrics.height - height) / 2)
+                                                width: theme.space(1.25); height: width; radius: width / 2
+                                                color: release.dim ? theme.textFaint : theme.textDim
+                                            }
+                                            Label {
+                                                id: changeWords
+                                                x: theme.space(4)
+                                                width: parent.width - x
+                                                text: change.modelData.rich
+                                                textFormat: Text.StyledText
+                                                wrapMode: Text.Wrap
+                                                lineHeight: 1.32
+                                                color: release.dim ? theme.textDim : theme.text
+                                            }
                                         }
                                     }
                                 }
@@ -239,12 +262,21 @@ Item {
             }
         }
 
-        // The foot: Got it
+        // The foot: link to the full list on GitHub, and Got it
         Item {
             id: foot
             anchors.bottom: parent.bottom
             width: parent.width
             height: gotIt.height
+            Button {
+                objectName: "whats-new-github"
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                msg: "whats-new-github"
+                icon: "external-link"
+                flat: true
+                onClicked: frame.openLink("https://github.com/marcusbandit/Anibeam/releases") // i18n: none
+            }
             Button {
                 id: gotIt
                 objectName: "whats-new-got-it"
