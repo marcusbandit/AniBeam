@@ -276,6 +276,8 @@ Item {
     // ---- The picks: episode number -> item index, and the row the plan follows
     property var picks: ({})
     property string chosen: ""
+    // Whether the user clicked a row or a cube; until then the picks follow the best row
+    property bool userPicked: false
     property bool follow: !!show && !!show.airing
     // Swap the episodes the library has for the picked releases; off until asked for
     property bool replaceOn: false
@@ -292,7 +294,7 @@ Item {
     Component.onCompleted: { var r = Door.getDownloads(); if (!r.error && r.reply.status.settings.rolling) rollSettings = r.reply.status.settings.rolling }
     // Get was clicked with a download of this show to cancel: waiting for a yes
     property bool confirming: false
-    function clearPicks() { picks = ({}); chosen = ""; replaceOn = false; confirming = false; rollChoice = null }
+    function clearPicks() { picks = ({}); chosen = ""; userPicked = false; replaceOn = false; confirming = false; rollChoice = null }
     onActiveChanged: clearPicks()
     onShowChanged: { clearPicks(); sequential = false; planned = false; follow = !!show && !!show.airing }
     // When the action went through, the picks are spent
@@ -301,8 +303,20 @@ Item {
     onReplaceOnChanged: confirming = false
     // The download it would cancel finished or went: nothing left to ask about
     onHadOnTheWayChanged: if (!hadOnTheWay.length) confirming = false
-    // When a provider's releases arrive, pick the group that covers the most gaps
-    onRowsChanged: if (chosen === "" && rows.length) pickRow(bestRow(), false)
+    // When a provider's releases arrive, or a batch's files are counted, pick the group that
+    // covers the most gaps, until the user picks one. Then drop the picks no row holds any more:
+    // a batch with no range in its title is the whole show until its files are read, so a pick
+    // made before the count can name episodes the batch does not carry.
+    onRowsChanged: {
+        if (!userPicked && rows.length) pickRow(bestRow(), false)
+        var kept = {}, dropped = false
+        for (var key in picks) {
+            var n = Number(key), i = picks[key]
+            if (rows.some(function(r) { return r.eps[n] === i })) kept[n] = i
+            else dropped = true
+        }
+        if (dropped) picks = kept
+    }
     function wanted(row) {
         var out = []
         for (var n = 1; n <= total; n++) if (!have(n) && row.eps[n] !== undefined) out.push(n)
@@ -310,7 +324,12 @@ Item {
     }
     function bestRow() {
         var best = rows[0], score = -1
-        for (var i = 0; i < rows.length; i++) { var s = wanted(rows[i]).length * 1000 + rows[i].count; if (s > score) { score = s; best = rows[i] } }
+        for (var i = 0; i < rows.length; i++) {
+            // A batch whose files are not counted yet is the whole show until they are, so it is
+            // picked only when no counted row is there
+            var s = rows[i].state === "counting" || rows[i].state === "unknown" ? -1 : wanted(rows[i]).length * 1000 + rows[i].count
+            if (s > score) { score = s; best = rows[i] }
+        }
         return best
     }
     function covered(row) {
@@ -327,6 +346,7 @@ Item {
         for (var i = 0; i < w.length; i++) p[w[i]] = row.eps[w[i]]
         picks = p
         chosen = row.key
+        userPicked = explicit
     }
     // Ctrl-click on a row's name or any of its cubes: every episode the library lacks that this
     // row has is picked from it, and the picks of episodes it lacks stay, so several groups
@@ -340,9 +360,11 @@ Item {
         else w.forEach(function(n) { p[n] = row.eps[n] })
         picks = p
         chosen = row.key
+        userPicked = true
     }
     function toggleCube(row, n) {
         if (row.eps[n] === undefined) return
+        userPicked = true
         var p = JSON.parse(JSON.stringify(picks))
         // A batch comes whole, so a click on a gap takes or drops every gap it fills; a click
         // on an episode the library has picks just that one, to replace it
@@ -357,6 +379,7 @@ Item {
         if (p[n] === row.eps[n]) delete p[n]; else p[n] = row.eps[n]
         picks = p
         chosen = row.key
+        userPicked = true
     }
     // A folded cube (a long show) stands for a few episodes: a click takes them all, or
     // drops them all when every one of them is already picked from this row
@@ -368,6 +391,7 @@ Item {
         for (var k = a; k <= z; k++) if (row.eps[k] !== undefined) { if (all) delete p[k]; else p[k] = row.eps[k] }
         picks = p
         chosen = row.key
+        userPicked = true
     }
     function codesOf(row) {
         var out = []
