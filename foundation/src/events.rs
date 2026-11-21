@@ -9,9 +9,21 @@ use crate::sync::{recover, recover_read, recover_write};
 use crate::time;
 use anibeam_contract::*;
 
-/// The size of the events ring: the store keeps this many of the newest
-/// Info-and-above rows, oldest dropped first.
+/// The size of the events ring: the newest this many Info-and-above rows,
+/// oldest dropped first, are what `recent` reads. The table may hold a few
+/// more between trims ([`TRIM_EVERY`]).
 pub const RING_SIZE: u64 = 2000;
+
+/// The ring is trimmed back to [`RING_SIZE`] once every this many stored
+/// events rather than after each one: the trim walks the whole ring, which
+/// cost several times the insert it followed. Between trims the table holds
+/// fewer than this many rows more than the ring, and `recent` never reads
+/// them.
+const TRIM_EVERY: u64 = 64;
+
+/// Drops every row older than the newest [`RING_SIZE`].
+const TRIM: &str =
+    "DELETE FROM events WHERE seq <= (SELECT seq FROM events ORDER BY seq DESC LIMIT 1 OFFSET ?1)";
 
 /// Every call and every job emits through this. Persistence is
 /// fire-and-forget (`Store::post`), so `emit` never blocks on a database
@@ -19,6 +31,8 @@ pub const RING_SIZE: u64 = 2000;
 /// thread.
 pub struct EventBus {
     seq: AtomicU64,
+    /// Every event stored since the bus started, for [`TRIM_EVERY`].
+    stored: AtomicU64,
     /// Bumped by every event that can stand for a change of state, before
     /// any listener hears it. A shell's read cache stamps what it keeps
     /// with this and drops it the moment the number moves.
@@ -56,14 +70,20 @@ pub type SignalHook = Arc<dyn Fn(Signal) + Send + Sync>;
 
 impl EventBus {
     /// Reads the ring's highest `seq` so numbering continues across
-    /// launches instead of restarting at zero.
+    /// launches instead of restarting at zero. The rows a batch left past
+    /// the ring are trimmed first, so whatever reads the whole table at
+    /// launch (`Core::earlier_starts`) sees the ring and no more.
     pub fn new(store: Arc<Store>) -> Result<Arc<EventBus>, CoreError> {
         let last: i64 = store.write(|c| {
+            c.execute(TRIM, params![RING_SIZE as i64])?;
             Ok(c.query_row("SELECT coalesce(max(seq), 0) FROM events", [], |r| r.get(0))?)
         })?;
         scrub_stored(&store)?;
         Ok(Arc::new(EventBus {
             seq: AtomicU64::new(last as u64),
+            // From 1: `new` has just trimmed, so the first batch's trim is the
+            // 64th stored event, not the first.
+            stored: AtomicU64::new(1),
             generation: AtomicU64::new(0),
             next_listener: AtomicU64::new(1),
             listeners: RwLock::new(Vec::new()),
@@ -232,29 +252,34 @@ impl EventBus {
             .plain_words
             .as_ref()
             .and_then(|w| serde_json::to_string(w).ok());
+        let trim = self
+            .stored
+            .fetch_add(1, Ordering::Relaxed)
+            .is_multiple_of(TRIM_EVERY);
         self.store.post(move |c| {
             let (job_id, job_kind, job_phase) = match &e.job {
                 Some(j) => (Some(j.id as i64), Some(j.kind.as_str()), Some(j.phase.as_str())),
                 None => (None, None, None),
             };
-            let body = match serde_json::to_value(&e.body).map(scrub_value) {
-                Ok(body) => body.to_string(),
+            match serde_json::to_value(&e.body).map(scrub_value) {
+                Ok(body) => {
+                    let inserted = c
+                        .prepare_cached(
+                            "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain, plain_words) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                        )
+                        .and_then(|mut stmt| {
+                            stmt.execute(params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body.to_string(), e.plain, plain_words])
+                        });
+                    if let Err(err) = inserted {
+                        tracing::warn!("failed to insert event seq {}: {err}", e.seq);
+                    }
+                }
                 Err(err) => {
                     tracing::warn!("failed to serialise event body for seq {}: {err}", e.seq);
-                    return;
                 }
-            };
-            if let Err(err) = c.execute(
-                "INSERT INTO events (seq, at, level, stage, message, job_id, job_kind, job_phase, body, plain, plain_words) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                params![e.seq as i64, time::to_secs(e.at), e.level.as_str(), e.stage.as_str(), e.message, job_id, job_kind, job_phase, body, e.plain, plain_words],
-            ) {
-                tracing::warn!("failed to insert event seq {}: {err}", e.seq);
-                return;
             }
-            if let Err(err) = c.execute(
-                "DELETE FROM events WHERE seq <= (SELECT seq FROM events ORDER BY seq DESC LIMIT 1 OFFSET ?1)",
-                params![RING_SIZE as i64],
-            ) {
+            // Whatever the insert did, so a failed one never skips a batch's trim.
+            if trim && let Err(err) = c.execute(TRIM, params![RING_SIZE as i64]) {
                 tracing::warn!("failed to trim the events ring: {err}");
             }
         });
@@ -282,9 +307,8 @@ impl EventBus {
     /// than repaired into a default; a genuine rusqlite error still
     /// propagates.
     pub fn recent(&self, limit: u64) -> Result<Vec<Event>, CoreError> {
-        // The ring never holds more than this, so a shell asking for a
-        // billion asks for the ring; the cast below is only safe because
-        // of it.
+        // A shell asking for a billion asks for the ring, and the clamp is
+        // what keeps the cast below safe.
         let limit = limit.min(RING_SIZE);
         self.store.write(move |c| {
             let mut stmt = c.prepare_cached(
@@ -453,8 +477,8 @@ fn scrub_value(value: serde_json::Value) -> serde_json::Value {
 }
 
 /// The rows stored before every event was scrubbed, scrubbed as the bus starts (#509),
-/// as 0005 dropped the rows of an earlier leak. Cheap, since the ring holds 2000 rows
-/// at most, and a row with nothing to scrub is left as it is.
+/// as 0005 dropped the rows of an earlier leak. Cheap, since `new` has just trimmed the
+/// table to the ring, and a row with nothing to scrub is left as it is.
 fn scrub_stored(store: &Store) -> Result<(), CoreError> {
     store.write(|c| {
         let rows: Vec<(i64, String, Option<String>, String)> = {
@@ -843,17 +867,52 @@ mod tests {
     #[test]
     fn the_ring_keeps_the_last_2000_oldest_first() {
         let (_d, bus) = bus();
-        for i in 0..2010 {
+        for i in 0..2100 {
             bus.info(Stage::System, format!("m{i}"), EventBody::Notice);
         }
         let all = bus.recent(5000).unwrap();
         assert_eq!(all.len(), 2000);
-        assert_eq!(all[0].message, "m10");
-        assert_eq!(all[1999].message, "m2009");
+        assert_eq!(all[0].message, "m100");
+        assert_eq!(all[1999].message, "m2099");
         let last = bus.recent(2).unwrap();
-        assert_eq!(last[0].message, "m2008");
+        assert_eq!(last[0].message, "m2098");
+        // Trimmed in batches: never more than one batch over the ring.
+        let stored: i64 = bus
+            .store
+            .write(|c| Ok(c.query_row("SELECT count(*) FROM events", [], |r| r.get(0))?))
+            .unwrap();
+        let stored = stored as u64;
+        assert!(
+            (RING_SIZE..RING_SIZE + TRIM_EVERY).contains(&stored),
+            "{stored}"
+        );
         bus.clear().unwrap();
         assert!(bus.recent(10).unwrap().is_empty());
+    }
+
+    /// What a batch left past the ring is gone by the next launch, so a read of
+    /// the whole table then (`Core::earlier_starts`) sees the ring and no more.
+    #[test]
+    fn the_rows_past_the_ring_are_trimmed_when_the_bus_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anibeam.db");
+        let count = |store: &Store| -> i64 {
+            store
+                .write(|c| Ok(c.query_row("SELECT count(*) FROM events", [], |r| r.get(0))?))
+                .unwrap()
+        };
+        {
+            let store = Store::open(&path).unwrap();
+            let bus = EventBus::new(store.clone()).unwrap();
+            for i in 0..2030 {
+                bus.info(Stage::System, format!("m{i}"), EventBody::Notice);
+            }
+            assert!(count(&store) > RING_SIZE as i64, "a batch is still open");
+            store.close();
+        }
+        let store = Store::open(&path).unwrap();
+        let _bus = EventBus::new(store.clone()).unwrap();
+        assert_eq!(count(&store), RING_SIZE as i64);
     }
 
     #[test]

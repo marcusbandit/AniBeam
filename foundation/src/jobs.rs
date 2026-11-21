@@ -65,8 +65,8 @@ pub struct JobCtx {
     bus: Arc<EventBus>,
     runtime: Handle,
     progress: Arc<Mutex<Option<Progress>>>,
-    throttle: Mutex<Throttle>,
-    changed: Mutex<ChangedThrottle>,
+    throttle: Mutex<Throttle<Option<Progress>>>,
+    changed: Mutex<Throttle<HashMap<u64, SeriesCard>>>,
     /// Set by the runner, under the same locks the scheduled flushes drain
     /// with, before the terminal event. A scheduled flush that observes
     /// this checks it while holding that lock, so it can never emit after
@@ -74,18 +74,42 @@ pub struct JobCtx {
     finished: AtomicBool,
 }
 
-#[derive(Default)]
-struct Throttle {
-    last_emit: Option<Instant>,
-    pending: Option<Progress>,
-    flush_scheduled: bool,
+/// What a throttle holds between emits: the latest progress, or every card
+/// pushed since the last emit, the latest for each series. `drain` empties
+/// it into what one emit carries, or `None` when nothing waits.
+trait Pending: Default + Send + 'static {
+    type Out;
+    fn drain(&mut self) -> Option<Self::Out>;
+}
+
+impl Pending for Option<Progress> {
+    type Out = Progress;
+    fn drain(&mut self) -> Option<Progress> {
+        self.take()
+    }
+}
+
+impl Pending for HashMap<u64, SeriesCard> {
+    type Out = Vec<SeriesCard>;
+    fn drain(&mut self) -> Option<Vec<SeriesCard>> {
+        (!self.is_empty()).then(|| std::mem::take(self).into_values().collect())
+    }
 }
 
 #[derive(Default)]
-struct ChangedThrottle {
+struct Throttle<P> {
     last_emit: Option<Instant>,
-    pending: HashMap<u64, SeriesCard>,
+    pending: P,
     flush_scheduled: bool,
+}
+
+impl<P: Pending> Throttle<P> {
+    /// Everything buffered, taken for an emit now; `None` when nothing waits.
+    fn take(&mut self) -> Option<P::Out> {
+        let out = self.pending.drain()?;
+        self.last_emit = Some(Instant::now());
+        Some(out)
+    }
 }
 
 impl JobCtx {
@@ -151,38 +175,11 @@ impl JobCtx {
             label: label.to_string(),
         };
         *recover(&self.progress) = Some(p.clone());
-        let mut t = recover(&self.throttle);
-        let due = t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL);
-        if due {
-            t.last_emit = Some(Instant::now());
-            t.pending = None;
-            drop(t);
-            self.emit_progress(p);
-        } else {
-            t.pending = Some(p);
-            if !t.flush_scheduled {
-                t.flush_scheduled = true;
-                let wait = PROGRESS_INTERVAL.saturating_sub(t.last_emit.unwrap().elapsed());
-                let me = self.clone();
-                self.runtime.spawn(async move {
-                    tokio::time::sleep(wait).await;
-                    // Held for the whole check-drain-emit: whichever of this
-                    // task and the runner's `flush_progress` reaches the
-                    // lock first completes entirely, emit included, before
-                    // the other can start, so a flush from here can never
-                    // land after the terminal event.
-                    let mut t = recover(&me.throttle);
-                    t.flush_scheduled = false;
-                    if me.finished.load(Ordering::SeqCst) {
-                        return;
-                    }
-                    if let Some(p) = t.pending.take() {
-                        t.last_emit = Some(Instant::now());
-                        me.emit_progress(p);
-                    }
-                });
-            }
-        }
+        self.push(
+            |ctx| &ctx.throttle,
+            |pending| *pending = Some(p),
+            JobCtx::emit_progress,
+        );
     }
 
     fn emit_progress(&self, p: Progress) {
@@ -195,18 +192,6 @@ impl JobCtx {
                 label: p.label,
             },
         );
-    }
-
-    /// Emits whatever progress is buffered right now, so a job never ends
-    /// with a value still waiting on a scheduled flush. A no-op when
-    /// nothing is pending. Holds the throttle lock through the emit for
-    /// the same reason the scheduled flush above does.
-    pub fn flush_progress(&self) {
-        let mut t = recover(&self.throttle);
-        if let Some(p) = t.pending.take() {
-            t.last_emit = Some(Instant::now());
-            self.emit_progress(p);
-        }
     }
 
     /// At most four `SeriesChanged` events a second per job, batching every
@@ -224,78 +209,83 @@ impl JobCtx {
         if cards.is_empty() {
             return;
         }
-        let mut t = recover(&self.changed);
-        let due = t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL);
-        if due {
-            t.last_emit = Some(Instant::now());
-            // Drain whatever is already buffered into the same batch as
-            // the new cards (the new ones winning on a same-id collision),
-            // so a due emission never leaves an older card behind for a
-            // scheduled flush to deliver stale, after this one.
-            let mut batch = std::mem::take(&mut t.pending);
-            for card in cards {
-                batch.insert(card.id, card);
-            }
-            drop(t);
-            self.emit_changed(batch.into_values().collect());
-        } else {
-            for card in cards {
-                t.pending.insert(card.id, card);
-            }
-            if !t.flush_scheduled {
-                t.flush_scheduled = true;
-                let wait = PROGRESS_INTERVAL.saturating_sub(t.last_emit.unwrap().elapsed());
-                let me = self.clone();
-                self.runtime.spawn(async move {
-                    tokio::time::sleep(wait).await;
-                    // Held for the whole check-drain-emit, for the same
-                    // reason `progress`'s scheduled flush holds it.
-                    let mut t = recover(&me.changed);
-                    t.flush_scheduled = false;
-                    if me.finished.load(Ordering::SeqCst) {
-                        return;
-                    }
-                    let cards: Vec<SeriesCard> =
-                        std::mem::take(&mut t.pending).into_values().collect();
-                    if !cards.is_empty() {
-                        t.last_emit = Some(Instant::now());
-                        me.emit_changed(cards);
-                    }
-                });
-            }
-        }
+        self.push(
+            |ctx| &ctx.changed,
+            |pending| pending.extend(cards.into_iter().map(|card| (card.id, card))),
+            JobCtx::emit_changed,
+        );
     }
 
-    /// Emits whatever is buffered right now, so a job never ends with cards
-    /// still waiting on a scheduled flush. A no-op when nothing is pending.
-    /// Holds the lock through the emit for the same reason the scheduled
-    /// flush above does.
-    pub fn flush_changed(&self) {
-        let mut t = recover(&self.changed);
-        let cards: Vec<SeriesCard> = std::mem::take(&mut t.pending).into_values().collect();
-        if !cards.is_empty() {
-            t.last_emit = Some(Instant::now());
-            self.emit_changed(cards);
-        }
-    }
-
-    fn emit_changed(&self, cards: Vec<SeriesCard>) {
-        let n = cards.len();
+    fn emit_changed(&self, series: Vec<SeriesCard>) {
+        let n = series.len();
         self.emit(
             Level::Debug,
             format!("{} updated {n} series", self.kind.as_str()),
-            EventBody::SeriesChanged { series: cards },
+            EventBody::SeriesChanged { series },
         );
+    }
+
+    /// Adds to a throttle's buffer, then emits the whole buffer now when the
+    /// last emit is a window old, or arms one flush for when it will be. A
+    /// due emit takes what was already buffered along with the new value, so
+    /// no older value is left behind for a flush to deliver stale after it.
+    /// The emit runs after the lock is let go, so no listener runs under it.
+    /// Once the job has finished nothing flushes any more, so a push from
+    /// something that outlived the body (a task it spawned) goes out at once
+    /// rather than waiting on a flush that would drop it.
+    fn push<P: Pending>(
+        self: &Arc<Self>,
+        slot: fn(&JobCtx) -> &Mutex<Throttle<P>>,
+        add: impl FnOnce(&mut P),
+        emit: fn(&JobCtx, P::Out),
+    ) {
+        let mut t = recover(slot(self));
+        add(&mut t.pending);
+        if self.finished.load(Ordering::SeqCst)
+            || t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL)
+        {
+            let due = t.take();
+            drop(t);
+            if let Some(due) = due {
+                emit(self, due);
+            }
+            return;
+        }
+        if t.flush_scheduled {
+            return;
+        }
+        t.flush_scheduled = true;
+        let wait = PROGRESS_INTERVAL.saturating_sub(t.last_emit.unwrap().elapsed());
+        let me = self.clone();
+        self.runtime.spawn(async move {
+            tokio::time::sleep(wait).await;
+            let mut t = recover(slot(&me));
+            t.flush_scheduled = false;
+            if !me.finished.load(Ordering::SeqCst) {
+                me.drain(&mut t, emit);
+            }
+        });
+    }
+
+    /// Emits whatever a throttle holds, called with its lock held by the
+    /// scheduled flush and by `finish`: whichever takes the lock first
+    /// completes entirely, emit included, before the other can start, so a
+    /// scheduled flush can never land after the terminal event.
+    fn drain<P: Pending>(&self, t: &mut Throttle<P>, emit: fn(&JobCtx, P::Out)) {
+        if let Some(due) = t.take() {
+            emit(self, due);
+        }
     }
 
     /// Called once by the runner, after the job's own future has completed
     /// or been dropped, and before the terminal event: marks the job
     /// finished so no scheduled flush can land after it, then flushes
-    /// whatever is still buffered.
+    /// whatever is still buffered, so a job never ends with a value still
+    /// waiting on a flush.
     fn finish(&self) {
         self.finished.store(true, Ordering::SeqCst);
-        self.flush_progress();
-        self.flush_changed();
+        self.drain(&mut recover(&self.throttle), JobCtx::emit_progress);
+        self.drain(&mut recover(&self.changed), JobCtx::emit_changed);
     }
 }
 
@@ -303,6 +293,39 @@ impl JobCtx {
 /// a chore the app runs on its own, whose failure the next run retries.
 fn stopped_line(kind: JobKind) -> Option<Words> {
     (!kind.chore()).then(|| Words::new(format!("{}.stopped", kind.words_id())))
+}
+
+fn finished_ref(id: u64, kind: JobKind) -> Option<JobRef> {
+    Some(JobRef {
+        id,
+        kind,
+        phase: JobPhase::Finished,
+    })
+}
+
+/// The terminal event of a job that was cancelled, or whose body was dropped
+/// before it finished: not news, so it stays in the developer log.
+fn emit_cancelled(bus: &EventBus, id: u64, kind: JobKind) {
+    bus.emit_said(
+        Level::Info,
+        kind.stage(),
+        None,
+        format!("{} cancelled", kind.as_str()),
+        finished_ref(id, kind),
+        EventBody::JobCancelled,
+    );
+}
+
+/// The terminal event of a job that failed.
+fn emit_failed(bus: &EventBus, id: u64, kind: JobKind, message: String, error: CoreError) {
+    bus.emit_said(
+        Level::Error,
+        kind.stage(),
+        stopped_line(kind),
+        message,
+        finished_ref(id, kind),
+        EventBody::JobFailed { error },
+    );
 }
 
 /// Guarantees a job's registry entry and terminal event are never lost to a
@@ -323,25 +346,17 @@ impl Drop for JobGuard {
         if self.done {
             return;
         }
-        // No further scheduled flush should emit for a job ending this way
-        // either.
-        self.ctx.finished.store(true, Ordering::SeqCst);
+        // What the throttles still hold goes out before the terminal event,
+        // as on the normal path, and no scheduled flush emits after it.
+        self.ctx.finish();
         recover(&self.jobs.running).remove(&self.id);
-        let finished = JobRef {
-            id: self.id,
-            kind: self.kind,
-            phase: JobPhase::Finished,
-        };
         if std::thread::panicking() {
-            self.jobs.bus.emit_said(
-                Level::Error,
-                self.kind.stage(),
-                stopped_line(self.kind),
+            emit_failed(
+                &self.jobs.bus,
+                self.id,
+                self.kind,
                 format!("{} panicked", self.kind.as_str()),
-                Some(finished),
-                EventBody::JobFailed {
-                    error: CoreError::internal("job panicked"),
-                },
+                CoreError::internal("job panicked"),
             );
         } else {
             // Still armed at drop but the thread is not unwinding: the
@@ -350,14 +365,7 @@ impl Drop for JobGuard {
             // principle, a `select!` whose cancelled arm won before this
             // guard's `done` flag could be set). Either way the job did
             // not fail, it was cancelled.
-            self.jobs.bus.emit_said(
-                Level::Info,
-                self.kind.stage(),
-                None,
-                format!("{} cancelled", self.kind.as_str()),
-                Some(finished),
-                EventBody::JobCancelled,
-            );
+            emit_cancelled(&self.jobs.bus, self.id, self.kind);
         }
     }
 }
@@ -428,8 +436,8 @@ impl Jobs {
             bus: self.bus.clone(),
             runtime: self.runtime.clone(),
             progress,
-            throttle: Mutex::new(Throttle::default()),
-            changed: Mutex::new(ChangedThrottle::default()),
+            throttle: Mutex::default(),
+            changed: Mutex::default(),
             finished: AtomicBool::new(false),
         });
         self.bus.emit(
@@ -464,52 +472,28 @@ impl Jobs {
             guard.done = true;
             recover(&jobs.running).remove(&id);
             ctx.finish();
-            let finished = JobRef {
-                id,
-                kind,
-                phase: JobPhase::Finished,
-            };
             match outcome {
-                None => {
-                    jobs.bus.emit_said(
-                        Level::Info,
-                        kind.stage(),
-                        None,
-                        format!("{} cancelled", kind.as_str()),
-                        Some(finished),
-                        EventBody::JobCancelled,
-                    );
-                }
-                Some(Err(e)) if e == CoreError::internal("cancelled") => {
-                    jobs.bus.emit_said(
-                        Level::Info,
-                        kind.stage(),
-                        None,
-                        format!("{} cancelled", kind.as_str()),
-                        Some(finished),
-                        EventBody::JobCancelled,
-                    );
-                }
-                Some(Err(e)) => {
-                    jobs.bus.emit_said(
-                        Level::Error,
-                        kind.stage(),
-                        stopped_line(kind),
-                        format!("{} failed: {e}", kind.as_str()),
-                        Some(finished),
-                        EventBody::JobFailed { error: e },
-                    );
-                }
                 Some(Ok(done)) => {
                     jobs.bus.emit_said(
                         done.level,
                         kind.stage(),
                         done.plain,
                         done.message,
-                        Some(finished),
+                        finished_ref(id, kind),
                         done.body,
                     );
                 }
+                // `checkpoint`'s error is a cancel the body noticed itself.
+                Some(Err(e)) if e != CoreError::internal("cancelled") => {
+                    emit_failed(
+                        &jobs.bus,
+                        id,
+                        kind,
+                        format!("{} failed: {e}", kind.as_str()),
+                        e,
+                    );
+                }
+                _ => emit_cancelled(&jobs.bus, id, kind),
             }
         });
         (id, true)
@@ -593,6 +577,42 @@ mod tests {
         }
     }
 
+    fn scan_done() -> Result<Finished, CoreError> {
+        Ok(Finished {
+            plain: None,
+            level: Level::Info,
+            message: "".into(),
+            body: EventBody::ScanFinished {
+                source: None,
+                added: 0,
+                changed: 0,
+                removed: 0,
+            },
+        })
+    }
+
+    fn search_done() -> Result<Finished, CoreError> {
+        Ok(Finished {
+            plain: None,
+            level: Level::Debug,
+            message: "".into(),
+            body: EventBody::SearchFinished { results: vec![] },
+        })
+    }
+
+    /// Every event of job `id`, in the order the collector heard them.
+    fn of_job(c: &Collector, id: u64) -> Vec<Event> {
+        c.events()
+            .into_iter()
+            .filter(|e| e.job.as_ref().is_some_and(|j| j.id == id))
+            .collect()
+    }
+
+    /// The last event of job `id`.
+    fn last_of(c: &Collector, id: u64) -> Event {
+        of_job(c, id).pop().expect("the job emitted something")
+    }
+
     fn card(id: u64) -> SeriesCard {
         SeriesCard {
             id,
@@ -667,11 +687,7 @@ mod tests {
             })
         });
         wait_for_finished(&c, id);
-        let mine: Vec<Event> = c
-            .events()
-            .into_iter()
-            .filter(|e| e.job.as_ref().is_some_and(|j| j.id == id))
-            .collect();
+        let mine = of_job(&c, id);
         assert_eq!(mine[0].job.as_ref().unwrap().phase, JobPhase::Started);
         assert!(matches!(
             mine[0].body,
@@ -694,11 +710,7 @@ mod tests {
             Err(CoreError::internal("nope"))
         });
         wait_for_finished(&c, id);
-        let last = c
-            .events()
-            .into_iter()
-            .rfind(|e| e.job.as_ref().is_some_and(|j| j.id == id))
-            .unwrap();
+        let last = last_of(&c, id);
         assert!(matches!(last.body, EventBody::JobFailed { .. }));
         assert_eq!(last.level, Level::Error);
     }
@@ -719,12 +731,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(30));
         jobs.cancel(cancelled).unwrap();
         wait_for_finished(&c, cancelled);
-        let last = |id: u64| {
-            c.events()
-                .into_iter()
-                .rfind(|e| e.job.as_ref().is_some_and(|j| j.id == id))
-                .unwrap()
-        };
+        let last = |id: u64| last_of(&c, id);
         let failed = last(failed);
         assert_eq!(
             failed.plain.as_deref(),
@@ -745,11 +752,7 @@ mod tests {
             Err(CoreError::internal("nope"))
         });
         wait_for_finished(&c, id);
-        let mine: Vec<_> = c
-            .events()
-            .into_iter()
-            .filter(|e| e.job.as_ref().is_some_and(|j| j.id == id))
-            .collect();
+        let mine: Vec<_> = of_job(&c, id);
         assert!(mine.iter().any(|e| e.level == Level::Error));
         assert!(mine.iter().all(|e| e.plain.is_none()));
     }
@@ -766,11 +769,7 @@ mod tests {
             })
         });
         wait_for_finished(&c, id);
-        let last = c
-            .events()
-            .into_iter()
-            .rfind(|e| e.job.as_ref().is_some_and(|j| j.id == id))
-            .unwrap();
+        let last = last_of(&c, id);
         assert_eq!(last.plain.as_deref(), Some("2 shows"));
         assert_eq!(last.message, "found");
     }
@@ -787,11 +786,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(30));
         jobs.cancel(id).unwrap();
         wait_for_finished(&c, id);
-        let last = c
-            .events()
-            .into_iter()
-            .rfind(|e| e.job.as_ref().is_some_and(|j| j.id == id))
-            .unwrap();
+        let last = last_of(&c, id);
         assert!(matches!(last.body, EventBody::JobCancelled));
         assert!(matches!(
             jobs.cancel(id),
@@ -809,28 +804,11 @@ mod tests {
             while !ctx.is_cancelled() {
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
-            Ok(Finished {
-                plain: None,
-                level: Level::Info,
-                message: "".into(),
-                body: EventBody::ScanFinished {
-                    source: None,
-                    added: 0,
-                    changed: 0,
-                    removed: 0,
-                },
-            })
+            scan_done()
         });
         let second = jobs.start(JobKind::Scan, |_ctx| async move { panic!("must not run") });
         assert_eq!(first, second);
-        let other = jobs.start(JobKind::Search, |_ctx| async move {
-            Ok(Finished {
-                plain: None,
-                level: Level::Debug,
-                message: "".into(),
-                body: EventBody::SearchFinished { results: vec![] },
-            })
-        });
+        let other = jobs.start(JobKind::Search, |_ctx| async move { search_done() });
         assert_ne!(other, first);
         jobs.cancel(first).unwrap();
         wait_for_finished(&c, first);
@@ -844,28 +822,13 @@ mod tests {
                 ctx.progress(i, Some(100), "walking");
             }
             tokio::time::sleep(Duration::from_millis(300)).await;
-            Ok(Finished {
-                plain: None,
-                level: Level::Info,
-                message: "".into(),
-                body: EventBody::ScanFinished {
-                    source: None,
-                    added: 0,
-                    changed: 0,
-                    removed: 0,
-                },
-            })
+            scan_done()
         });
         wait_for_finished(&c, id);
-        let progress: Vec<u64> = c
-            .events()
+        let progress: Vec<u64> = of_job(&c, id)
             .into_iter()
             .filter_map(|e| match e.body {
-                EventBody::JobProgress { done, .. }
-                    if e.job.as_ref().is_some_and(|j| j.id == id) =>
-                {
-                    Some(done)
-                }
+                EventBody::JobProgress { done, .. } => Some(done),
                 _ => None,
             })
             .collect();
@@ -880,28 +843,13 @@ mod tests {
             for i in 0..50u64 {
                 ctx.changed(card(i));
             }
-            Ok(Finished {
-                plain: None,
-                level: Level::Info,
-                message: "".into(),
-                body: EventBody::ScanFinished {
-                    source: None,
-                    added: 0,
-                    changed: 0,
-                    removed: 0,
-                },
-            })
+            scan_done()
         });
         wait_for_finished(&c, id);
-        let events = c.events();
-        let mine: Vec<&Event> = events
-            .iter()
-            .filter(|e| e.job.as_ref().is_some_and(|j| j.id == id))
-            .collect();
+        let mine = of_job(&c, id);
         let changed_events: Vec<&Event> = mine
             .iter()
             .filter(|e| matches!(e.body, EventBody::SeriesChanged { .. }))
-            .copied()
             .collect();
         assert!(changed_events.len() <= 3, "{changed_events:?}");
 
@@ -918,13 +866,7 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), 50, "{ids:?}");
 
-        let last_changed_seq = changed_events.last().unwrap().seq;
-        let terminal_seq = mine
-            .iter()
-            .find(|e| e.job.as_ref().unwrap().phase == JobPhase::Finished)
-            .unwrap()
-            .seq;
-        assert!(last_changed_seq < terminal_seq);
+        assert_nothing_follows_the_terminal_event(&mine);
     }
 
     /// Asserts that among this job's events, the terminal one has the
@@ -949,27 +891,13 @@ mod tests {
         let id = jobs.start(JobKind::Scan, |ctx| async move {
             ctx.progress(1, Some(10), "walking");
             ctx.progress(2, Some(10), "walking");
-            Ok(Finished {
-                plain: None,
-                level: Level::Info,
-                message: "".into(),
-                body: EventBody::ScanFinished {
-                    source: None,
-                    added: 0,
-                    changed: 0,
-                    removed: 0,
-                },
-            })
+            scan_done()
         });
         wait_for_finished(&c, id);
         // Give any lagging scheduled flush (armed by the second, throttled
         // `progress` call) its full window to fire, if it's going to.
         std::thread::sleep(PROGRESS_INTERVAL + Duration::from_millis(100));
-        let mine: Vec<Event> = c
-            .events()
-            .into_iter()
-            .filter(|e| e.job.as_ref().is_some_and(|j| j.id == id))
-            .collect();
+        let mine = of_job(&c, id);
         assert_nothing_follows_the_terminal_event(&mine);
     }
 
@@ -990,11 +918,61 @@ mod tests {
         jobs.cancel(id).unwrap();
         wait_for_finished(&c, id);
         std::thread::sleep(PROGRESS_INTERVAL + Duration::from_millis(100));
-        let mine: Vec<Event> = c
-            .events()
-            .into_iter()
-            .filter(|e| e.job.as_ref().is_some_and(|j| j.id == id))
+        let mine = of_job(&c, id);
+        assert_nothing_follows_the_terminal_event(&mine);
+    }
+
+    /// Something that still holds the context after the body returned, a task
+    /// the body spawned say, is not throttled any more: nothing flushes for a
+    /// finished job, so what it pushes goes out at once instead of being lost.
+    #[test]
+    fn a_push_after_the_job_finished_still_goes_out() {
+        let (_d, _rt, jobs, c) = setup();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let id = jobs.start(JobKind::Scan, move |ctx| async move {
+            ctx.progress(0, Some(2), "early");
+            tx.send(ctx.clone()).unwrap();
+            scan_done()
+        });
+        wait_for_finished(&c, id);
+        let ctx = rx.recv().unwrap();
+        ctx.progress(1, Some(2), "late");
+        ctx.changed(card(7));
+        let late = of_job(&c, id);
+        assert!(
+            late.iter().any(
+                |e| matches!(&e.body, EventBody::JobProgress { label, .. } if label == "late")
+            ),
+            "{late:?}"
+        );
+        assert!(
+            late.iter().any(
+                |e| matches!(&e.body, EventBody::SeriesChanged { series } if series.iter().any(|s| s.id == 7))
+            ),
+            "{late:?}"
+        );
+    }
+
+    /// A body that panics still delivers the cards it had buffered, before
+    /// its terminal event, as one that returns does.
+    #[test]
+    fn a_panicking_job_delivers_its_buffered_cards_first() {
+        let (_d, _rt, jobs, c) = setup();
+        let id = jobs.start(JobKind::Scan, |ctx| async move {
+            ctx.changed(card(1));
+            ctx.changed(card(2));
+            panic!("boom after buffering a card");
+        });
+        wait_for_finished(&c, id);
+        let mine = of_job(&c, id);
+        let ids: Vec<u64> = mine
+            .iter()
+            .flat_map(|e| match &e.body {
+                EventBody::SeriesChanged { series } => series.iter().map(|s| s.id).collect(),
+                _ => vec![],
+            })
             .collect();
+        assert!(ids.contains(&1) && ids.contains(&2), "{mine:?}");
         assert_nothing_follows_the_terminal_event(&mine);
     }
 
@@ -1005,11 +983,7 @@ mod tests {
             panic!("boom");
         });
         wait_for_finished(&c, id);
-        let last = c
-            .events()
-            .into_iter()
-            .rfind(|e| e.job.as_ref().is_some_and(|j| j.id == id))
-            .unwrap();
+        let last = last_of(&c, id);
         assert!(
             matches!(last.body, EventBody::JobFailed { .. }),
             "{:?}",
@@ -1027,19 +1001,7 @@ mod tests {
 
         // The slot is free: the same one-at-a-time kind starts a new job
         // under a new id rather than handing back the dead one.
-        let second = jobs.start(JobKind::Scan, |_ctx| async move {
-            Ok(Finished {
-                plain: None,
-                level: Level::Info,
-                message: "".into(),
-                body: EventBody::ScanFinished {
-                    source: None,
-                    added: 0,
-                    changed: 0,
-                    removed: 0,
-                },
-            })
-        });
+        let second = jobs.start(JobKind::Scan, |_ctx| async move { scan_done() });
         assert_ne!(id, second);
         wait_for_finished(&c, second);
     }
@@ -1101,11 +1063,7 @@ mod tests {
             "job never got a terminal event; events seen: {:?}",
             c.events()
         );
-        let last = c
-            .events()
-            .into_iter()
-            .rfind(|e| e.job.as_ref().is_some_and(|j| j.id == id))
-            .unwrap();
+        let last = last_of(&c, id);
         assert!(
             matches!(last.body, EventBody::JobCancelled),
             "{:?}",
@@ -1136,17 +1094,7 @@ mod tests {
             let mut newer = card(2);
             newer.title = "second".into();
             ctx.changed(newer);
-            Ok(Finished {
-                plain: None,
-                level: Level::Info,
-                message: "".into(),
-                body: EventBody::ScanFinished {
-                    source: None,
-                    added: 0,
-                    changed: 0,
-                    removed: 0,
-                },
-            })
+            scan_done()
         });
         wait_for_finished(&c, id);
         let events = c.events();

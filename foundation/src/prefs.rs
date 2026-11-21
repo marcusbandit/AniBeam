@@ -76,7 +76,7 @@ pub fn validate_provider_order(order: &[Provider]) -> Result<(), CoreError> {
     if let Some(p) = order.iter().find(|p| !MATCH_PROVIDERS.contains(p)) {
         return Err(CoreError::invalid(
             "order",
-            anibeam_contract::i18n::tr(
+            i18n::tr(
                 "core-prefs-not-a-provider",
                 &[("provider", p.label().into())],
             ),
@@ -87,7 +87,7 @@ pub fn validate_provider_order(order: &[Provider]) -> Result<(), CoreError> {
         if n != 1 {
             return Err(CoreError::invalid(
                 "order",
-                anibeam_contract::i18n::tr(
+                i18n::tr(
                     "core-prefs-provider-count",
                     &[("provider", p.label().into()), ("count", n.into())],
                 ),
@@ -100,23 +100,16 @@ pub fn validate_provider_order(order: &[Provider]) -> Result<(), CoreError> {
 /// The one preference with bounds: On hold's days. Under a week would move
 /// a show the user skipped one weekend.
 pub fn validate_preferences(p: &Preferences) -> Result<(), CoreError> {
-    if !(ON_HOLD_MIN_DAYS..=ON_HOLD_MAX_DAYS).contains(&p.on_hold_days) {
-        return Err(CoreError::invalid(
-            "on_hold_days",
-            anibeam_contract::i18n::tr(
-                "core-prefs-outside",
-                &[
-                    ("value", p.on_hold_days.to_string().into()),
-                    ("low", ON_HOLD_MIN_DAYS.to_string().into()),
-                    ("high", ON_HOLD_MAX_DAYS.to_string().into()),
-                ],
-            ),
-        ));
-    }
+    range(
+        "on_hold_days",
+        p.on_hold_days.into(),
+        ON_HOLD_MIN_DAYS.into(),
+        ON_HOLD_MAX_DAYS.into(),
+    )?;
     if anibeam_room::room::clean_name(&p.room_name).is_none() && !p.room_name.trim().is_empty() {
         return Err(CoreError::invalid(
             "room_name",
-            anibeam_contract::i18n::tr(
+            i18n::tr(
                 "core-prefs-room-name",
                 &[("max", anibeam_room::room::NAME_MAX.to_string().into())],
             ),
@@ -125,7 +118,7 @@ pub fn validate_preferences(p: &Preferences) -> Result<(), CoreError> {
     if !relay_ok(&p.room_relay) {
         return Err(CoreError::invalid(
             "room_relay",
-            anibeam_contract::i18n::tr("core-prefs-room-relay", &[]),
+            i18n::tr("core-prefs-room-relay", &[]),
         ));
     }
     Ok(())
@@ -145,7 +138,7 @@ fn range(field: &str, v: f64, lo: f64, hi: f64) -> Result<(), CoreError> {
     } else {
         Err(CoreError::invalid(
             field,
-            anibeam_contract::i18n::tr(
+            i18n::tr(
                 "core-prefs-outside",
                 &[
                     ("value", v.to_string().into()),
@@ -166,7 +159,7 @@ pub fn validate_subtitle_defaults(d: &SubtitleDefaults) -> Result<(), CoreError>
     if d.text_style.font.trim().is_empty() {
         return Err(CoreError::invalid(
             "font",
-            anibeam_contract::i18n::tr("core-prefs-empty", &[]),
+            i18n::tr("core-prefs-empty", &[]),
         ));
     }
     Ok(())

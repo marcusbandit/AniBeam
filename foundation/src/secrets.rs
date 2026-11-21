@@ -116,14 +116,6 @@ impl Secrets {
         unavailable && !self.announced.swap(true, Ordering::SeqCst)
     }
 
-    /// `None` until the store choice has been made, then whether the
-    /// machine turned out to have no keyring. Reading it never starts the
-    /// probe, so a caller that only wants to report the state does not
-    /// cause one.
-    pub fn keyring_unavailable(&self) -> Option<bool> {
-        self.primary.get().map(Option::is_none)
-    }
-
     /// Whether the core holds this secret, answered off memory whenever it
     /// can be. The file store's keys are in the known set from `init` and
     /// from every `set`, so a file-stored key never costs a read; anything
@@ -230,6 +222,13 @@ impl Secrets {
             Some(e) => Err(keyring_error(key, e)),
             None => Ok(()),
         }
+    }
+
+    /// Test-only: `None` until the store choice has been made, then whether
+    /// the machine turned out to have no keyring. Never starts the probe.
+    #[cfg(test)]
+    fn keyring_unavailable(&self) -> Option<bool> {
+        self.primary.get().map(Option::is_none)
     }
 
     /// The keyring store, probing for it on the first call. Every caller
@@ -683,10 +682,10 @@ mod tests {
         empty.delete("anilist.access_token").unwrap();
     }
 
-    /// `init` makes no store choice, so nothing here reaches D-Bus:
-    /// `keyring_unavailable` stays `None` until someone asks for a secret
-    /// or `start` warms the probe. `file_only` made the choice itself, so
-    /// it answers at once and has nothing to announce.
+    /// `init` makes no store choice, so nothing here reaches D-Bus: the
+    /// choice stays unmade until someone asks for a secret or `start` warms
+    /// the probe. `file_only` made the choice itself, no keyring, and has
+    /// nothing to announce.
     #[test]
     fn the_store_choice_is_lazy_and_file_only_makes_it_up_front() {
         let dir = tempfile::tempdir().unwrap();
