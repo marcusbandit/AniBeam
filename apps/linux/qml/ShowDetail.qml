@@ -477,6 +477,7 @@ Column {
                     torrent: modelData
                     onStop: root.control(modelData.hash, "Stop")
                     onStart: root.control(modelData.hash, "Start")
+                    onRetry: root.control(modelData.hash, "Retry")
                     onRemoveAsked: function(anchor) { root.removeTorrent(modelData, anchor) }
                 }
             }

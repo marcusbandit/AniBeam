@@ -408,6 +408,32 @@ pub struct Torrent {
     /// The rolling download this torrent belongs to, if any.
     #[serde(default)]
     pub roll: Option<RollView>,
+    /// Why the client stopped it, read by the core when qBittorrent says
+    /// `error` or `missingFiles`; None for a torrent that is fine.
+    #[serde(default)]
+    pub problem: Option<TorrentProblem>,
+}
+
+/// Why a torrent the client stopped cannot go on, so a shell can say what
+/// to do. `ControlTorrents` with `TorrentAction::Retry` tries it again.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
+pub enum TorrentProblem {
+    /// The folder it saves into is not there: its drive is unplugged, or
+    /// the folder was moved or deleted. `drive` is the drive's own folder
+    /// (`/Volumes/Anime`, `/run/media/me/Anime`, `E:`) when that is gone
+    /// too, empty otherwise. Only read for a client that keeps its files
+    /// on this machine.
+    FolderMissing { folder: String, drive: String },
+    /// The folder it saves into belongs to another computer: it sits in
+    /// the home folder of a user this machine does not have, as a save
+    /// folder copied from another machine's config does. Retrying cannot
+    /// help; the download has to go somewhere on this machine.
+    FolderElsewhere { folder: String },
+    /// The folder is there but files the client had written are not.
+    FilesMissing,
+    /// The client stopped it with an error of its own (often a full or
+    /// read-only disk).
+    ClientError,
 }
 
 /// One file inside a torrent: its name, size and progress, and the episode
@@ -475,6 +501,10 @@ pub enum TorrentAction {
     FirstLastPieces {
         on: bool,
     },
+    /// Tries a torrent the client stopped with an error again: checks
+    /// what it has on disk and starts it. Refused with `Unavailable` while
+    /// its save folder is still missing.
+    Retry,
 }
 
 /// What a download asks for beyond the releases themselves: the order the

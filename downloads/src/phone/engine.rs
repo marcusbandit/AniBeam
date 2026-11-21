@@ -1266,6 +1266,7 @@ impl Engine {
                 resolution: facts.resolution,
                 provider: String::new(),
                 roll: None,
+                problem: None,
             });
         }
         if changed {

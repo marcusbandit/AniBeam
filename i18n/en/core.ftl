@@ -1280,6 +1280,16 @@ core-downloads-resumed =
         [one] Resumed { $count } download.
        *[other] Resumed { $count } downloads.
     }
+core-downloads-retried =
+    { $count ->
+        [one] Trying { $count } download again.
+       *[other] Trying { $count } downloads again.
+    }
+core-downloads-retried-folder-back =
+    { $count ->
+        [one] The download folder is back: trying { $count } download again.
+       *[other] The download folder is back: trying { $count } downloads again.
+    }
 core-downloads-deleted-with-files =
     { $count ->
         [one] Deleted { $count } download and the files.

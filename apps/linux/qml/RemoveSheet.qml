@@ -8,7 +8,9 @@
 //
 // Opened through frame.askRemoval(anchor, spec, done). `spec`: { heading, base, rule (bool),
 // torrentCount, canFiles, filesWhere, note }; `done` gets { torrents, files }. A click
-// outside, Escape or Cancel closes it without a word; Return confirms.
+// outside, Escape or Cancel closes it without a word; Return confirms. `calm` with
+// `confirmIcon` sets the confirm button as a plain primary one, for a sheet that asks
+// nothing destructive (a broken torrent's what to do and Retry, frame.askTorrentProblem).
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -127,7 +129,7 @@ Item {
                     anchors.right: parent.right
                     spacing: theme.space(2)
                     Button { objectName: "remove-sheet-cancel"; text: root.spec.keepText || words.t("action-cancel"); flat: true; onClicked: root.close() }
-                    Button { objectName: "remove-sheet-confirm"; text: root.confirmText; icon: root.files ? "trash-2" : root.rule ? "rss" : "x"; danger: true; onClicked: root.confirm() }
+                    Button { objectName: "remove-sheet-confirm"; text: root.confirmText; icon: root.spec.confirmIcon || (root.files ? "trash-2" : root.rule ? "rss" : "x"); danger: root.spec.calm !== true; primary: root.spec.calm === true; onClicked: root.confirm() }
                 }
             }
         }
