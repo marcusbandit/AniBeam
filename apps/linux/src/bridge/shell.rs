@@ -173,6 +173,14 @@ pub mod qobject {
         /// Hyprland. False when xdg-open could not start.
         #[qinvokable]
         fn open_url(self: &Self, url: &QString) -> bool;
+        /// A tracker's authorize page in a sign-in window of the system's own (the Mac's
+        /// ASWebAuthenticationSession), replacing one already open. False where there is no
+        /// such window, or it could not open, and the page goes to the browser instead.
+        #[qinvokable]
+        fn start_sign_in(self: &Self, url: &QString) -> bool;
+        /// Closes the sign-in window start_sign_in opened, if it is still up.
+        #[qinvokable]
+        fn close_sign_in(self: &Self);
         /// What `anibeam serve` on this machine is doing: "serving", "waiting" while this
         /// window has the library, or empty when none runs. The window's host follows the
         /// answer: held while a service exists, back to the preference once none does.
@@ -760,6 +768,18 @@ impl qobject::Shell {
     }
     pub fn open_url(&self, url: &QString) -> bool {
         crate::bridge::helpers::ffi::open_url(url)
+    }
+    #[cfg(target_os = "macos")]
+    pub fn start_sign_in(&self, url: &QString) -> bool {
+        crate::signin::start(&url.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    pub fn start_sign_in(&self, _url: &QString) -> bool {
+        false
+    }
+    pub fn close_sign_in(&self) {
+        #[cfg(target_os = "macos")]
+        crate::signin::close();
     }
 
     /// xdg-mime is a shell script that walks every mimeapps.list, so it never runs on the

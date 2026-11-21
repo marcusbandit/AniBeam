@@ -421,7 +421,10 @@ FocusScope {
         if (u === "") return
         if (!Shell.openUrl(u)) frame.toast(words.t("frame-could-not-open"), 8, words.t("frame-copy"), function() { frame.copyText(u, words.t("frame-copied")) }, u)
     }
-    function reopenSignIn(t) { if (signInUrls[t]) frame.openLink(signInUrls[t]) }
+    // A tracker's authorize page: the Mac's own sign-in window, which closes again when the
+    // connect ends (onJobFinished); the browser where there is none or it would not open.
+    function openSignIn(url) { if (!Shell.startSignIn(String(url || ""))) frame.openLink(url) }
+    function reopenSignIn(t) { if (signInUrls[t]) frame.openSignIn(signInUrls[t]) }
     // One click: with credentials the browser opens at once and the sheet only says where
     // to finish; without them the sheet walks the set-up first.
     function openConnect(t) {
@@ -470,7 +473,7 @@ FocusScope {
             if (frame.connecting[t] !== job) return
             frame.signInUrls = frame.withKey(frame.signInUrls, t, openUrl)
             // A capture run draws the waiting state; it never opens the owner's browser.
-            if (Shell.shoot === "" && Shell.driveOut === "") frame.openLink(openUrl)
+            if (Shell.shoot === "" && Shell.driveOut === "") frame.openSignIn(openUrl)
         }
         // Door sends this ahead of the body's own signal for every terminal event, so it is
         // where a finished job stops being the one a tracker waits on, by id: a replaced
@@ -479,14 +482,19 @@ FocusScope {
             if (kind !== "ConnectTracker") return
             var t = frame.jobTrackers[job]
             if (t === undefined) return
-            if (frame.connecting[t] === job) frame.connecting = frame.withKey(frame.connecting, t)
+            // Connected, failed or cancelled, the sign-in window has done its part
+            if (frame.connecting[t] === job) {
+                frame.connecting = frame.withKey(frame.connecting, t)
+                Shell.closeSignIn()
+            }
             if (ok) frame.jobTrackers = frame.withKey(frame.jobTrackers, job)
         }
         // The toast, the receipt and the raise; the bookkeeping is onJobFinished's.
         function onTrackerConnected(t, username) {
             frame.connectedAs = frame.withKey(frame.connectedAs, t, username || frame.trackerName(t))
             frame.toast(words.t("frame-connected", { tracker: frame.trackerName(t), user: username || "?" }))
-            // The user is in the browser tab that just closed; bring them back to the app.
+            // The user is in the sign-in window or browser tab that just closed; bring them
+            // back to the app.
             if (frame.hostWindow) Shell.raiseWindow(frame.hostWindow, "")
         }
         function onJobFailed(job, kind, error) {
