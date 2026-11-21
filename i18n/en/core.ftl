@@ -165,7 +165,7 @@ core-repos-taken-by-repo = a source called { $id } is already installed (from an
 core-repos-source-added = Added a download source.
 core-repos-source-updated = Updated a download source.
 core-repos-source-removed = Removed a download source.
-core-repos-source-changed = Updated a download source.
+core-repos-source-changed = Edited a download source.
 core-repos-give-name = enter a name
 core-repos-put-query = include {"{"}query{"}"} in the address where the search term goes
 core-repos-name-taken = a source called { $id } is already installed
@@ -745,7 +745,7 @@ core-trackers-error-see-log = { $tracker } error, see activity log.
 # $episode is the number asked for, as it was typed.
 core-trackers-episode-not-whole = { $episode } must be a whole number greater than 0
 core-trackers-score-out-of-range = { $score } must be between 0 and 10
-core-trackers-rewatch-not-settable = Rewatching cannot be set manually
+core-trackers-rewatch-not-settable = rewatching cannot be set manually
 core-trackers-notes-too-long = notes cannot exceed { $max } characters
 core-trackers-nothing-picked = nothing selected
 core-trackers-notes-not-on-list = Not on your { $tracker } list yet. Add it to a list first.

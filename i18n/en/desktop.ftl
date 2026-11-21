@@ -571,7 +571,7 @@ match-found-mal = Found it on MyAnimeList
 # The sites a series is matched on, two at a time: "AniList and MyAnimeList"
 match-sites-and = { $first } and { $next }
 match-matched-on = Matched on { $sites }
-match-provider-silent = { $provider } did not answer
+match-provider-silent = { $provider } did not respond
 # The heading in a walk through several series, with "2 of 5"
 match-title-walk = Match, { $walk }
 match-title = Match
@@ -1557,7 +1557,7 @@ get-show-stopping = Stopping
 get-show-starting = Starting
 get-show-stop = Stop
 get-show-start-tip = Start downloading again
-get-show-stop-tip = Stop downloading; what it has stays
+get-show-stop-tip = Pause downloading; downloaded data is kept
 get-show-cancelling = Canceling
 get-show-cancel-tip = Cancel this download and move what it wrote to the trash
 get-show-episode-order = Download in episode order

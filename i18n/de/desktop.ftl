@@ -408,7 +408,8 @@ onboarding-title-ready = Alles bereit
 onboarding-title-later = { $count ->
     [1] Bereit, eine Sache für später
     [2] Bereit, zwei Sachen für später
-   *[other] Bereit, drei Sachen für später
+    [3] Bereit, drei Sachen für später
+   *[other] Bereit, { $count } Sachen für später
 }
 onboarding-body-welcome = Anibeam hält deine Anime an einem Ort. Es findet die Serien auf deiner Platte, spielt sie direkt hier ab und hält AniList oder MyAnimeList beim Schauen aktuell.
 onboarding-body-library = Wähle den Ordner, in dem deine Serien liegen. Jeder Ordner darin wird eine Serie, mit Poster, Folgen und der Stelle, an der du warst. Anibeam liest den Ordner nur. Es verschiebt oder benennt nie eine Datei um.

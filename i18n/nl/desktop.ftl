@@ -408,7 +408,8 @@ onboarding-title-ready = Je bent klaar
 onboarding-title-later = { $count ->
     [1] Klaar, één ding voor later
     [2] Klaar, twee dingen voor later
-   *[other] Klaar, drie dingen voor later
+    [3] Klaar, drie dingen voor later
+   *[other] Klaar, { $count } dingen voor later
 }
 onboarding-body-welcome = Anibeam houdt je anime op één plek. Het vindt de series op je schijf, speelt ze hier af en houdt AniList of MyAnimeList bij terwijl je kijkt.
 onboarding-body-library = Kies de map waarin je je series bewaart. Elke map daarin wordt een serie, met poster, afleveringen en waar je bleef. Anibeam leest de map alleen. Het verplaatst of hernoemt nooit een bestand.

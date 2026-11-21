@@ -180,7 +180,7 @@ it. [apps/phone](apps/phone/README.md) has the details.
 <br>
 
 Open Settings > Downloads > Torrent client and press Test; the State line says what went
-wrong. Choosing Pick for me and saving makes Anibeam look again on the next connect.
+wrong. Choosing Auto and saving makes Anibeam look again on the next connect.
 
 </details>
 

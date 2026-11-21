@@ -417,14 +417,14 @@ The words above are for the code and the docs. The app says these instead, so a 
 | Here | On screen |
 | --- | --- |
 | Metadata page | Show info |
-| Unmatched series | Not recognised |
+| Unmatched series | Not recognized |
 | Missing | Folder not found |
 | Forget | Remove |
 | Endpoint | source |
 | Endpoint repo | source list |
 | Sidecar, anirss | search helper |
 | Best fit | Best match |
-| Rolling download | Keep the next few ready |
+| Rolling download | Rolling downloads |
 | Sequential download | Download in episode order |
 | Tracker | your anime lists, or AniList and MyAnimeList by name |
 | Managed torrent client | Built-in, Built-in client |

@@ -911,7 +911,7 @@ find-roll-on-delete = { $count ->
 }
 find-roll-off = Every selected episode downloads at once.
 find-replace = Replace what you have
-find-replace-note = Downloads the picked episodes again over the ones on this phone.
+find-replace-note = Downloads the selected episodes again over the ones on this phone.
 # The main button. { $mode } is replace, subscribe, both or plain; { $count } the picked episodes.
 find-go = { $mode ->
     [replace] Get { common-episodes } and replace
