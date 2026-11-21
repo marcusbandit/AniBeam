@@ -1387,6 +1387,7 @@ core-downloads-no-default-folder = в qBittorrent не задана папка �
 core-downloads-save-folder-not-absolute = { $folder } не полный путь к папке
 # $folder is the folder given
 core-downloads-save-folder-unusable = { $folder } не подходит для загрузок: выберите существующую папку, которая не является домашней
+core-downloads-library-not-connected = Папка библиотеки { $folder } не подключена: подключите её диск и добавьте снова
 core-downloads-name-empty = имя не может быть пустым
 core-downloads-name-slash = имя не должно содержать / или \
 # $name is the name given, in quotes

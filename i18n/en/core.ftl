@@ -1338,6 +1338,7 @@ core-downloads-no-default-folder = qBittorrent names no default save folder; set
 core-downloads-save-folder-not-absolute = { $folder } is not a full path to a folder
 # $folder is the folder given
 core-downloads-save-folder-unusable = { $folder } cannot hold downloads: pick a folder that exists and is not the home folder
+core-downloads-library-not-connected = The library folder { $folder } is not connected: connect its drive, then add again
 core-downloads-name-empty = the name cannot be empty
 core-downloads-name-slash = the name must not contain / or \
 # $name is the name given, in quotes
