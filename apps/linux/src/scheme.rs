@@ -165,7 +165,7 @@ fn handler_word(current: &str, ours: &str) -> &'static str {
 /// The program an Exec line runs: the first word that is not `env` or a `NAME=value`
 /// assignment, unquoted.
 #[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
-fn program(exec: &str) -> Option<String> {
+pub(crate) fn program(exec: &str) -> Option<String> {
     let mut words = Vec::new();
     let mut word = String::new();
     let mut quoted = false;
@@ -206,6 +206,7 @@ fn program(exec: &str) -> Option<String> {
 
 #[cfg(target_os = "linux")]
 pub(crate) mod linux {
+    use std::ffi::OsStr;
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
 
@@ -214,7 +215,8 @@ pub(crate) mod linux {
     const MAIN: &str = "com.marcusrosado.Anibeam.desktop";
     const DEV: &str = "com.marcusrosado.Anibeam.Dev.desktop";
 
-    fn applications() -> Option<PathBuf> {
+    /// The user's own applications folder, `$XDG_DATA_HOME/applications`.
+    pub fn applications() -> Option<PathBuf> {
         let data = std::env::var_os("XDG_DATA_HOME")
             .filter(|d| !d.is_empty())
             .map(PathBuf::from)
@@ -231,15 +233,56 @@ pub(crate) mod linux {
         exe.canonicalize().ok()
     }
 
-    fn runs(entry: &Path, exe: &Path) -> bool {
-        let Ok(text) = std::fs::read_to_string(entry) else {
-            return false;
-        };
-        text.lines()
+    /// The data folders a package's entry can live under: `$XDG_DATA_DIRS`, absolute
+    /// paths only as the spec asks, else its default `/usr/local/share:/usr/share`.
+    fn data_dirs() -> Vec<PathBuf> {
+        let dirs: Vec<PathBuf> = std::env::var_os("XDG_DATA_DIRS")
+            .map(|v| {
+                std::env::split_paths(&v)
+                    .filter(|p| p.is_absolute())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if dirs.is_empty() {
+            vec!["/usr/local/share".into(), "/usr/share".into()]
+        } else {
+            dirs
+        }
+    }
+
+    /// The app's entry in the first of `dirs` that has one: what a package installed.
+    pub(crate) fn system_entry_in(dirs: &[PathBuf]) -> Option<PathBuf> {
+        dirs.iter()
+            .map(|d| d.join("applications").join(MAIN))
+            .find(|p| p.is_file())
+    }
+
+    /// Where `program` lives: itself when it names a path, else the first match on
+    /// `path` (a `$PATH` value).
+    pub(crate) fn resolve(program: &str, path: Option<&OsStr>) -> Option<PathBuf> {
+        let found = if program.contains('/') {
+            Some(PathBuf::from(program))
+        } else {
+            std::env::split_paths(path?)
+                .filter(|d| d.is_absolute())
+                .map(|d| d.join(program))
+                .find(|p| p.is_file())
+        }?;
+        found.canonicalize().ok().filter(|p| p.is_file())
+    }
+
+    /// The program the entry's Exec runs, where it lives.
+    fn target(entry: &Path, path: Option<&OsStr>) -> Option<PathBuf> {
+        std::fs::read_to_string(entry)
+            .ok()?
+            .lines()
             .find_map(|l| l.strip_prefix("Exec="))
             .and_then(program)
-            .and_then(|p| Path::new(&p).canonicalize().ok())
-            .is_some_and(|p| p == exe)
+            .and_then(|p| resolve(&p, path))
+    }
+
+    fn runs(entry: &Path, exe: &Path) -> bool {
+        target(entry, std::env::var_os("PATH").as_deref()).is_some_and(|p| p == exe)
     }
 
     /// The entry that launched this run: the one the launcher named, else the one whose
@@ -322,12 +365,66 @@ pub(crate) mod linux {
         }
     }
 
-    /// The user's own entry that launched this run, for another handler to start the app
-    /// the same way (#966).
-    pub fn launcher_entry() -> Option<PathBuf> {
-        let dir = applications()?;
-        let name = pick(&dir)?;
-        Some(dir.join(name))
+    /// The entry that started this run, in the user's folder or a package's, and whether
+    /// it is the user's own, for another handler to start the app the same way (#966,
+    /// #1167).
+    pub fn launching_entry() -> Option<(PathBuf, bool)> {
+        let launched = std::env::var_os("GIO_LAUNCHED_DESKTOP_FILE").map(PathBuf::from);
+        choose(
+            applications().as_deref(),
+            system_entry_in(&data_dirs()).as_deref(),
+            launched.as_deref(),
+            running().as_deref(),
+            std::env::var_os("PATH").as_deref(),
+        )
+    }
+
+    /// The pick behind `launching_entry`: the entry the launcher named; else the one whose
+    /// Exec is this binary, the user's first; else the user's own entry, then the
+    /// package's, whichever still runs something. A user entry left behind by an AppImage
+    /// that is gone never wins over a package that is there.
+    pub(crate) fn choose(
+        user: Option<&Path>,
+        system: Option<&Path>,
+        launched: Option<&Path>,
+        exe: Option<&Path>,
+        path: Option<&OsStr>,
+    ) -> Option<(PathBuf, bool)> {
+        let ours = [MAIN, DEV];
+        let users: Vec<PathBuf> = user
+            .map(|d| {
+                ours.iter()
+                    .map(|n| d.join(n))
+                    .filter(|p| p.is_file())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mine = |p: &Path| user.is_some_and(|d| p.parent() == Some(d));
+        if let Some(launched) = launched
+            && launched.is_file()
+            && (users.iter().any(|p| p == launched) || system == Some(launched))
+        {
+            return Some((launched.to_path_buf(), mine(launched)));
+        }
+        let live = |p: &Path| target(p, path);
+        if let Some(exe) = exe {
+            let runs = |p: &&Path| live(p).is_some_and(|t| t == exe);
+            if let Some(p) = users.iter().map(PathBuf::as_path).find(|p| runs(p)) {
+                return Some((p.to_path_buf(), true));
+            }
+            if let Some(p) = system.filter(|p| runs(p)) {
+                return Some((p.to_path_buf(), false));
+            }
+        }
+        if let Some(p) = users
+            .iter()
+            .find(|p| p.file_name() == Some(MAIN.as_ref()) && live(p).is_some())
+        {
+            return Some((p.clone(), true));
+        }
+        system
+            .filter(|p| live(p).is_some())
+            .map(|p| (p.to_path_buf(), mine(p)))
     }
 
     /// Puts `text` in the file at `path`: written beside the file and moved over it, so a
@@ -481,6 +578,143 @@ mod tests {
         assert!(linux::replace(&plain, "again\n"));
         assert_eq!(std::fs::read_to_string(&plain).unwrap(), "again\n");
         assert!(!linux::replace(&apps.join("missing.desktop"), "x"));
+    }
+
+    /// A user folder, a package's data folder and a `bin` on the PATH, all empty.
+    #[cfg(target_os = "linux")]
+    struct Box1167 {
+        _root: tempfile::TempDir,
+        user: std::path::PathBuf,
+        share: std::path::PathBuf,
+        bin: std::path::PathBuf,
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Box1167 {
+        fn new() -> Self {
+            let root = tempfile::tempdir().unwrap();
+            let user = root.path().join("data/applications");
+            let share = root.path().join("share");
+            let bin = root.path().join("bin");
+            for d in [&user, &share.join("applications"), &bin] {
+                std::fs::create_dir_all(d).unwrap();
+            }
+            Self {
+                _root: root,
+                user,
+                share,
+                bin,
+            }
+        }
+        fn program(&self, name: &str) -> std::path::PathBuf {
+            let p = self.bin.join(name);
+            std::fs::write(&p, "").unwrap();
+            p.canonicalize().unwrap()
+        }
+        fn entry(&self, dir: &std::path::Path, name: &str, exec: &str) -> std::path::PathBuf {
+            let p = dir.join(name);
+            std::fs::write(&p, format!("[Desktop Entry]\nExec={exec} %u\n")).unwrap();
+            p
+        }
+        fn system(&self) -> Option<std::path::PathBuf> {
+            linux::system_entry_in(std::slice::from_ref(&self.share))
+        }
+        fn choose(
+            &self,
+            launched: Option<&std::path::Path>,
+            exe: Option<&std::path::Path>,
+        ) -> Option<(std::path::PathBuf, bool)> {
+            linux::choose(
+                Some(&self.user),
+                self.system().as_deref(),
+                launched,
+                exe,
+                Some(self.bin.as_os_str()),
+            )
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_package_s_entry_is_found_in_the_data_dirs() {
+        let b = Box1167::new();
+        assert_eq!(b.system(), None);
+        let apps = b.share.join("applications");
+        let e = b.entry(&apps, "com.marcusrosado.Anibeam.desktop", "anibeam");
+        assert_eq!(
+            linux::system_entry_in(&[b.bin.clone(), b.share.clone()]),
+            Some(e)
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_package_install_starts_from_the_package_s_entry() {
+        let b = Box1167::new();
+        let exe = b.program("anibeam");
+        let apps = b.share.join("applications");
+        let sys = b.entry(&apps, "com.marcusrosado.Anibeam.desktop", "anibeam");
+        assert_eq!(b.choose(None, Some(&exe)), Some((sys.clone(), false)));
+        // deb and rpm: /usr/bin/anibeam is a script that runs the binary in /opt
+        let opt = b.program("opt-anibeam");
+        assert_eq!(b.choose(None, Some(&opt)), Some((sys.clone(), false)));
+        assert_eq!(b.choose(Some(&sys), None), Some((sys, false)));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_dead_appimage_s_entry_loses_to_the_package() {
+        let b = Box1167::new();
+        let exe = b.program("anibeam");
+        let apps = b.share.join("applications");
+        let sys = b.entry(&apps, "com.marcusrosado.Anibeam.desktop", "anibeam");
+        let gone = b.bin.join("Anibeam.AppImage");
+        b.entry(
+            &b.user,
+            "com.marcusrosado.Anibeam.desktop",
+            &gone.display().to_string(),
+        );
+        assert_eq!(b.choose(None, Some(&exe)), Some((sys.clone(), false)));
+        assert_eq!(b.choose(None, None), Some((sys, false)));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_user_s_own_entry_wins_when_it_runs_this_binary() {
+        let b = Box1167::new();
+        let appimage = b.program("Anibeam.AppImage");
+        let apps = b.share.join("applications");
+        b.program("anibeam");
+        let sys = b.entry(&apps, "com.marcusrosado.Anibeam.desktop", "anibeam");
+        let own = b.entry(
+            &b.user,
+            "com.marcusrosado.Anibeam.desktop",
+            &appimage.display().to_string(),
+        );
+        let dev = b.entry(
+            &b.user,
+            "com.marcusrosado.Anibeam.Dev.desktop",
+            "/nowhere/dev",
+        );
+        assert_eq!(b.choose(None, Some(&appimage)), Some((own.clone(), true)));
+        assert_eq!(b.choose(Some(&dev), None), Some((dev, true)));
+        assert_eq!(b.choose(Some(&sys), Some(&appimage)), Some((sys, false)));
+        assert_eq!(
+            b.choose(Some(&b.bin.join("other.desktop")), Some(&appimage)),
+            Some((own, true))
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_relative_or_missing_program_resolves_to_nothing() {
+        let b = Box1167::new();
+        let exe = b.program("anibeam");
+        let path = std::env::join_paths([std::path::Path::new("rel"), &b.bin]).unwrap();
+        assert_eq!(linux::resolve("anibeam", Some(&path)), Some(exe.clone()));
+        assert_eq!(linux::resolve(&exe.display().to_string(), None), Some(exe));
+        assert_eq!(linux::resolve("anibeam", None), None);
+        assert_eq!(linux::resolve("/nowhere/anibeam", None), None);
     }
 
     #[test]
