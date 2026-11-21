@@ -408,7 +408,8 @@ onboarding-title-ready = Tout est prêt
 onboarding-title-later = { $count ->
     [1] Prêt, une chose pour plus tard
     [2] Prêt, deux choses pour plus tard
-   *[other] Prêt, trois choses pour plus tard
+    [3] Prêt, trois choses pour plus tard
+   *[other] Prêt, { $count } choses pour plus tard
 }
 onboarding-body-welcome = Anibeam garde vos animes au même endroit. Il trouve les séries sur votre disque, les lit ici même, et tient AniList ou MyAnimeList à jour pendant que vous regardez.
 onboarding-body-library = Choisissez le dossier où vous rangez vos séries. Chaque dossier qu'il contient devient une série, avec son affiche, ses épisodes et l'endroit où vous vous êtes arrêté. Anibeam ne fait que lire le dossier. Il ne déplace ni ne renomme jamais un fichier.
@@ -1855,6 +1856,8 @@ downloads-suggest-on-anilist = Sur AniList, pas dans votre bibliothèque
 downloads-plan-to-watch = À voir
 downloads-suggest-release-search = Chercher plutôt des noms de releases pour « { $query } » sur { $names }
 downloads-key-return = Entrée
+downloads-magnet-invalid = Ce lien magnet ne désigne aucun torrent
+downloads-magnet-film = Télécharger comme film
 downloads-sources = Sources
 downloads-source-hint-starting = démarrage
 downloads-source-hint-down = arrêtée
@@ -2516,6 +2519,11 @@ settings-downloads-keep-behind = En garder
 settings-downloads-subscriptions-title = Abonnements et recherches
 settings-downloads-last-search = Garder la dernière recherche
 settings-downloads-prune = Se désabonner des séries terminées
+settings-downloads-magnet = Liens magnet
+settings-downloads-magnet-anibeam = Anibeam les ouvre
+settings-downloads-magnet-other = Une autre application les ouvre
+settings-downloads-magnet-none = Rien ne les ouvre
+settings-downloads-magnet-use = Les ouvrir dans Anibeam
 settings-downloads-sources-title = Sources de recherche
 settings-downloads-sources-empty = Aucune source configurée pour l'instant
 settings-downloads-sources-connect = Connectez l'assistant de recherche pour les lister
@@ -3309,6 +3317,24 @@ tokens-cube-no-release = Aucune release
 ## Card
 
 card-not-interested = Sans intérêt
+card-no-poster = Pas d'affiche
+card-tag-new = Nouveau
+card-tag-downloading = Téléchargement
+card-tag-hidden = Masqué
+card-watched-of = { $watched } sur { $total }
+card-watched-of-estimate = { $watched } sur { $total }+
+card-watched = { $watched } vus
+card-files =
+    { $count ->
+        [one] { $count } fichier
+       *[other] { $count } fichiers
+    }
+card-predicted = prévu { $time }
+card-countdown-days = { $days } j { $hours } h
+card-countdown-hours = { $hours } h { $minutes } min
+card-countdown-minutes = { $minutes } min
+card-season-span = S{ $season } { $span }
+card-episode-next = Épisode { $number } à suivre
 
 ## PagePlaceholder
 

@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Builds the website's What's new pages from the apps' own patch notes (#777):
+"""Builds the website's What's new pages from the apps' curated release notes (#777):
 
-  <out>/whats-new/index.html                  every release, newest first
-  <out>/whats-new/<version>/index.html        one page per desktop release
+  <out>/whats-new/index.html                    every release, newest first
+  <out>/whats-new/<version>/index.html          one page per desktop release
   <out>/whats-new/android-<version>/index.html  one page per phone release
 
-The desktop's apps/linux/CHANGELOG.md and the phone's apps/phone/CHANGELOG.md hold the shipped
-versions. The change files in apps/*/changes/ hold what has merged since the last stable release
-and ships in the next nightly; they show as "Coming next". The page for a version that ships
-appears with the site deploy the release starts, and the Coming next block with the one each
-nightly starts, so nothing here is written by hand.
+The desktop's apps/linux/CHANGELOG.md and the phone's apps/phone/CHANGELOG.md hold every
+release's curated notes. When an app's newest heading has not shipped as a stable release yet
+and already has notes drafted under it, those show as "Coming next"; once the release ships,
+they become its own release page automatically.
 
 usage: whats-new.py <repo-root> <out-dir>
 """
@@ -21,80 +20,96 @@ import sys
 from pathlib import Path
 
 root, out = Path(sys.argv[1]), Path(sys.argv[2])
-APPS = [("desktop", "Desktop", root / "apps/linux"), ("phone", "Android", root / "apps/phone")]
-SECTIONS = ["New", "Changed", "Fixed", "Removed"]
+APPS = [("desktop", "Desktop", root / "apps/linux"), ("phone", "Phone", root / "apps/phone")]
 HEAD = re.compile(r"^## (\d+\.\d+\.\d+)(?: · (.+?))? · (\d{4}-\d{2}-\d{2})\s*$")
+REPO = "https://github.com/marcusbandit/Anibeam"
 
 
 def parse(text):
-    """[(version, title, date, {section: [lines]})], newest first, as the file has them."""
+    """[{version, title, date, blocks: [{kind, ...}]}], newest first, as the file has them."""
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
-    versions, cur, section = [], None, None
-    for line in text.splitlines():
+    versions, cur = [], None
+    para, items = [], []
+
+    def flush_para():
+        if para and cur is not None:
+            cur["blocks"].append({"kind": "paragraph", "text": " ".join(para)})
+        para.clear()
+
+    def flush_list():
+        if items and cur is not None:
+            cur["blocks"].append({"kind": "list", "items": list(items)})
+        items.clear()
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            flush_para()
+            flush_list()
+            continue
         m = HEAD.match(line)
         if m:
-            cur = {"version": m[1], "title": m[2] or "", "date": m[3], "sections": {}}
+            flush_para()
+            flush_list()
+            cur = {"version": m[1], "title": m[2] or "", "date": m[3], "blocks": []}
             versions.append(cur)
-            section = None
             continue
-        if cur is None:
+        if cur is None or line.startswith("# "):
             continue
-        if line.startswith("### "):
-            section = line[4:].strip()
-            cur["sections"].setdefault(section, [])
-        elif line.startswith("- ") and section:
-            cur["sections"][section].append(line[2:].strip())
+        if line.startswith("### ") or line == "###":
+            flush_para()
+            flush_list()
+            sub = line[3:].strip()
+            if sub:
+                cur["blocks"].append({"kind": "heading", "text": sub})
+        elif line.startswith("- "):
+            flush_para()
+            item = line[2:].strip()
+            if item:
+                items.append(item)
+        else:
+            indented = raw.startswith("  ") or raw.startswith("\t")
+            if indented and items:
+                items[-1] += " " + line
+            else:
+                flush_list()
+                para.append(line)
+    flush_para()
+    flush_list()
     return versions
 
 
-def git(*args):
-    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=True).stdout
-
-
-def change_files(changes_dir, ref):
-    """The change files' texts, as main has them, or as the commit `ref` had them."""
-    if ref:
-        rel = changes_dir.relative_to(root).as_posix()
-        try:
-            names = git("ls-tree", "--name-only", f"{ref}:{rel}").split()
-        except subprocess.CalledProcessError:
-            # A tag from before the phone app moved to apps/phone (#1309) has it in apps/android.
-            if not rel.startswith("apps/phone/"):
-                raise
-            rel = "apps/android/" + rel.removeprefix("apps/phone/")
-            names = git("ls-tree", "--name-only", f"{ref}:{rel}").split()
-        return [(n, git("show", f"{ref}:{rel}/{n}")) for n in sorted(names) if n.endswith(".md")]
-    return [(f.name, f.read_text()) for f in sorted(changes_dir.glob("*.md"))]
-
-
-def pending(changes_dir, ref=None):
-    """The lines in the change files, merged by section."""
-    sections = {}
-    for name, text in change_files(changes_dir, ref):
-        if name.lower() == "readme.md":
-            continue
-        section = None
-        for line in text.splitlines():
-            if line.startswith("### "):
-                section = line[4:].strip()
-            elif line.startswith("- ") and section:
-                sections.setdefault(section, []).append(line[2:].strip())
-    return sections
-
-
-# The spelling before #1047, split so a search for it finds nothing.
-OLD_NAME = "Ani" + "Beam"
-
-
-def respell(text):
-    """The site spells the name Anibeam. Change files read from a tag made before the rename
-    (Coming next reads the newest nightly's) still say it with a capital B."""
-    return text.replace(OLD_NAME, "Anibeam")
+def has_git_tag(tag):
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(root), "tag", "-l", tag],
+            capture_output=True, text=True, check=True,
+        )
+        return bool(res.stdout.strip())
+    except (OSError, subprocess.CalledProcessError):
+        return False
 
 
 def inline(text):
-    text = html.escape(respell(text))
-    return re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    """Render inline `code` and **bold** spans safely to HTML."""
+    out_parts = []
+    i, n = 0, len(text)
+    while i < n:
+        if text[i] == "`":
+            end = text.find("`", i + 1)
+            if end > i + 1:
+                out_parts.append(f"<code>{html.escape(text[i + 1:end])}</code>")
+                i = end + 1
+                continue
+        if text.startswith("**", i):
+            end = text.find("**", i + 2)
+            if end > i + 2:
+                out_parts.append(f"<strong>{inline(text[i + 2:end])}</strong>")
+                i = end + 2
+                continue
+        out_parts.append(html.escape(text[i]))
+        i += 1
+    return "".join(out_parts)
 
 
 def nice_date(iso):
@@ -104,18 +119,41 @@ def nice_date(iso):
     return f"{int(d)} {months[int(m) - 1]} {y}"
 
 
-# Collect: one entry per release. The desktop and the phone count their versions apart (the
-# first number is shared, the rest each app's own), so desktop 2.0.0 and Android 2.0.0 are two
-# releases with two entries.
+# The tags that exist on GitHub (tools/releases.py, run just before). A version with notes but
+# no published release gets no download link; without the list we check local git tags so an
+# unshipped top heading still shows under Coming next.
+try:
+    RELEASES = json.loads((out / "releases.json").read_text())
+    TAGS = set(RELEASES["tags"])
+except (OSError, ValueError, KeyError):
+    RELEASES, TAGS = {}, None
+
+
+def is_published(tag):
+    if TAGS is not None:
+        return tag in TAGS
+    return has_git_tag(tag)
+
+
+# Collect: one entry per shipped release, and any drafted notes on the newest unshipped heading
+# under `coming`. Desktop and phone version separately, so desktop 2.0.0 and phone 2.0.0 stay
+# separate entries.
 versions = []
+coming = {}
 for key, name, path in APPS:
-    for v in parse((path / "CHANGELOG.md").read_text()):
-        if not any(v["sections"].values()):
+    parsed = parse((path / "CHANGELOG.md").read_text())
+    for idx, v in enumerate(parsed):
+        if not v["blocks"]:
             continue
         slug = v["version"] if key == "desktop" else f"android-{v['version']}"
         tag = f"v{v['version']}" if key == "desktop" else f"android-v{v['version']}"
-        versions.append({"version": v["version"], "slug": slug, "tag": tag, "app": key, "app_name": name,
-                         "title": v["title"] if key == "desktop" else "", "date": v["date"], "apps": {key: v["sections"]}})
+        if idx == 0 and not is_published(tag):
+            coming[key] = v
+            continue
+        versions.append({
+            "version": v["version"], "slug": slug, "tag": tag, "app": key, "app_name": name,
+            "title": v["title"], "date": v["date"], "blocks": v["blocks"],
+        })
 
 
 def vkey(v):
@@ -123,42 +161,36 @@ def vkey(v):
 
 
 versions.sort(key=lambda e: (e["date"], e["app"] == "desktop", vkey(e["version"])), reverse=True)
-# The tags that exist on GitHub (tools/releases.py, run just before). A version with notes but
-# no published release gets no download link; without the list every version keeps its link.
-try:
-    RELEASES = json.loads((out / "releases.json").read_text())
-    TAGS = set(RELEASES["tags"])
-except (OSError, ValueError, KeyError):
-    RELEASES, TAGS = {}, None
-# Coming next is what the newest nightly brings: the change files at its own tag, so a merge
-# after it never shows as in it. With no nightly newer than the stable release, or without
-# git or the network, it is what main holds, under a plain "Coming next".
-nightly = RELEASES.get("nightly") or {}
-nightly_version, ref = "", None
-if nightly.get("tag"):
-    try:
-        git("fetch", "--quiet", "--depth=1", "origin", "tag", nightly["tag"])
-        ref, nightly_version = nightly["tag"], nightly["version"]
-    except (OSError, subprocess.CalledProcessError) as e:
-        print(f"whats-new: {nightly['tag']} not fetched, Coming next is main's ({e})")
-coming = {key: pending(path / "changes", ref) for key, _, path in APPS}
-coming = {k: v for k, v in coming.items() if any(v.values())}
 
 
-def notes_html(apps, named=True):
+def blocks_html(blocks):
+    parts = []
+    seen_structure = False
+    for b in blocks:
+        kind = b["kind"]
+        if kind == "paragraph":
+            cls = "wn-lead" if not seen_structure else "wn-p"
+            parts.append(f'<p class="{cls}">{inline(b["text"])}</p>')
+            seen_structure = True
+        elif kind == "heading":
+            parts.append(f'<h4 class="wn-sub">{html.escape(b["text"])}</h4>')
+            seen_structure = True
+        elif kind == "list":
+            items = "".join(f"<li>{inline(item)}</li>" for item in b["items"])
+            parts.append(f'<ul class="wn-bullets">{items}</ul>')
+            seen_structure = True
+    return "".join(parts)
+
+
+def coming_html(pending):
     parts = []
     for key, name, _ in APPS:
-        sections = apps.get(key)
-        if not sections:
+        v = pending.get(key)
+        if not v:
             continue
-        parts.append(f'<div class="wn-app"><h3>{name}</h3>' if named else '<div class="wn-app">')
-        for s in SECTIONS + [x for x in sections if x not in SECTIONS]:
-            lines = sections.get(s)
-            if not lines:
-                continue
-            items = "".join(f"<li>{inline(l)}</li>" for l in lines)
-            parts.append(f'<div class="wn-sec wn-{s.lower()}"><span class="wn-tag">{html.escape(s)}</span><ul>{items}</ul></div>')
-        parts.append("</div>")
+        sub = f" · {html.escape(v['title'])}" if v["title"] else ""
+        heading = f'{name} {html.escape(v["version"])}{sub}'
+        parts.append(f'<div class="wn-app"><h3>{heading}</h3>{blocks_html(v["blocks"])}</div>')
     return "".join(parts)
 
 
@@ -221,24 +253,32 @@ def page(title, prefix, body, canonical, description):
 
 def entry(e, prefix, link=True, level="h2"):
     v, slug = e["version"], e["slug"]
-    title = f'<span class="wn-title">{html.escape(respell(e["title"]))}</span>' if e["title"] else ""
+    title = f'<span class="wn-title">{html.escape(e["title"])}</span>' if e["title"] else ""
     name = f'<a href="{prefix}whats-new/{slug}/">{v}</a>' if link else v
-    dl = (f'\n  <a class="wn-dl" href="https://github.com/marcusbandit/Anibeam/releases/tag/{e["tag"]}">Download {v}</a>'
-          if TAGS is None or e["tag"] in TAGS else "")
+    published = TAGS is None or e["tag"] in TAGS
+    links = []
+    if published:
+        links.append(f'<a class="wn-dl" href="{REPO}/releases/tag/{e["tag"]}">Download {v}</a>')
+        links.append(f'<a class="wn-gh" href="{REPO}/releases/tag/{e["tag"]}">Full list on GitHub</a>')
+    else:
+        links.append(f'<a class="wn-gh" href="{REPO}/releases">Full list on GitHub</a>')
+    foot = f'\n  <div class="wn-links">{" ".join(links)}</div>'
     anchor = f"v{v}" if e["app"] == "desktop" else slug
     return f"""<article class="wn-entry" id="{anchor}">
   <header class="wn-head"><{level} class="wn-ver">{name}</{level}><span class="wn-app-tag">{e['app_name']}</span>{title}<time datetime="{e['date']}">{nice_date(e['date'])}</time></header>
-  {notes_html(e['apps'], named=False)}{dl}
+  <div class="wn-app">{blocks_html(e['blocks'])}</div>{foot}
 </article>"""
 
 
 # The index
 blocks = []
 if coming:
+    nightly = RELEASES.get("nightly") or RELEASES.get("phone_nightly") or {}
+    nightly_version = nightly.get("version", "")
     label = f"Coming next, in {nightly_version}" if nightly_version else "Coming next"
     blocks.append(f"""<article class="wn-entry wn-coming" id="next">
-  <header class="wn-head"><h2 class="wn-ver">{html.escape(label)}</h2><a class="wn-try" href="../download/#nightly">Try the nightly</a></header>
-  {notes_html(coming)}
+  <header class="wn-head"><h2 class="wn-ver">{html.escape(label)}</h2><a class="wn-try" href="../download/#nightly">Try the nightly</a><a class="wn-gh" href="{REPO}/releases">Full list on GitHub</a></header>
+  {coming_html(coming)}
 </article>""")
 # The newest few stay open; the rest fold under one line so the page does not run on for ever.
 OPEN = 6
@@ -252,7 +292,7 @@ index = f"""<section class="wn-hero"><h1>What's new</h1></section>
 </div>"""
 (out / "whats-new").mkdir(parents=True, exist_ok=True)
 (out / "whats-new/index.html").write_text(page("What's new in Anibeam", "../", index, "whats-new/",
-                                              "Every Anibeam release for desktop and Android, newest first."))
+                                              "Highlights from every Anibeam release for desktop and phone, newest first."))
 
 # One page per version
 for i, e in enumerate(versions):
@@ -270,7 +310,7 @@ for i, e in enumerate(versions):
 {entry(e, "../../", link=False, level="h1")}
 </div>
 {nav}"""
-    title = f"Anibeam {'' if e['app'] == 'desktop' else 'for Android '}{v}" + (f": {respell(e['title'])}" if e["title"] else "")
+    title = f"Anibeam {'' if e['app'] == 'desktop' else 'for Phone '}{v}" + (f": {e['title']}" if e["title"] else "")
     (out / "whats-new" / slug).mkdir(parents=True, exist_ok=True)
     (out / "whats-new" / slug / "index.html").write_text(
         page(title, "../../", body, f"whats-new/{slug}/", f"What changed in {e['app_name']} {v}, released {nice_date(e['date'])}."))
@@ -291,7 +331,7 @@ if RELEASES:
         r = RELEASES.get(key)
         if r:
             page_slug = slug(r["version"])
-            r["notes"] = f"whats-new/{page_slug}/" if page_slug in slugs else ("whats-new/#next" if key == "nightly" else "whats-new/")
+            r["notes"] = f"whats-new/{page_slug}/" if page_slug in slugs else ("whats-new/#next" if key in ("nightly", "phone_nightly") and coming else "whats-new/")
     (out / "releases.json").write_text(json.dumps(RELEASES, indent=1) + "\n")
 
 # Every release page goes in the sitemap next to the pages i18n.py listed.

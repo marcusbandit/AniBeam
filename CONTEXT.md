@@ -238,6 +238,10 @@ _Avoid_: torrent (that is what it becomes once added), result, item, entry
 What the core reads off a release's title beside anirss's fields: the episode (and season), whether it is a batch, the release group, the resolution, the size in bytes, and whether the library series the search names already has that episode (On disk). A file whose torrent the core has seen (its file origin, recorded from the torrent client after a scan brings files in or when the Downloads page reads the client) is on disk only for that torrent, matched by the magnet's hash or by the torrent's name; a file with no origin is matched by its name. A title the core cannot read gets no episode, never episode 1. The date each release was posted, and a torznab feed's counts, come from the core's own read of the feed the search used, after the search answers.
 _Avoid_: metadata, parsed info
 
+**Pasted magnet**:
+A magnet link put straight into Downloads, pasted or typed into the search field or opened from the desktop's magnet handler. It searches nothing: its name (the `dn`) is read as a release title, the shows it matches are offered (the library's first, then AniList's, the best match picked) beside Film, and it downloads into the one picked. Once the torrent client knows its files, one with no video anywhere in it is said to be nothing Anibeam plays and moves to the person's Downloads folder, when the client keeps its files on this machine.
+_Avoid_: magnet search, quick add
+
 **On-demand endpoint**:
 An endpoint anirss starts only when a search needs it (a site reached through a search proxy: a podman pod behind Jackett), and keeps up while the sidecar holds its lease. The first search waits for it to come up, up to the endpoint's timeout; the page says so while it waits ("Starting <name>"), then "Searching <name>".
 _Avoid_: harness, container, lazy endpoint
@@ -337,7 +341,7 @@ The guard on a destructive action: the row's controls give way to a line naming 
 _Avoid_: confirm dialog, modal, alert
 
 **Patch notes**:
-An app's `CHANGELOG.md`: every version newest first, each a few one-line changes under New, Changed, Fixed or Removed. The desktop and the phone keep their own, since each has its own version, and each build carries its own copy. A pull request adds its lines as a **change file** in the app's `changes/`, which shows under the newest version until the release folds it into the file.
+An app's curated `CHANGELOG.md`, newest version first: a short, natural intro saying what we're happy to bring to the app, a concise list of highlights, an optional Heads up, and a 1-2 line Fixes & polish roundup. The desktop and the phone keep their own, since each has its own version, and each build carries its own copy. Curated before shipping rather than dumped PR by PR; GitHub Releases holds the full PR list.
 _Avoid_: release notes (the GitHub page), changelog entry, commit log
 
 **First run**:
@@ -417,14 +421,14 @@ The words above are for the code and the docs. The app says these instead, so a 
 | Here | On screen |
 | --- | --- |
 | Metadata page | Show info |
-| Unmatched series | Not recognised |
+| Unmatched series | Not recognized |
 | Missing | Folder not found |
 | Forget | Remove |
 | Endpoint | source |
 | Endpoint repo | source list |
 | Sidecar, anirss | search helper |
 | Best fit | Best match |
-| Rolling download | Keep the next few ready |
+| Rolling download | Rolling downloads |
 | Sequential download | Download in episode order |
 | Tracker | your anime lists, or AniList and MyAnimeList by name |
 | Managed torrent client | Built-in, Built-in client |

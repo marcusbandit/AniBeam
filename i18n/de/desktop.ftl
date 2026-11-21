@@ -408,7 +408,8 @@ onboarding-title-ready = Alles bereit
 onboarding-title-later = { $count ->
     [1] Bereit, eine Sache für später
     [2] Bereit, zwei Sachen für später
-   *[other] Bereit, drei Sachen für später
+    [3] Bereit, drei Sachen für später
+   *[other] Bereit, { $count } Sachen für später
 }
 onboarding-body-welcome = Anibeam hält deine Anime an einem Ort. Es findet die Serien auf deiner Platte, spielt sie direkt hier ab und hält AniList oder MyAnimeList beim Schauen aktuell.
 onboarding-body-library = Wähle den Ordner, in dem deine Serien liegen. Jeder Ordner darin wird eine Serie, mit Poster, Folgen und der Stelle, an der du warst. Anibeam liest den Ordner nur. Es verschiebt oder benennt nie eine Datei um.
@@ -1855,6 +1856,8 @@ downloads-suggest-on-anilist = Auf AniList, nicht in deiner Bibliothek
 downloads-plan-to-watch = Vormerken
 downloads-suggest-release-search = Stattdessen Release-Namen nach „{ $query }“ bei { $names } suchen
 downloads-key-return = Enter
+downloads-magnet-invalid = Dieser Magnet-Link nennt keinen Torrent
+downloads-magnet-film = Als Film laden
 downloads-sources = Quellen
 downloads-source-hint-starting = startet
 downloads-source-hint-down = läuft nicht
@@ -2516,6 +2519,11 @@ settings-downloads-keep-behind = Zurück behalten
 settings-downloads-subscriptions-title = Abos und Suchen
 settings-downloads-last-search = Letzte Suche behalten
 settings-downloads-prune = Abos beendeter Serien beenden
+settings-downloads-magnet = Magnet-Links
+settings-downloads-magnet-anibeam = Anibeam öffnet sie
+settings-downloads-magnet-other = Eine andere App öffnet sie
+settings-downloads-magnet-none = Nichts öffnet sie
+settings-downloads-magnet-use = In Anibeam öffnen
 settings-downloads-sources-title = Suchquellen
 settings-downloads-sources-empty = Noch keine Quellen eingerichtet
 settings-downloads-sources-connect = Verbinde den Suchhelfer, um sie aufzulisten
@@ -3309,6 +3317,24 @@ tokens-cube-no-release = Kein Release
 ## Card
 
 card-not-interested = Kein Interesse
+card-no-poster = Kein Poster
+card-tag-new = Neu
+card-tag-downloading = Lädt
+card-tag-hidden = Ausgeblendet
+card-watched-of = { $watched } von { $total }
+card-watched-of-estimate = { $watched } von { $total }+
+card-watched = { $watched } geschaut
+card-files =
+    { $count ->
+        [one] { $count } Datei
+       *[other] { $count } Dateien
+    }
+card-predicted = geschätzt { $time }
+card-countdown-days = { $days } T. { $hours } Std.
+card-countdown-hours = { $hours } Std. { $minutes } Min.
+card-countdown-minutes = { $minutes } Min.
+card-season-span = S{ $season } { $span }
+card-episode-next = Folge { $number } als Nächstes
 
 ## PagePlaceholder
 

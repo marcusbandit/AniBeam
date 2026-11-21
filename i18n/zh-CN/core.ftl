@@ -1023,6 +1023,8 @@ core-downloads-qbt-answered = qBittorrent 返回 { $status }：{ $line }
 core-downloads-replace-bad-item = 条目 { $item } 不在 { $count } 个资源之中
 core-downloads-not-replaced = 第 { $episode } 集没有被替换。
 core-downloads-replaced = 已用新下载替换第 { $episode } 集。
+core-downloads-no-video-moved = 《{ $name }》里没有视频，Anibeam 无法播放。它现在在 { $folder }。
+core-downloads-no-video = 《{ $name }》里没有视频，Anibeam 无法播放。
 
 ## downloads/src/rolling.rs
 

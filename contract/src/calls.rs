@@ -490,9 +490,16 @@ pub enum Call {
         name: Option<String>,
         options: DownloadOptions,
     },
-    /// One link into the movie folder, no subdirectory. Ends in
-    /// `TorrentsAdded`.
+    /// One link into the movie folder, no subdirectory. With `needs_video`
+    /// a torrent with no video in it moves to the Downloads folder instead,
+    /// as `DownloadOptions::needs_video` says. Ends in `TorrentsAdded`.
     DownloadMovie {
+        link: String,
+        #[serde(default)]
+        needs_video: bool,
+    },
+    /// What a magnet link names, read at once: replies `Magnet`.
+    ReadMagnet {
         link: String,
     },
     /// Reads the subscriptions from anirss, or from qBittorrent's rules on
@@ -733,6 +740,17 @@ pub enum Call {
     /// The phone's sources and the endpoints installed from repos, in the order a search
     /// tries them, with secrets left out of each address.
     PhoneSearchSources,
+    /// Whether GitHub has a phone release newer than `current`, the version the phone runs,
+    /// on its track: nightly hears of nightlies and the stable release they lead up to,
+    /// stable of stable releases only. `nightly` is the track the phone keeps, so a nightly
+    /// user who took a stable release stays on nightlies; without it the track is the
+    /// running build's. Blocks the calling thread on one request; answers `PhoneUpdate`
+    /// (#809).
+    CheckPhoneUpdate {
+        current: String,
+        #[serde(default)]
+        nightly: Option<bool>,
+    },
     // Endpoint repos (#143). Not jobs: the ones that fetch block the calling thread, so a
     // shell calls them off its UI thread.
     /// The repos, what they offer and what is installed.
@@ -925,6 +943,10 @@ pub enum Reply {
     SeriesDetail {
         detail: Box<SeriesDetail>,
     },
+    /// What `ReadMagnet` read.
+    Magnet {
+        magnet: MagnetLink,
+    },
     /// What `ParseSchedule` read.
     Schedule {
         season: Option<u32>,
@@ -1056,6 +1078,10 @@ pub enum Reply {
     },
     PhoneNetCheck {
         checks: Vec<NetCheck>,
+    },
+    /// The newer phone release, none when the phone is up to date.
+    PhoneUpdate {
+        update: Option<PhoneUpdate>,
     },
     PhoneTorrents {
         torrents: Vec<Torrent>,

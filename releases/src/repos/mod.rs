@@ -1896,7 +1896,7 @@ mod tests {
         let by_hand = view("0.6.0", true, &["feed"]);
         assert!(
             note_for(DownloadsEngine::Anirss, Some(&current), &def, &synced)
-                .is_some_and(|n| n.contains("cannot search the json-feed kind"))
+                .is_some_and(|n| n.contains("cannot search json-feed sources"))
         );
         assert!(note_for(DownloadsEngine::Anirss, Some(&old), &def, &synced).is_some());
         // The native engine searches the installed endpoint itself, so none of the three
@@ -1938,7 +1938,7 @@ mod tests {
         // A server the person runs: to its own config, whether or not it lists writes.
         for writes in [true, false] {
             let n = note(at(EndpointSync::Theirs, writes, &[])).unwrap();
-            assert!(n.contains("add mine to that anirss's own config"), "{n}");
+            assert!(n.contains("add mine to anirss's config"), "{n}");
             assert!(!n.contains("update"), "{n}");
         }
         // Once the person has added it there, it is searched and the note goes.
@@ -1946,9 +1946,9 @@ mod tests {
         // A sandbox run leaves the owner's anirss alone: searched only if it is there, and
         // one there by hand says so, as the owner's own run does.
         let n = note(at(EndpointSync::Sandbox, true, &[])).unwrap();
-        assert!(n.contains("never writes into anirss's config"), "{n}");
+        assert!(n.contains("does not write to anirss's config"), "{n}");
         let n = note(at(EndpointSync::Sandbox, true, &["mine"])).unwrap();
-        assert!(n.contains("written by hand"), "{n}");
+        assert!(n.contains("manually configured mine"), "{n}");
         let mut ours = Synced::new();
         ours.insert("mine".to_string(), String::new());
         let v = at(EndpointSync::Sandbox, true, &["mine"]);
@@ -1968,7 +1968,7 @@ mod tests {
             &synced,
         )
         .unwrap();
-        assert!(n.contains("cannot search the json-feed kind"), "{n}");
+        assert!(n.contains("cannot search json-feed sources"), "{n}");
     }
 
     /// Whether anirss takes endpoints is what it lists, not its version: a checkout that
@@ -2003,7 +2003,7 @@ mod tests {
         .unwrap();
         // It names the anirss running, and no threshold of its own.
         assert!(
-            note.starts_with("anirss 0.6.0 cannot take endpoints"),
+            note.starts_with("anirss 0.6.0 does not support sources"),
             "{note}"
         );
         assert!(!note.contains("or later"), "{note}");

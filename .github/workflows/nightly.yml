@@ -438,10 +438,9 @@ jobs:
               gh release delete "$tag" --yes --cleanup-tag
             done
 
-  # The website's What's new shows what this nightly brings under Coming next, with its number
-  # (#777), and its download page links the phone's nightly: deploy the site once either
-  # nightly is public. The site reads which nightly is newest,
-  # and the change files at its tag, from GitHub itself.
+  # The website's What's new shows any curated notes for the coming release under Coming next
+  # (#777), and its download page links the newest nightlies: deploy the site once either
+  # nightly is public. The site reads which nightly is newest from GitHub itself.
   site:
     needs: [gate, publish, publish-phone]
     if: always() && (needs.publish.result == 'success' || needs.publish-phone.result == 'success')

@@ -14,11 +14,8 @@ build = "build.rs"
 # downloads crate's.
 [package.metadata.ci.test-reads]
 changelog = [
-  "../.github/changelog-fold.sh",
   "../apps/linux/CHANGELOG.md",
-  "../apps/linux/changes",
   "../apps/phone/CHANGELOG.md",
-  "../apps/phone/changes",
   "../apps/phone/Cargo.toml",
   "../apps/phone/android/AndroidManifest.xml",
 ]

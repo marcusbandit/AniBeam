@@ -35,6 +35,7 @@ mod look;
 mod mpv;
 #[cfg(test)]
 mod narrow;
+mod newer;
 mod notes;
 mod notify;
 mod phone;
@@ -63,6 +64,12 @@ pub use platform::ios_main;
 
 // The calls a platform makes into the app. A target whose platform never makes them
 // still keeps them, allowed unused there.
+
+/// The window came to the front or went behind it. Called on the UI loop.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) fn foreground(on: bool) {
+    newer::foreground(on);
+}
 
 /// The device's light or dark setting or its language changed: Appearance's System mode
 /// and a language left to follow the device follow it. Called on the UI loop.

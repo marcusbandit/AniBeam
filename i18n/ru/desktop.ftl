@@ -450,7 +450,9 @@ onboarding-title-ready = Всё готово
 onboarding-title-later = { $count ->
     [1] Готово, одно дело на потом
     [2] Готово, два дела на потом
-   *[other] Готово, три дела на потом
+    [3] Готово, три дела на потом
+    [few] Готово, { $count } дела на потом
+   *[other] Готово, { $count } дел на потом
 }
 onboarding-body-welcome = Anibeam держит ваше аниме в одном месте. Он находит сериалы на диске, проигрывает их прямо здесь и обновляет AniList или MyAnimeList, пока вы смотрите.
 onboarding-body-library = Выберите папку, где лежат ваши сериалы. Каждая папка внутри станет сериалом, с постером, сериями и местом, где вы остановились. Anibeam только читает папку. Он никогда не перемещает и не переименовывает файлы.
@@ -2073,6 +2075,8 @@ downloads-suggest-on-anilist = На AniList, нет в библиотеке
 downloads-plan-to-watch = В планы
 downloads-suggest-release-search = Искать «{ $query }» в названиях релизов в { $names }
 downloads-key-return = Enter
+downloads-magnet-invalid = Эта magnet-ссылка не указывает на торрент
+downloads-magnet-film = Скачать как фильм
 downloads-sources = Источники
 downloads-source-hint-starting = запуск
 downloads-source-hint-down = не запущен
@@ -2771,6 +2775,11 @@ settings-downloads-keep-behind = Хранить позади
 settings-downloads-subscriptions-title = Подписки и поиск
 settings-downloads-last-search = Помнить последний поиск
 settings-downloads-prune = Отписываться от вышедших сериалов
+settings-downloads-magnet = Magnet-ссылки
+settings-downloads-magnet-anibeam = Их открывает Anibeam
+settings-downloads-magnet-other = Их открывает другое приложение
+settings-downloads-magnet-none = Их ничто не открывает
+settings-downloads-magnet-use = Открывать в Anibeam
 settings-downloads-sources-title = Источники поиска
 settings-downloads-sources-empty = Источники пока не настроены
 settings-downloads-sources-connect = Подключите помощника поиска, чтобы увидеть их
@@ -3621,6 +3630,26 @@ tokens-cube-no-release = Нет релиза
 ## Card
 
 card-not-interested = Не интересно
+card-no-poster = Нет постера
+card-tag-new = Новые
+card-tag-downloading = Скачивается
+card-tag-hidden = Скрыто
+card-watched-of = { $watched } из { $total }
+card-watched-of-estimate = { $watched } из { $total }+
+card-watched = Просмотрено { $watched }
+card-files =
+    { $count ->
+        [one] { $count } файл
+        [few] { $count } файла
+        [many] { $count } файлов
+       *[other] { $count } файла
+    }
+card-predicted = ожидается { $time }
+card-countdown-days = { $days } д { $hours } ч
+card-countdown-hours = { $hours } ч { $minutes } мин
+card-countdown-minutes = { $minutes } мин
+card-season-span = С{ $season } { $span }
+card-episode-next = Далее серия { $number }
 
 ## PagePlaceholder
 

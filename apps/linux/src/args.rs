@@ -7,7 +7,9 @@
 //! into `--out` (default: `$ANIBEAM_CAPTURES`, else the checkout's `apps/linux/captures`).
 //! `serve` runs the core and its tailnet host with no window, for other devices (`serve.rs`).
 //! An `anibeam://room/<code>` link, as the desktop's scheme handler passes it, joins that
-//! watch together room (#846); a second launch hands it to the running window. `ctl ...`
+//! watch together room (#846); a second launch hands it to the running window. A `magnet:`
+//! link, as the desktop's magnet handler passes it, opens Downloads with the link in its
+//! field (#1391), in the running window when there is one. `ctl ...`
 //! drives the window that is open (control.rs); everything after it is the command's.
 //! With a window already open, `--page` moves that window to the page instead.
 
@@ -26,7 +28,8 @@ pub struct Args {
     pub drive: Option<String>,
     pub out: Option<PathBuf>,
     pub serve: bool,
-    /// An `anibeam://` link to open, as given: a watch together room.
+    /// A link to open, as given: an `anibeam://` watch together room, a Discord launch or
+    /// a magnet link.
     pub link: Option<String>,
     /// `anibeam ctl ...`: the command and its arguments, `--root` taken out.
     pub ctl: Option<Vec<String>>,
@@ -114,6 +117,13 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
                 }
                 a.link = Some(link.to_string());
             }
+            // The magnet handler's %u: Downloads takes it
+            link if is_magnet(link) => {
+                if a.link.is_some() {
+                    return Err("one link at a time".into());
+                }
+                a.link = Some(link.to_string());
+            }
             // The scheme handler's %u: one link, and only a kind this build opens
             link if link.starts_with(SCHEME) => {
                 if room_code(link).is_none() {
@@ -162,6 +172,18 @@ pub fn room_code(link: &str) -> Option<String> {
         && code.len() <= 16
         && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
     ok.then(|| code.to_string())
+}
+
+/// A `magnet:?` link, the scheme in any case. Whether it names a torrent is the core's to say
+/// (`ReadMagnet`), so Downloads can tell the person in place.
+pub fn is_magnet(link: &str) -> bool {
+    link.get(..8)
+        .is_some_and(|head| head.eq_ignore_ascii_case("magnet:?"))
+}
+
+/// The magnet link this run or a second launch was handed, if any.
+pub fn magnet_of(link: Option<&str>) -> Option<&str> {
+    link.filter(|l| is_magnet(l))
 }
 
 /// A `discord-<application id>://` link, which a Discord client opens to launch the app
@@ -272,6 +294,29 @@ mod tests {
         let a = parse(&argv("discord-1234567890://")).unwrap();
         assert_eq!(a.link.as_deref(), Some("discord-1234567890://"));
         assert!(parse(&argv("discord-abc://")).is_err());
+    }
+
+    #[test]
+    fn a_magnet_link_is_taken_as_the_one_link() {
+        let link = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Example%20Show%20-%2003";
+        let a = parse(&argv(link)).unwrap();
+        assert_eq!(a.link.as_deref(), Some(link));
+        assert_eq!(magnet_of(a.link.as_deref()), Some(link));
+        // The scheme in any case, as a browser may hand it over
+        assert!(is_magnet("MAGNET:?xt=urn:btih:x"));
+        // A magnet with no torrent in it still reaches Downloads, which says so
+        assert!(parse(&argv("magnet:?dn=nothing")).is_ok());
+        assert!(!is_magnet("magnet:"));
+        assert!(!is_magnet("https://example.com/?magnet:?"));
+        assert_eq!(magnet_of(Some("anibeam://room/K7QM2X")), None);
+        assert!(parse(&argv(&format!("{link} anibeam://room/K7QM2X"))).is_err());
+        assert!(parse(&argv(&format!("serve {link}"))).is_err());
+        assert!(
+            parse(&argv("--root /tmp/x magnet:?xt=urn:btih:x"))
+                .unwrap()
+                .root
+                .is_some()
+        );
     }
 
     #[test]

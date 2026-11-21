@@ -408,7 +408,8 @@ onboarding-title-ready = È tutto pronto
 onboarding-title-later = { $count ->
     [1] Pronto, una cosa per dopo
     [2] Pronto, due cose per dopo
-   *[other] Pronto, tre cose per dopo
+    [3] Pronto, tre cose per dopo
+   *[other] Pronto, { $count } cose per dopo
 }
 onboarding-body-welcome = Anibeam tiene i tuoi anime in un solo posto. Trova le serie sul disco, le riproduce qui e tiene aggiornati AniList o MyAnimeList mentre guardi.
 onboarding-body-library = Scegli la cartella in cui tieni le tue serie. Ogni cartella al suo interno diventa una serie, con la sua locandina, i suoi episodi e il punto in cui eri arrivato. Anibeam legge soltanto la cartella. Non sposta né rinomina mai un file.
@@ -1855,6 +1856,8 @@ downloads-suggest-on-anilist = Su AniList, non nella tua libreria
 downloads-plan-to-watch = Da vedere
 downloads-suggest-release-search = Cerca invece nomi di release per “{ $query }” su { $names }
 downloads-key-return = Invio
+downloads-magnet-invalid = Questo link magnet non indica alcun torrent
+downloads-magnet-film = Scarica come film
 downloads-sources = Fonti
 downloads-source-hint-starting = avvio
 downloads-source-hint-down = non attiva
@@ -2516,6 +2519,11 @@ settings-downloads-keep-behind = Tieni indietro
 settings-downloads-subscriptions-title = Iscrizioni e ricerche
 settings-downloads-last-search = Ricorda l'ultima ricerca
 settings-downloads-prune = Annulla l'iscrizione alle serie concluse
+settings-downloads-magnet = Link magnet
+settings-downloads-magnet-anibeam = Li apre Anibeam
+settings-downloads-magnet-other = Li apre un'altra app
+settings-downloads-magnet-none = Nessuna app li apre
+settings-downloads-magnet-use = Aprili in Anibeam
 settings-downloads-sources-title = Fonti di ricerca
 settings-downloads-sources-empty = Ancora nessuna fonte configurata
 settings-downloads-sources-connect = Collega l'helper di ricerca per elencarle
@@ -3309,6 +3317,24 @@ tokens-cube-no-release = Nessuna release
 ## Card
 
 card-not-interested = Non mi interessa
+card-no-poster = Nessuna locandina
+card-tag-new = Nuovo
+card-tag-downloading = In download
+card-tag-hidden = Nascosto
+card-watched-of = { $watched } di { $total }
+card-watched-of-estimate = { $watched } di { $total }+
+card-watched = { $watched } visti
+card-files =
+    { $count ->
+        [one] { $count } file
+       *[other] { $count } file
+    }
+card-predicted = previsto { $time }
+card-countdown-days = { $days } g { $hours } h
+card-countdown-hours = { $hours } h { $minutes } m
+card-countdown-minutes = { $minutes } m
+card-season-span = S{ $season } { $span }
+card-episode-next = Prossimo: episodio { $number }
 
 ## PagePlaceholder
 

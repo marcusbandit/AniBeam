@@ -697,7 +697,7 @@ mod tests {
         assert_eq!(relation_label(Some("PREQUEL")), "Prequel");
         assert_eq!(relation_label(None), "");
         assert_eq!(format_label(Some("TV_SHORT")), "TV short");
-        assert_eq!(format_label(Some("MOVIE")), "Film");
+        assert_eq!(format_label(Some("MOVIE")), "Movie");
         assert_eq!(format_label(None), "Series");
         assert_eq!(sentence("SUPPORTING"), "Supporting");
     }

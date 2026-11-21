@@ -369,7 +369,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status
             .anirss
             .message
-            .starts_with("anirss 0.4.2 cannot keep each torrent client's login to itself"),
+            .starts_with("anirss 0.4.2 cannot keep each torrent client's login separate"),
         "{}",
         status.anirss.message
     );
@@ -1894,6 +1894,7 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
                 }],
                 cancel: Vec::new(),
                 rolling: None,
+                needs_video: false,
             },
         },
     );
@@ -2136,4 +2137,137 @@ fn deleting_an_episode_removes_the_torrent_that_held_it() {
     };
     assert_eq!(form_of(&delete), "hashes=aa&deleteFiles=false");
     core.shutdown();
+}
+
+/// A pasted magnet that turns out to hold no video (#1391): once the client knows its files a
+/// notice says Anibeam cannot play it, and it moves to the Downloads folder, the sandbox's own
+/// here. A film that holds one stays where it went, with nothing said.
+#[test]
+fn a_download_with_no_video_is_said_and_moved_to_the_downloads_folder() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    save(&core, remote(), Some("tok"), Some("pw"));
+
+    let hash = "0123456789abcdef0123456789abcdef01234567";
+    let link = format!("magnet:?xt=urn:btih:{hash}&dn=Example%20Album%20%5BFLAC%5D");
+    let listed = |name: &str| {
+        json!([{"hash": hash, "name": name, "state": "downloading", "progress": 0.1, "size": 100,
+                "save_path": "/dl/Example Show", "content_path": format!("/dl/Example Show/{name}"),
+                "added_on": 1, "completion_on": -1, "seq_dl": false}])
+        .to_string()
+    };
+    http.push_for(
+        "/downloads",
+        200,
+        json!({"count": 1, "save_path": "/dl/Example Show", "hashes": [hash]}).to_string(),
+    );
+    http.push_for("torrents/info", 200, listed("Example Album [FLAC]"));
+    http.push_for(
+        "torrents/files",
+        200,
+        json!([{"name": "Example Album [FLAC]/01 Opening.flac", "size": 90, "progress": 0.1, "priority": 1},
+               {"name": "Example Album [FLAC]/cover.jpg", "size": 10, "progress": 0.1, "priority": 1}])
+        .to_string(),
+    );
+    http.push_for("torrents/setLocation", 200, "");
+    let job = started(
+        &core,
+        Call::DownloadReleasesWith {
+            items: vec![Release {
+                title: "Example Album [FLAC]".to_string(),
+                link: link.clone(),
+                ..release(1, Value::Null)
+            }],
+            name: Some("Example Show".to_string()),
+            options: DownloadOptions {
+                needs_video: true,
+                rolling: Some(false),
+                ..Default::default()
+            },
+        },
+    );
+    common::wait_job(&c, job);
+    let said = common::wait_for(
+        &c,
+        |e| {
+            e.plain_words
+                .as_ref()
+                .is_some_and(|w| w.id == "core-downloads-no-video-moved")
+        },
+        Duration::from_secs(20),
+    );
+    assert_eq!(said.level, Level::Warn);
+    let downloads = dir.path().join("state").join("home").join("Downloads");
+    let moves: Vec<_> = http
+        .requests()
+        .into_iter()
+        .filter(|r| r.url.contains("torrents/setLocation"))
+        .collect();
+    assert_eq!(moves.len(), 1);
+    assert_eq!(
+        form_of(&moves[0]),
+        format!("hashes={hash}&location={}", downloads.display())
+    );
+    assert!(downloads.is_dir(), "the folder is made for it");
+
+    // A film with a video in it is left where it went
+    let film = "fedcba9876543210fedcba9876543210fedcba98";
+    http.push_for(
+        "/movie",
+        200,
+        json!({"count": 1, "save_path": "/films", "hashes": [film]}).to_string(),
+    );
+    http.push_for(
+        "torrents/info",
+        200,
+        json!([{"hash": film, "name": "Example Film (2001)", "state": "downloading", "progress": 0.1,
+                "size": 100, "save_path": "/films", "content_path": "/films/Example Film (2001)",
+                "added_on": 1, "completion_on": -1, "seq_dl": false}])
+        .to_string(),
+    );
+    http.push_for(
+        "torrents/files",
+        200,
+        json!([{"name": "Example Film (2001)/Example Film (2001).mkv", "size": 100, "progress": 0.1, "priority": 1}])
+            .to_string(),
+    );
+    let job = started(
+        &core,
+        Call::DownloadMovie {
+            link: format!("magnet:?xt=urn:btih:{film}&dn=Example%20Film%20(2001)"),
+            needs_video: true,
+        },
+    );
+    common::wait_job(&c, job);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while http
+        .requests()
+        .iter()
+        .filter(|r| r.url.contains("torrents/files"))
+        .count()
+        < 2
+    {
+        assert!(
+            Instant::now() < deadline,
+            "the film's files were never read"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    core.shutdown();
+    let moves = http
+        .requests()
+        .into_iter()
+        .filter(|r| r.url.contains("torrents/setLocation"))
+        .count();
+    assert_eq!(moves, 1, "the film stays");
+    let notices = c
+        .events()
+        .into_iter()
+        .filter(|e| {
+            e.plain_words
+                .as_ref()
+                .is_some_and(|w| w.id.starts_with("core-downloads-no-video"))
+        })
+        .count();
+    assert_eq!(notices, 1);
 }

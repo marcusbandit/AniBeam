@@ -339,7 +339,8 @@ onboarding-title-ready = 準備完了です
 onboarding-title-later = { $count ->
     [1] 準備完了、あとで1つ設定
     [2] 準備完了、あとで2つ設定
-   *[other] 準備完了、あとで3つ設定
+    [3] 準備完了、あとで3つ設定
+   *[other] 準備完了、あとで{ $count }つ設定
 }
 onboarding-body-welcome = Anibeamはアニメを1か所にまとめます。ディスク上の作品を見つけ、ここで再生し、視聴に合わせてAniListやMyAnimeListを最新に保ちます。
 onboarding-body-library = 作品を保存しているフォルダを選んでください。中のフォルダがそれぞれ1つの作品になり、ポスター、エピソード、前回の続きが表示されます。Anibeamはフォルダを読むだけで、ファイルを移動したり名前を変えたりはしません。
@@ -1440,6 +1441,8 @@ downloads-suggest-on-anilist = AniList上、ライブラリになし
 downloads-plan-to-watch = 視聴予定
 downloads-suggest-release-search = 代わりに{ $names }でリリース名「{ $query }」を検索
 downloads-key-return = Enter
+downloads-magnet-invalid = このマグネットリンクはトレントを指していません
+downloads-magnet-film = 映画としてダウンロード
 downloads-sources = ソース
 downloads-source-hint-starting = 起動中
 downloads-source-hint-down = 停止中
@@ -2070,6 +2073,11 @@ settings-downloads-keep-behind = 前の話を残す
 settings-downloads-subscriptions-title = 購読と検索
 settings-downloads-last-search = 前回の検索を残す
 settings-downloads-prune = 放送終了した作品の購読を解除
+settings-downloads-magnet = マグネットリンク
+settings-downloads-magnet-anibeam = Anibeamで開きます
+settings-downloads-magnet-other = 別のアプリで開きます
+settings-downloads-magnet-none = 開くアプリがありません
+settings-downloads-magnet-use = Anibeamで開く
 settings-downloads-sources-title = 検索ソース
 settings-downloads-sources-empty = ソースはまだ設定されていません
 settings-downloads-sources-connect = 一覧を表示するには検索ヘルパーに接続してください
@@ -2771,6 +2779,20 @@ tokens-cube-no-release = リリースなし
 ## Card
 
 card-not-interested = 興味なし
+card-no-poster = ポスターなし
+card-tag-new = 新着
+card-tag-downloading = ダウンロード中
+card-tag-hidden = 非表示
+card-watched-of = { $watched } / { $total }
+card-watched-of-estimate = { $watched } / { $total }+
+card-watched = { $watched }話視聴済み
+card-files = { $count }ファイル
+card-predicted = 予定 { $time }
+card-countdown-days = { $days }日{ $hours }時間
+card-countdown-hours = { $hours }時間{ $minutes }分
+card-countdown-minutes = { $minutes }分
+card-season-span = S{ $season } { $span }
+card-episode-next = 次は第{ $number }話
 
 ## PagePlaceholder
 

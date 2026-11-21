@@ -200,10 +200,13 @@ more-icon-note = ホーム画面とアプリ一覧に表示されるアイコン
 more-icon-line-note = ラインは壁紙の色を取り入れます。ほかのMaterial Youアイコンと同じです。
 more-icon-moved-note = アイコンを変更すると、ホーム画面から消えるランチャーがあります。アプリ一覧には残るので、そこからドラッグして戻してください。
 more-set-whats-new = 更新内容
-more-whats-new-note = 各バージョンの変更点です。新しい順に表示します。
 more-set-onboarding = 再セットアップ
-more-onboarding-note = 初回の質問をもう一度確認します。
-more-set-version = バージョン
+more-update-out = Anibeam { $version }が公開されました
+more-update-download = ダウンロード
+more-about-status-update = 新しいバージョンがあります
+more-updates = アップデート
+more-updates-stable = 安定版
+more-updates-nightly = Nightly
 
 ## Status lines Rust writes on the pages
 
@@ -294,7 +297,7 @@ more-words-check = ネットワーク dns テスト https セキュア 接続 �
 more-words-computer = tailscale tailnet ホスト アドレス パソコン デスクトップ ライブラリ ストリーミング テスト 保存 デバイス
 more-words-whats-new = 更新内容 変更履歴 パッチノート アップデート 変更点
 more-words-onboarding = 初期設定 初回 最初から やり直す
-more-words-version = ビルド バージョン アプリ情報
+more-words-updates = ビルド バージョン アプリ情報 アップデート 安定版 nightly チャンネル 確認
 more-words-stats = 時間 エピソード ジャンル スタジオ シーズン 年 視聴 まとめ 月 履歴 統計
 more-words-backup = バックアップ エクスポート ファイル 保存 コピー 移行 パソコン json 非公開 ログイン情報
 more-words-restore = 復元 インポート ファイル 読み込み ライブラリ 統合

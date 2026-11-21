@@ -2029,6 +2029,7 @@ impl qobject::Door {
     pub fn download_movie(&self, link: &QString) -> QJsonObject {
         self.dispatch(Ok(Call::DownloadMovie {
             link: link.to_string(),
+            needs_video: false,
         }))
     }
     pub fn list_subscription_rules(&self) -> QJsonObject {

@@ -33,7 +33,9 @@ public:
     // The tokens, as Main.qml gathers them: fontFamily, fontFigure, typeSmall, typeNormal,
     // typeLarge, space (one spacing unit), radiusTile, radiusSm, scrimReach, the inks
     // (text, textDim, textFaint, accent, focusRing, onPoster, onPosterDim, accentOnPoster,
-    // posterScrim, downloadInk) and cubes, a map from a cube code to { fill, edge }.
+    // posterScrim, downloadInk), cubes (a map from a cube code to { fill, edge }), and the
+    // localized card labels (noPoster, tagFilm, tagNew, tagDownloading, tagOnHold,
+    // tagDropped, tagHidden). Main.qml calls set again on every theme or language change.
     Q_INVOKABLE void set(const QVariantMap &tokens);
 
     struct Data {
@@ -41,6 +43,7 @@ public:
         QColor text, textDim, textFaint, accent, focusRing, onPoster, onPosterDim, accentOnPoster, posterScrim, downloadInk;
         QColor tagFill{8, 9, 11, 158}, tagEdge{255, 255, 255, 36};
         QHash<QChar, QPair<QColor, QColor>> cubes;
+        QString noPoster, tagFilm, tagNew, tagDownloading, tagOnHold, tagDropped, tagHidden;
         qreal unit = 4, radiusTile = 18, radiusSm = 6, scrimReach = 0.55;
     };
     const Data &data() const { return m_data; }

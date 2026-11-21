@@ -390,7 +390,7 @@ mod tests {
         crate::tr::set_lang(crate::tr::Lang::En);
         assert_eq!(
             summary_line(&summary()),
-            "1 folder added, 12 series created, 9 matches applied, 40 views and 1 finished episode merged, 3 resume points merged, 0 list accounts brought in."
+            "1 folder added, 12 series created, 9 matches applied, 40 views and 1 finished episode merged, 3 resume points merged, 0 list accounts imported."
         );
         let more = ImportSummary {
             fixes_applied: 2,
@@ -400,7 +400,7 @@ mod tests {
         };
         let line = summary_line(&more);
         assert!(line.ends_with(
-            "2 files take a fix you made. 1 folder was not found on this phone. Left out: theme."
+            "Applied saved fixes to 2 files. 1 folder was not found on this phone. Left out: theme."
         ));
     }
 

@@ -457,7 +457,7 @@ mod tests {
             .unwrap_err();
         for err in [refine, preview, analyze, alone] {
             let text = err.to_string();
-            assert!(text.contains("gone is not available any more"), "{text}");
+            assert!(text.contains("gone is no longer available"), "{text}");
         }
         // A search naming one it never had keeps its own answer.
         let search = native

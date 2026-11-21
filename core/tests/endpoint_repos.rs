@@ -1092,7 +1092,7 @@ fn a_phone_source_of_the_json_kind_is_refused() {
         })
         .unwrap_err();
     assert!(
-        matches!(&err, CoreError::Invalid { message, .. } if message.contains("endpoint repo")),
+        matches!(&err, CoreError::Invalid { message, .. } if message.contains("source list")),
         "{err:?}"
     );
 }
@@ -1332,7 +1332,7 @@ fn a_repo_endpoint_cannot_take_the_name_of_one_added_by_hand() {
             credentials: vec![],
         })
         .unwrap_err();
-    assert!(e.to_string().contains("added by you"), "{e}");
+    assert!(e.to_string().contains("added manually"), "{e}");
 }
 
 #[test]

@@ -37,6 +37,7 @@ use crate::store::Store;
 use crate::sync::recover;
 use crate::trackers::{Trackers, accounts, cache, move_up, oauth, plan_to_watch, watching, writes};
 use crate::transfer;
+use crate::update;
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
 /// once, and from then on sends calls and receives events.
@@ -601,8 +602,11 @@ impl Core {
         self.call(call)
     }
 
-    /// Returns fast, always. Every call after `shutdown` fails the same
-    /// way, without touching anything else.
+    /// Returns fast, except the calls that wait on the network, which a
+    /// shell sends off its UI thread: among them the endpoint repo fetches,
+    /// the phone's searches, `PhoneNetCheck` and `CheckPhoneUpdate` (#1369
+    /// settles how each waits). Every call after `shutdown` fails the same way, without
+    /// touching anything else.
     ///
     /// A router and nothing more: every arm is one call into the module that
     /// owns it, grouped by the team the call belongs to (#773, #854).
@@ -638,6 +642,9 @@ impl Core {
             } => stats::get_call(&self.services, year, utc_offset, &month_starts),
             Call::ScheduleAgent => agent::available_call(),
             Call::AskScheduleAgent { series } => agent::start(self, series).map(started),
+            Call::CheckPhoneUpdate { current, nightly } => {
+                update::phone_call(&self.services, &current, nightly)
+            }
 
             // Library: sources, scans, the library's reads and its files
             Call::ListSources => scan::list_sources_call(&self.library),
@@ -839,7 +846,12 @@ impl Core {
                 name,
                 options,
             } => downloads::download_with(&self.downloads, items, name, options).map(started),
-            Call::DownloadMovie { link } => downloads::movie(&self.downloads, link).map(started),
+            Call::DownloadMovie { link, needs_video } => {
+                downloads::movie(&self.downloads, link, needs_video).map(started)
+            }
+            Call::ReadMagnet { link } => Ok(Reply::Magnet {
+                magnet: downloads::read_magnet(&link),
+            }),
             Call::ListSubscriptionRules => downloads::list_rules(&self.downloads),
             Call::ListTorrents => downloads::list_torrents(&self.downloads),
             Call::ReadFeed { url, tag } => downloads::read_feed(&self.services, url, tag),

@@ -220,10 +220,13 @@ more-icon-note = O ícone na tela inicial e na gaveta de apps.
 more-icon-line-note = O ícone de contorno usa as cores do seu papel de parede, como seus outros ícones do Material You.
 more-icon-moved-note = Alguns launchers tiram o ícone da tela inicial quando ele muda. Ele continua na gaveta de apps; arraste-o de volta de lá.
 more-set-whats-new = Novidades
-more-whats-new-note = O que mudou em cada versão, da mais recente.
 more-set-onboarding = Rever a intro
-more-onboarding-note = Refazer as perguntas da primeira execução.
-more-set-version = Versão
+more-update-out = Saiu o Anibeam { $version }
+more-update-download = Baixar
+more-about-status-update = Há uma versão nova
+more-updates = Atualizações
+more-updates-stable = Estável
+more-updates-nightly = Nightly
 
 ## Status lines Rust writes on the pages
 
@@ -325,7 +328,7 @@ more-words-check = rede dns teste https seguro conexão alcançar internet
 more-words-computer = tailscale tailnet host endereço desktop biblioteca streaming teste salvar dispositivo computador pc
 more-words-whats-new = novidades changelog notas atualização mudanças
 more-words-onboarding = introdução primeira vez execução começar de novo configurar
-more-words-version = versão build sobre
+more-words-updates = versão build sobre estável nightly canal verificar atualizações
 more-words-stats = horas episódios gêneros estúdios temporadas ano assistido resumo mês mais ativo histórico estatísticas
 more-words-backup = backup exportar arquivo salvar copiar mover computador json privado logins
 more-words-restore = restaurar importar arquivo carregar biblioteca mesclar

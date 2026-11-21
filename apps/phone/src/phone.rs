@@ -851,7 +851,7 @@ mod tests {
         };
         assert_eq!(
             film.words().join("  "),
-            "Film  Fall 2023  Madhouse  1 h 52 min  Finished"
+            "Movie  Fall 2023  Madhouse  1 h 52 min  Finished"
         );
     }
 

@@ -137,16 +137,13 @@ fn with(f: impl FnOnce(&mut Repos)) {
 }
 
 /// Runs `call` on a thread and hands the answer to `done` on the UI thread.
-fn spawn(call: Call, done: impl FnOnce(&mut Repos, Result<Reply, CoreError>) + Send + 'static) {
-    let Some(core) = crate::local::core() else {
-        return;
-    };
-    let _ = std::thread::Builder::new()
-        .name("repos".into())
-        .spawn(move || {
-            let answer = core.call(call);
-            let _ = slint::invoke_from_event_loop(move || with(|r| done(r, answer)));
-        });
+/// False when the core is not open yet: `done` never runs, so a caller that set itself busy
+/// sets itself free again.
+fn spawn(
+    call: Call,
+    done: impl FnOnce(&mut Repos, Result<Reply, CoreError>) + Send + 'static,
+) -> bool {
+    crate::local::call_off_thread("repos", call, move |answer| with(|r| done(r, answer)))
 }
 
 pub fn install(window: &AppWindow) {
@@ -461,7 +458,7 @@ impl Repos {
         }
         self.busy(true);
         self.data(|d| d.set_error("".into()));
-        spawn(Call::AddEndpointRepo { url }, |r, answer| {
+        let started = spawn(Call::AddEndpointRepo { url }, |r, answer| {
             r.busy(false);
             match answer {
                 Ok(Reply::EndpointRepoPreview { preview }) => {
@@ -483,6 +480,9 @@ impl Repos {
                 }
             }
         });
+        if !started {
+            self.busy(false);
+        }
     }
 
     /// Opens a source added by hand for editing: its name and address in its own row.
@@ -552,7 +552,7 @@ impl Repos {
             url = d.get_edit_url().to_string();
         });
         let saved = install.clone();
-        spawn(
+        let started = spawn(
             Call::EditCustomEndpoint { install, name, url },
             move |r, answer| {
                 r.saving = false;
@@ -576,6 +576,9 @@ impl Repos {
                 }
             },
         );
+        if !started {
+            self.saving = false;
+        }
     }
 
     fn add_custom(&mut self, name: String, url: String) {
@@ -610,7 +613,7 @@ impl Repos {
             return;
         };
         self.busy(true);
-        spawn(
+        let started = spawn(
             Call::TrustEndpointRepo {
                 url: p.url,
                 key: p.key,
@@ -625,6 +628,9 @@ impl Repos {
                 }
             },
         );
+        if !started {
+            self.busy(false);
+        }
     }
 
     fn remove_repo(&mut self, i: i32) {
@@ -651,8 +657,7 @@ impl Repos {
         {
             return;
         }
-        self.data(|d| d.set_checking(true));
-        spawn(Call::PhoneNetCheck, |r, answer| {
+        let started = spawn(Call::PhoneNetCheck, |r, answer| {
             r.data(|d| d.set_checking(false));
             if let Ok(Reply::PhoneNetCheck { checks }) = answer {
                 r.health = health_of(&checks);
@@ -661,6 +666,10 @@ impl Repos {
                 }
             }
         });
+        // Set after the start, which answers on this thread later, never before it
+        if started {
+            self.data(|d| d.set_checking(true));
+        }
     }
 
     fn refresh(&mut self) {
@@ -868,7 +877,7 @@ impl Repos {
             },
         };
         self.busy(true);
-        spawn(call, |r, answer| match answer {
+        let started = spawn(call, |r, answer| match answer {
             Err(e) => {
                 r.busy(false);
                 let text = e.to_string();
@@ -880,6 +889,9 @@ impl Repos {
                 }
             }
         });
+        if !started {
+            self.busy(false);
+        }
     }
 
     fn remove_endpoint(&mut self, i: i32) {

@@ -1110,6 +1110,8 @@ core-downloads-qbt-answered = qBittorrent 응답 { $status }: { $line }
 core-downloads-replace-bad-item = 항목 { $item }은(는) 릴리스 { $count }개 중 하나가 아니에요
 core-downloads-not-replaced = { $episode }화를 교체하지 않았어요.
 core-downloads-replaced = { $episode }화를 새 다운로드로 교체했어요.
+core-downloads-no-video-moved = { $name }에는 동영상이 없어서 Anibeam에서 재생할 수 없어요. 지금은 { $folder }에 있어요.
+core-downloads-no-video = { $name }에는 동영상이 없어서 Anibeam에서 재생할 수 없어요.
 
 ## downloads/src/rolling.rs
 

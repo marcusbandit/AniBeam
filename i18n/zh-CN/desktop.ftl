@@ -333,7 +333,8 @@ onboarding-title-ready = 一切就绪
 onboarding-title-later = { $count ->
     [1] 已就绪，还有一项稍后处理
     [2] 已就绪，还有两项稍后处理
-   *[other] 已就绪，还有三项稍后处理
+    [3] 已就绪，还有三项稍后处理
+   *[other] 已就绪，还有 { $count } 项稍后处理
 }
 onboarding-body-welcome = Anibeam 把你的动漫集中在一处。它会找到磁盘上的番剧，直接在这里播放，并在你观看时同步更新 AniList 或 MyAnimeList。
 onboarding-body-library = 选择存放番剧的文件夹。其中每个文件夹都会成为一部番剧，带有海报、剧集和你的观看进度。Anibeam 只读取文件夹，从不移动或重命名文件。
@@ -1394,6 +1395,8 @@ downloads-suggest-on-anilist = AniList 上有，不在媒体库中
 downloads-plan-to-watch = 想看
 downloads-suggest-release-search = 改为在 { $names } 上搜索资源名称“{ $query }”
 downloads-key-return = Enter
+downloads-magnet-invalid = 这个磁力链接没有指向任何种子
+downloads-magnet-film = 作为电影下载
 downloads-sources = 来源
 downloads-source-hint-starting = 启动中
 downloads-source-hint-down = 未运行
@@ -2009,6 +2012,11 @@ settings-downloads-keep-behind = 保留之前
 settings-downloads-subscriptions-title = 订阅和搜索
 settings-downloads-last-search = 保留上次搜索
 settings-downloads-prune = 取消订阅已完结番剧
+settings-downloads-magnet = 磁力链接
+settings-downloads-magnet-anibeam = 由 Anibeam 打开
+settings-downloads-magnet-other = 由其他应用打开
+settings-downloads-magnet-none = 没有应用打开
+settings-downloads-magnet-use = 用 Anibeam 打开
 settings-downloads-sources-title = 搜索来源
 settings-downloads-sources-empty = 还没有设置来源
 settings-downloads-sources-connect = 连接搜索助手后即可列出
@@ -2694,6 +2702,20 @@ tokens-cube-no-release = 没有资源
 ## Card
 
 card-not-interested = 不感兴趣
+card-no-poster = 无海报
+card-tag-new = 新
+card-tag-downloading = 下载中
+card-tag-hidden = 已隐藏
+card-watched-of = { $watched } / { $total }
+card-watched-of-estimate = { $watched } / { $total }+
+card-watched = 已看 { $watched } 集
+card-files = { $count } 个文件
+card-predicted = 预计 { $time }
+card-countdown-days = { $days }天{ $hours }小时
+card-countdown-hours = { $hours }小时{ $minutes }分
+card-countdown-minutes = { $minutes }分钟
+card-season-span = S{ $season } { $span }
+card-episode-next = 下一集：第 { $number } 集
 
 ## PagePlaceholder
 

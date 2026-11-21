@@ -1,4 +1,5 @@
 #include "cardface.h"
+#include "anibeam/src/bridge/helpers.cxx.h"
 
 #include <algorithm>
 #include <array>
@@ -98,6 +99,13 @@ void CardStyle::set(const QVariantMap &t)
         d.cubes.insert(it.key().at(0), {colorOf(c.value(QStringLiteral("fill")), Qt::transparent),
                                         colorOf(c.value(QStringLiteral("edge")), Qt::transparent)});
     }
+    d.noPoster = t.value(QStringLiteral("noPoster")).toString();
+    d.tagFilm = t.value(QStringLiteral("tagFilm")).toString();
+    d.tagNew = t.value(QStringLiteral("tagNew")).toString();
+    d.tagDownloading = t.value(QStringLiteral("tagDownloading")).toString();
+    d.tagOnHold = t.value(QStringLiteral("tagOnHold")).toString();
+    d.tagDropped = t.value(QStringLiteral("tagDropped")).toString();
+    d.tagHidden = t.value(QStringLiteral("tagHidden")).toString();
     m_data = d;
     emit changed();
 }
@@ -130,16 +138,6 @@ const CardStyle::Data &style()
     return g_style ? g_style->data() : fallback;
 }
 bool present(const QVariant &v) { return v.isValid() && !v.isNull(); }
-QString count(const QVariant &v) { return QString::number(qint64(std::llround(v.toDouble()))); }
-QString plural(qint64 n, const char *one, const char *many)
-{
-    return QString::number(n) + QLatin1Char(' ') + QLatin1String(n == 1 ? one : many);
-}
-QString episodeSpan(int first, int through)
-{
-    return through > first ? QStringLiteral("Episodes %1 to %2").arg(first).arg(through)
-                           : QStringLiteral("Episode %1").arg(first);
-}
 }
 
 CardFace::CardFace(QQuickItem *parent) : QQuickItem(parent)
@@ -236,13 +234,7 @@ QString CardFace::folderName() const
 
 QString CardFace::shortCountdown(double secs)
 {
-    const qint64 t = std::max<qint64>(0, qint64(std::floor(secs)));
-    const qint64 d = t / 86400, h = t % 86400 / 3600, m = t % 3600 / 60;
-    if (d > 0)
-        return QStringLiteral("%1d %2h").arg(d).arg(h);
-    if (h > 0)
-        return QStringLiteral("%1h %2m").arg(h).arg(m);
-    return QStringLiteral("%1m").arg(std::max<qint64>(1, m));
+    return card_short_countdown(secs);
 }
 
 // ---- Layout: what goes where, worked out on the Qt thread ------------------------------
@@ -372,17 +364,18 @@ void CardFace::updatePolish()
     const bool hasWatched = present(it.value(QStringLiteral("watched")));
     const double total = it.value(QStringLiteral("total_episodes")).toDouble();
     const bool totalKnown = total > 0;
-    const QString watchedText = !hasWatched ? QString()
-        : totalKnown ? count(it.value(QStringLiteral("watched"))) + QStringLiteral(" of ") + count(total)
-                + (it.value(QStringLiteral("total_is_estimate")).toBool() ? QStringLiteral("+") : QString())
-        : count(it.value(QStringLiteral("watched"))) + QStringLiteral(" watched");
+    const QString watchedText = !hasWatched
+        ? QString()
+        : card_watched(qint64(std::llround(it.value(QStringLiteral("watched")).toDouble())),
+                       totalKnown ? qint64(std::llround(total)) : 0,
+                       it.value(QStringLiteral("total_is_estimate")).toBool());
     // A show counts its episodes, not its files: a second release of an episode is the same
     // episode, so 15 files holding 13 episodes read "13 episodes" (#323). A film is a file.
     const qint64 distinct = qint64(it.value(QStringLiteral("distinct_episodes")).toDouble());
     const bool isMovie = it.value(QStringLiteral("kind")).toString() == QLatin1String("Movie")
         || it.value(QStringLiteral("format")).toString() == QLatin1String("MOVIE");
-    const QString filesText = !isMovie && distinct > 0 ? plural(distinct, "episode", "episodes")
-        : plural(qint64(it.value(QStringLiteral("episodes_on_disk")).toDouble()), "file", "files");
+    const QString filesText = card_files(isMovie, distinct,
+                                         qint64(it.value(QStringLiteral("episodes_on_disk")).toDouble()));
     const QString ledgerText = !m_meta.isEmpty() ? m_meta : !watchedText.isEmpty() ? watchedText : filesText;
     QVariantMap airing;
     if (present(m_countdown))
@@ -393,17 +386,19 @@ void CardFace::updatePolish()
             airing = next;
     }
     const bool airs = !airing.isEmpty();
-    const QString airingTime = airs ? (airing.value(QStringLiteral("predicted")).toBool() ? QStringLiteral("predicted ") : QString())
-            + shortCountdown(airing.value(QStringLiteral("at")).toDouble() - m_nowMs / 1000)
-                                    : QString();
-    const int season = airing.value(QStringLiteral("season")).toInt();
-    const QString airingEpisode = airs ? (season && season != 1 ? QStringLiteral("S%1 ").arg(season) : QString())
-            + episodeSpan(airing.value(QStringLiteral("episode")).toInt(), airing.value(QStringLiteral("through")).toInt())
-                                       : QString();
+    const QString airingTime = airs
+        ? card_airing_time(airing.value(QStringLiteral("at")).toDouble() - m_nowMs / 1000.0,
+                           airing.value(QStringLiteral("predicted")).toBool())
+        : QString();
+    const QString airingEpisode = airs
+        ? card_airing_episode(airing.value(QStringLiteral("season")).toInt(),
+                              airing.value(QStringLiteral("episode")).toInt(),
+                              airing.value(QStringLiteral("through")).toInt())
+        : QString();
     const bool mine = present(it.value(QStringLiteral("my_score")));
     const bool hasScore = mine || present(it.value(QStringLiteral("community_score")));
-    const QString scoreText = mine ? QString::number(it.value(QStringLiteral("my_score")).toDouble(), 'f', 1)
-        : hasScore ? QString::number(it.value(QStringLiteral("community_score")).toDouble(), 'f', 1)
+    const QString scoreText = mine ? card_score(it.value(QStringLiteral("my_score")).toDouble())
+        : hasScore ? card_score(it.value(QStringLiteral("community_score")).toDouble())
                    : QString();
 
     // ---- The episode cubes along the foot, one row, folding a long run (EpisodeCubes'
@@ -497,7 +492,7 @@ void CardFace::updatePolish()
         if (hasWatched && itm.value(QStringLiteral("watched_state")).toString() != QLatin1String("CaughtUp")) {
             const qint64 wn = qint64(itm.value(QStringLiteral("watched")).toDouble());
             if (!(totalKnown && wn >= total))
-                nextText = QStringLiteral("Episode %1 next").arg(wn + 1);
+                nextText = card_episode_next(wn + 1);
         }
         auto line = [&, this](const QString &text, const QFont &font, const QColor &color) {
             if (text.isEmpty())
@@ -543,9 +538,9 @@ void CardFace::updatePolish()
         // lies over the poster's antialiased edge rather than inside it: a pale rim showed
         // in the corners where the poster's edge peeked out past the scrim's
         m_fills.insert(m_fills.begin(), {QRectF(-1, h - sh, w + 2, sh + 1), radius + 1, clear, mid, st.posterScrim, 0.45});
-    } else {
+    } else if (!st.noPoster.isEmpty()) {
         qreal nw = 0, nh = 0;
-        const int at = addText(QStringLiteral("No poster"), st.ui, 0, &nw, &nh);
+        const int at = addText(st.noPoster, st.ui, 0, &nw, &nh);
         m_runs.push_back({at, QPointF((w - nw) / 2, (h - nh) / 2 - h * 0.12), st.textFaint});
     }
 
@@ -561,25 +556,28 @@ void CardFace::updatePolish()
     // Hidden and the ghost's AniList right, in that order from the left
     const qreal ty = p * 0.8;
     const QString code = it.value(QStringLiteral("code")).toString();
-    if (!code.isEmpty())
-        addTag(code, st.onPoster, p * 0.8 + m_leftInset, ty, false, nullptr);
+    const QString codeLabel = code == QLatin1String("Movie") ? st.tagFilm : code;
+    if (!codeLabel.isEmpty())
+        addTag(codeLabel, st.onPoster, p * 0.8 + m_leftInset, ty, false, nullptr);
     struct Tag { QString text; QColor ink; };
     std::vector<Tag> tags;
     const int downloading = it.value(QStringLiteral("downloading")).toList().size();
     if (it.value(QStringLiteral("watched_state")).toString() == QLatin1String("Behind") && !m_ghost && !dropped && !onHold)
-        tags.push_back({QStringLiteral("New"), st.accentOnPoster});
+        tags.push_back({st.tagNew, st.accentOnPoster});
     if (downloading > 0 && !m_ghost)
-        tags.push_back({QStringLiteral("Downloading"), st.downloadInk});
+        tags.push_back({st.tagDownloading, st.downloadInk});
     if (onHold && !m_ghost)
-        tags.push_back({QStringLiteral("On hold"), st.onPoster});
+        tags.push_back({st.tagOnHold, st.onPoster});
     if (dropped)
-        tags.push_back({QStringLiteral("Dropped"), st.onPosterDim});
+        tags.push_back({st.tagDropped, st.onPosterDim});
     if (it.value(QStringLiteral("hidden")).toBool())
-        tags.push_back({QStringLiteral("Hidden"), st.onPosterDim});
+        tags.push_back({st.tagHidden, st.onPosterDim});
     if (m_ghost && !it.value(QStringLiteral("site_url")).toString().isEmpty())
         tags.push_back({QStringLiteral("AniList"), st.onPoster});
     qreal right = w - p * 0.8 - m_rightInset;
     for (auto t = tags.rbegin(); t != tags.rend(); ++t) {
+        if (t->text.isEmpty())
+            continue;
         qreal tw = 0;
         addTag(t->text, t->ink, right, ty, true, &tw);
         right -= tw + u;

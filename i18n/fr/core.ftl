@@ -1214,6 +1214,8 @@ core-downloads-qbt-answered = qBittorrent a répondu { $status } : { $line }
 core-downloads-replace-bad-item = l'élément { $item } ne fait pas partie des { $count } releases
 core-downloads-not-replaced = L'épisode { $episode } n'a pas été remplacé.
 core-downloads-replaced = Épisode { $episode } remplacé par le nouveau téléchargement.
+core-downloads-no-video-moved = { $name } ne contient aucune vidéo, Anibeam ne peut donc pas le lire. Il se trouve maintenant dans { $folder }.
+core-downloads-no-video = { $name } ne contient aucune vidéo, Anibeam ne peut donc pas le lire.
 
 ## downloads/src/rolling.rs
 

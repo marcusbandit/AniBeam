@@ -462,7 +462,8 @@ onboarding-title-ready = Wszystko gotowe
 onboarding-title-later = { $count ->
     [1] Gotowe, jedna rzecz na później
     [2] Gotowe, dwie rzeczy na później
-   *[other] Gotowe, trzy rzeczy na później
+    [3] Gotowe, trzy rzeczy na później
+   *[other] Gotowe, { $count } rzeczy na później
 }
 onboarding-body-welcome = Anibeam trzyma Twoje anime w jednym miejscu. Znajduje seriale na dysku, odtwarza je tutaj i na bieżąco aktualizuje AniList lub MyAnimeList, gdy oglądasz.
 onboarding-body-library = Wybierz folder, w którym trzymasz seriale. Każdy folder w środku staje się serialem, z plakatem, odcinkami i miejscem, w którym skończyłeś. Anibeam tylko czyta folder. Nigdy nie przenosi ani nie zmienia nazw plików.
@@ -2133,6 +2134,8 @@ downloads-suggest-on-anilist = Na AniList, nie w Twojej bibliotece
 downloads-plan-to-watch = Planuję obejrzeć
 downloads-suggest-release-search = Zamiast tego szukaj nazw wydań „{ $query }” w { $names }
 downloads-key-return = Enter
+downloads-magnet-invalid = Ten link magnet nie wskazuje żadnego torrenta
+downloads-magnet-film = Pobierz jako film
 downloads-sources = Źródła
 downloads-source-hint-starting = uruchamianie
 downloads-source-hint-down = nie działa
@@ -2833,6 +2836,11 @@ settings-downloads-keep-behind = Zachowaj za
 settings-downloads-subscriptions-title = Subskrypcje i wyszukiwania
 settings-downloads-last-search = Zapamiętaj ostatnie wyszukiwanie
 settings-downloads-prune = Anuluj subskrypcje zakończonych seriali
+settings-downloads-magnet = Linki magnet
+settings-downloads-magnet-anibeam = Otwiera je Anibeam
+settings-downloads-magnet-other = Otwiera je inna aplikacja
+settings-downloads-magnet-none = Nic ich nie otwiera
+settings-downloads-magnet-use = Otwieraj w Anibeam
 settings-downloads-sources-title = Źródła wyszukiwania
 settings-downloads-sources-empty = Jeszcze nie ustawiono źródeł
 settings-downloads-sources-connect = Połącz pomocnika wyszukiwania, aby je wyświetlić
@@ -3693,6 +3701,26 @@ tokens-cube-no-release = Brak wydania
 ## Card
 
 card-not-interested = Nie interesuje
+card-no-poster = Brak plakatu
+card-tag-new = Nowe
+card-tag-downloading = Pobieranie
+card-tag-hidden = Ukryte
+card-watched-of = { $watched } z { $total }
+card-watched-of-estimate = { $watched } z { $total }+
+card-watched = Obejrzane: { $watched }
+card-files =
+    { $count ->
+        [one] { $count } plik
+        [few] { $count } pliki
+        [many] { $count } plików
+       *[other] { $count } pliku
+    }
+card-predicted = przewidywane { $time }
+card-countdown-days = { $days } d { $hours } h
+card-countdown-hours = { $hours } h { $minutes } min
+card-countdown-minutes = { $minutes } min
+card-season-span = S{ $season } { $span }
+card-episode-next = Następny: odcinek { $number }
 
 ## PagePlaceholder
 

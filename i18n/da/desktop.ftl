@@ -408,7 +408,8 @@ onboarding-title-ready = Du er klar
 onboarding-title-later = { $count ->
     [1] Klar, én ting til senere
     [2] Klar, to ting til senere
-   *[other] Klar, tre ting til senere
+    [3] Klar, tre ting til senere
+   *[other] Klar, { $count } ting til senere
 }
 onboarding-body-welcome = Anibeam samler din anime ét sted. Den finder serierne på din disk, afspiller dem lige her og holder AniList eller MyAnimeList opdateret, mens du ser.
 onboarding-body-library = Vælg den mappe, du har dine serier i. Hver mappe inden i den bliver en serie med plakat, afsnit og stedet, hvor du slap. Anibeam læser kun mappen. Den flytter eller omdøber aldrig en fil.
@@ -1855,6 +1856,8 @@ downloads-suggest-on-anilist = På AniList, ikke i dit bibliotek
 downloads-plan-to-watch = Planlæg
 downloads-suggest-release-search = Søg i udgivelsesnavne efter “{ $query }” på { $names } i stedet
 downloads-key-return = Retur
+downloads-magnet-invalid = Dette magnetlink peger ikke på en torrent
+downloads-magnet-film = Hent som film
 downloads-sources = Kilder
 downloads-source-hint-starting = starter
 downloads-source-hint-down = kører ikke
@@ -2516,6 +2519,11 @@ settings-downloads-keep-behind = Behold bagud
 settings-downloads-subscriptions-title = Abonnementer og søgninger
 settings-downloads-last-search = Husk den sidste søgning
 settings-downloads-prune = Afmeld afsluttede serier
+settings-downloads-magnet = Magnetlinks
+settings-downloads-magnet-anibeam = Anibeam åbner dem
+settings-downloads-magnet-other = Et andet program åbner dem
+settings-downloads-magnet-none = Intet åbner dem
+settings-downloads-magnet-use = Åbn dem i Anibeam
 settings-downloads-sources-title = Søgekilder
 settings-downloads-sources-empty = Ingen kilder sat op endnu
 settings-downloads-sources-connect = Forbind søgehjælperen for at vise dem
@@ -3309,6 +3317,24 @@ tokens-cube-no-release = Ingen udgivelse
 ## Card
 
 card-not-interested = Ikke interesseret
+card-no-poster = Ingen plakat
+card-tag-new = Ny
+card-tag-downloading = Downloader
+card-tag-hidden = Skjult
+card-watched-of = { $watched } af { $total }
+card-watched-of-estimate = { $watched } af { $total }+
+card-watched = { $watched } set
+card-files =
+    { $count ->
+        [one] { $count } fil
+       *[other] { $count } filer
+    }
+card-predicted = forventet { $time }
+card-countdown-days = { $days } d { $hours } t
+card-countdown-hours = { $hours } t { $minutes } m
+card-countdown-minutes = { $minutes } m
+card-season-span = S{ $season } { $span }
+card-episode-next = Afsnit { $number } næste
 
 ## PagePlaceholder
 

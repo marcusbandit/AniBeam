@@ -31,11 +31,11 @@ scan-summary-nothing = Nothing to show yet
 scan-summary-found = Found { $count ->
     [one] { $count } show
    *[other] { $count } shows
-}, { $recognised } recognised
+}, { $recognised } recognized
 scan-summary-found-need = Found { $count ->
     [one] { $count } show
    *[other] { $count } shows
-}, { $recognised } recognised, { $need } need you
+}, { $recognised } recognized, { $need } need matching
 scan-summary-episodes = { $count ->
     [one] { $count } episode
    *[other] { $count } episodes
@@ -44,13 +44,13 @@ scan-summary-episodes-watched = { $count ->
     [one] { $count } episode
    *[other] { $count } episodes
 } on disk, { $watched } already watched on { $tracker }.
-scan-summary-title = Your folder is in
+scan-summary-title = Folder added
 scan-summary-count-found = found
-scan-summary-count-recognised = recognised
-scan-summary-count-need = need you
+scan-summary-count-recognised = recognized
+scan-summary-count-need = need matching
 scan-summary-later = Later
-scan-summary-match = Match the { $count }
-scan-summary-open-library = Open the library
+scan-summary-match = Match { $count }
+scan-summary-open-library = Open library
 
 ## UpdateNotice
 
@@ -61,13 +61,13 @@ update-notice-ready = Anibeam { $version } is ready
 update-notice-failed = The update failed
 update-notice-on-aur = Anibeam { $version } is on the AUR
 update-notice-in-repo = Anibeam { $version } is in the { $manager } repo
-update-notice-out = Anibeam { $version } is out
-update-notice-out-titled = Anibeam { $version } “{ $title }” is out
+update-notice-out = Anibeam { $version } is available
+update-notice-out-titled = Anibeam { $version } “{ $title }” is available
 update-notice-progress = { $percent }%  ·  { $got } of { $total } MB
-update-notice-restart-hint = Restart now, or it opens next time
+update-notice-restart-hint = Restart now, or it will update next time you open Anibeam
 update-notice-from-source = This copy is built from source: pull and rebuild
-update-notice-no-download = No download here for this computer
-update-notice-install-hint = Update installs it and restarts Anibeam
+update-notice-no-download = No download available for this computer
+update-notice-install-hint = Installs the update and restarts Anibeam
 update-notice-retry = Retry
 update-notice-update = Update
 update-notice-restart = Restart
@@ -80,6 +80,7 @@ update-notice-later = Later
 
 whats-new-title = What's new
 whats-new-got-it = Got it
+whats-new-github = Full changelog on GitHub
 
 ## ActivityDrawer
 
@@ -107,7 +108,7 @@ activity-drawer-copy-tip = Click to copy the line
 activity-drawer-fold = Fold
 activity-drawer-empty-technical = Nothing logged yet.
 activity-drawer-empty-problems = No problems. Everything worked.
-activity-drawer-empty = Nothing to report yet. What Anibeam does for you shows up here.
+activity-drawer-empty = Nothing to report yet. Anibeam's activity will show up here.
 
 ## ActivityColumn
 
@@ -124,8 +125,8 @@ activity-column-name-episode = { $title }, episode { $number }
 activity-column-title = Activity
 activity-column-down = down
 activity-column-up = up
-activity-column-not-connected = { $client } is not connected, so nothing moves here.
-activity-column-connect-again = Connect again
+activity-column-not-connected = { $client } is not connected, so Anibeam cannot show its downloads.
+activity-column-connect-again = Reconnect
 activity-column-downloading = Downloading now
 activity-column-fewer = Fewer
 activity-column-more = And { $count } more
@@ -136,8 +137,8 @@ activity-column-today-empty = Searches, downloads and new subscriptions show up 
 activity-column-stopping = Stopping
 activity-column-starting = Starting
 activity-column-start-tip = Start downloading
-activity-column-stop-tip = Stop downloading; what it has stays
-activity-column-cancelling = Cancelling
+activity-column-stop-tip = Stop downloading; downloaded data is kept
+activity-column-cancelling = Canceling
 activity-column-cancel-all-tip = Cancel these downloads
 activity-column-cancel-tip = Cancel this download
 activity-column-size-of = { $got } of { $total }
@@ -165,18 +166,18 @@ frame-did-not-work = That did not work.
 frame-could-not-open = Anibeam could not open that. Copy it and open it yourself.
 frame-copy = Copy
 frame-copied = Copied
-frame-status-refused = { $tracker } did not take it
-frame-status-refused-why = { $tracker } did not take it: { $why }
-frame-lists-refused = { $tracker } did not take { $count ->
+frame-status-refused = { $tracker } rejected the update
+frame-status-refused-why = { $tracker } rejected the update: { $why }
+frame-lists-refused = Could not move { $count ->
     [one] 1 show
    *[other] { $count } shows
-}; see the activity log
+} to { $tracker }; see the activity log
 frame-lists-moved = Moved { $count ->
     [one] 1 show
    *[other] { $count } shows
 } to { $tracker }
-frame-notes-refused = { $tracker } did not take your notes
-frame-notes-refused-why = { $tracker } did not take your notes: { $why }
+frame-notes-refused = { $tracker } could not save your notes
+frame-notes-refused-why = { $tracker } could not save your notes: { $why }
 frame-notes-saved = Notes saved
 frame-connected = Connected to { $tracker } as { $user }
 frame-sign-in-stopped = The { $tracker } sign-in stopped before it finished.
@@ -202,19 +203,19 @@ frame-list-home-not-carried = Kept on this device: your tracker does not carry t
 frame-list-home-offline = Kept on this device until you connect AniList or MyAnimeList
 frame-moving-to = Moving to { $list }
 frame-moved-to = Moved to { $list }
-frame-plan-added = { $title } goes on your Planning list
-frame-plan-listed = { $title } is on your list already
+frame-plan-added = Adding { $title } to your Planning list
+frame-plan-listed = { $title } is already on your list
 frame-delete-watched = { $kind ->
-    [film] Delete watched films
+    [film] Delete watched movies
    *[episode] Delete watched episodes
 }
 frame-delete-all = { $count ->
     [one] { $kind ->
-        [film] Delete the film
+        [film] Delete the movie
        *[episode] Delete the episode
     }
    *[other] { $kind ->
-        [film] Delete all { $count } films
+        [film] Delete all { $count } movies
        *[episode] Delete all { $count } episodes
     }
 }
@@ -224,8 +225,8 @@ frame-delete-none = Nothing of { $title } on disk
 frame-delete-files = { $watched ->
     [yes] { $kind ->
         [film] { $count ->
-            [one] { $count } watched film
-           *[other] { $count } watched films
+            [one] { $count } watched movie
+           *[other] { $count } watched movies
         }
        *[episode] { $count ->
             [one] { $count } watched episode
@@ -234,8 +235,8 @@ frame-delete-files = { $watched ->
     }
    *[no] { $kind ->
         [film] { $count ->
-            [one] { $count } film
-           *[other] { $count } films
+            [one] { $count } movie
+           *[other] { $count } movies
         }
        *[episode] { $count ->
             [one] { $count } episode
@@ -249,7 +250,7 @@ frame-delete-extras = { $count ->
 }
 frame-delete-and = { $first } and { $second }
 frame-delete-heading = Delete { $what } of { $title }?
-frame-delete-base = The files and their subtitles go to the trash, so you can get them back from there. Their torrents leave the torrent client, so they can be downloaded again.
+frame-delete-base = The files and their subtitles will be moved to the trash, so you can recover them there. Their torrents will be removed from the torrent client so they can be downloaded again.
 frame-delete-confirm = Move to trash
 frame-delete-done = { $what } of { $title } moved to the trash
 frame-delete-watched-done = { $count ->
@@ -257,20 +258,20 @@ frame-delete-watched-done = { $count ->
    *[other] { $count } episodes
 }, { $size }, moved to the trash
 frame-delete-nothing = Nothing to delete
-frame-fix-not-drafted = Fixed. The issue could not be drafted
-frame-fix-agent = Fixed. { $agent } is looking into it, and the issue opens when it is done
+frame-fix-not-drafted = Fixed, but the issue could not be drafted
+frame-fix-agent = Fixed. { $agent } is looking into it, and the issue will open when it is done
 frame-fix-opening = Fixed. Opening the issue
-frame-fix-not-saved = The fix did not save: { $error }
+frame-fix-not-saved = Could not save the fix: { $error }
 frame-fix-undone = { $count ->
     [one] { $count } file
    *[other] { $count } files
 } read by name again
 frame-fix-done = Fixed how { $count ->
-    [one] { $count } file
-   *[other] { $count } files
-} read
+    [one] { $count } file is read
+   *[other] { $count } files are read
+}
 frame-report-failed = The issue could not be drafted: { $error }
-frame-report-untriaged = The issue is open in your browser, without a triage. { $error }
+frame-report-untriaged = The issue is open in your browser without triage. { $error }
 frame-report-open = The issue is open in your browser, ready to send
 frame-downloads-not-read = Not read.
 
@@ -302,8 +303,8 @@ home-week-late = { $count ->
    *[other] { $count } episodes are late
 }
 home-week-waiting = { $count ->
-    [one] { $count } episode out to watch
-   *[other] { $count } episodes out to watch
+    [one] { $count } episode ready to watch
+   *[other] { $count } episodes ready to watch
 }
 home-week-coming = { $count ->
     [one] { $count } episode in the next seven days
@@ -332,7 +333,7 @@ home-tile-to-watch = { $count } to watch
 home-day-nothing = Nothing
 home-now = Now { $time }
 home-continue = Continue
-home-continue-fact = { $count } series to go on with
+home-continue-fact = { $count } series in progress
 home-on-hold = On hold
 home-on-hold-fact = { $count } series to come back to
 home-hero-open = Open { $title }
@@ -349,7 +350,7 @@ home-hero-play = Play episode { $number }
 home-hero-resume-unnumbered = Resume episode
 home-hero-play-unnumbered = Play episode
 home-downloaded = Recently downloaded
-home-downloaded-fact = { $count } series with new files this fortnight
+home-downloaded-fact = { $count } series with new files in the last 2 weeks
 home-week = This week
 home-week-show-empty = Show empty days
 home-week-hide-empty = Hide empty days
@@ -363,8 +364,8 @@ home-recommended-scope = Recommended from
 home-recommended-all = All
 home-recommended-in-library = In library
 home-recommended-on-list = On list
-home-recommended-none-library = Nothing in your library is left to recommend. All finds shows you do not have yet.
-home-recommended-none-list = Nothing on your lists is left to recommend. All finds shows you have not listed.
+home-recommended-none-library = Nothing left to recommend in your library. Switch to All to see shows you do not have yet.
+home-recommended-none-list = Nothing left to recommend from your lists. Switch to All to see shows not on your lists.
 home-catch-up = Catch up
 home-catch-up-fact = { $count } series with episodes waiting
 home-fresh = Start something new
@@ -389,9 +390,9 @@ onboarding-step-downloads = Downloads
 onboarding-step-together = Watch together
 onboarding-step-ready = Ready
 onboarding-scan-reading = Reading the folder
-onboarding-scan-found = Found { $count } series. Go on whenever you like; the rest fills in by itself.
-onboarding-scan-starter-empty = Your new folder is empty for now. Shows you put in it turn up here by themselves.
-onboarding-scan-no-video = No video files turned up. Check that it is the right folder.
+onboarding-scan-found = Found { $count } series. You can continue whenever you like; the rest will fill in automatically.
+onboarding-scan-starter-empty = Your new folder is empty for now. Shows you add to it will appear here automatically.
+onboarding-scan-no-video = No video files found. Make sure you picked the right folder.
 onboarding-scan-your-shows = your shows
 onboarding-scan-looking-up = Looking up { $what }
 onboarding-scan-looking-up-tally = Looking up { $what }, { $posters } of { $count } found
@@ -400,7 +401,7 @@ onboarding-scan-posters-tally = Fetching posters, { $posters } of { $count } fou
 onboarding-scan-seasons = Finding related seasons
 onboarding-scan-seasons-tally = Finding related seasons, { $posters } of { $count } found
 onboarding-choose-folder = Choose your anime folder
-onboarding-about = A minute of setup. Your library finishes on its own.
+onboarding-about = Takes a minute. Your library will finish scanning in the background.
 onboarding-step-later = Later
 onboarding-skip-setup = Skip setup
 onboarding-title-welcome = Welcome to Anibeam
@@ -410,53 +411,54 @@ onboarding-title-downloads = How downloads work
 onboarding-title-together = Watch with friends
 onboarding-title-ready = You're all set
 onboarding-title-later = { $count ->
-    [1] Ready, one thing for later
-    [2] Ready, two things for later
-   *[other] Ready, three things for later
+    [1] Ready, 1 thing left for later
+    [2] Ready, 2 things left for later
+    [3] Ready, 3 things left for later
+   *[other] Ready, { $count } things left for later
 }
 onboarding-body-welcome = Anibeam keeps your anime in one place. It finds the shows on your disk, plays them right here, and keeps AniList or MyAnimeList up to date as you watch.
-onboarding-body-library = Pick the folder you keep your shows in. Every folder inside it becomes a series, with its poster, its episodes and where you left off. Anibeam only reads the folder. It never moves or renames a file.
-onboarding-body-lists = Sign in once, and every episode you finish here is marked on your list, with nothing to type. The sign-in happens in your browser, so Anibeam never sees your password.
-onboarding-body-downloads = Follow a show on the Downloads page and each new episode lands in your library as it airs. Two things make that work: somewhere to search, and a torrent client to fetch with.
-onboarding-body-together = Start a room from the player and send its code. Everyone plays their own copy of the episode, and play, pause and seek stay in step for all of you.
-onboarding-body-ready = Everything here can be changed later in Settings, and Settings, About runs this setup again.
+onboarding-body-library = Pick the folder where you keep your shows. Each subfolder becomes a series with its poster, episodes, and watch progress. Anibeam only reads your folder and never moves or renames files.
+onboarding-body-lists = Sign in once and every episode you finish will be marked on your list automatically. Sign-in happens in your browser, so Anibeam never sees your password.
+onboarding-body-downloads = Follow a show on the Downloads page and new episodes will download into your library as they air. Two things make this work: a source to search and a torrent client to download with.
+onboarding-body-together = Start a room from the player and share its code. Everyone plays their own copy of the episode while play, pause, and seek stay in sync.
+onboarding-body-ready = You can change any of this later in Settings, or run this setup again from Settings > About.
 onboarding-skip-step = Skip for now
 onboarding-get-started = Get started
 onboarding-open-app = Open Anibeam
 onboarding-continue = Continue
 onboarding-payoff-library = Your library
-onboarding-payoff-library-line = Posters, episodes and what comes next, for every show in your folders.
-onboarding-payoff-plays = Plays right here
-onboarding-payoff-plays-line = Subtitles, intro skips, and it remembers where you stopped.
+onboarding-payoff-library-line = Posters, episodes, and what comes next for every show in your folders.
+onboarding-payoff-plays = Built-in player
+onboarding-payoff-plays-line = Subtitles, intro skipping, and resume right where you left off.
 onboarding-payoff-list = Your list, synced
 onboarding-payoff-list-line = Finish an episode and it counts on AniList or MyAnimeList.
-onboarding-payoff-episodes = Episodes arrive
-onboarding-payoff-episodes-line = Follow a show and each new episode lands in your library.
-onboarding-films-too = A folder of films works too: call it Movies.
+onboarding-payoff-episodes = Automatic downloads
+onboarding-payoff-episodes-line = Follow a show and new episodes download into your library as they air.
+onboarding-films-too = A folder of movies works too: name it Movies.
 onboarding-choose-folder-button = Choose folder
 onboarding-no-folder = I don't have a folder yet
-onboarding-starter-where = That makes an Anime folder in { $dir } and uses it.
+onboarding-starter-where = Creates an Anime folder in { $dir } and adds it.
 onboarding-add-another = Add another folder
 onboarding-shelf-more = more
 onboarding-preview-show = Your show
 onboarding-preview-finished = Episode 3 finished here
 onboarding-preview-on-list = On your list: 3 watched
-onboarding-preview-set-by = Set by Anibeam the moment the credits roll
+onboarding-preview-set-by = Updated automatically when you finish an episode
 onboarding-lists-connected = Connected. What you watch here now counts on your list.
-onboarding-lists-no-account = No account yet? Both are free, and one is plenty. You can disconnect any time in Settings, Accounts.
-onboarding-search-title = Somewhere to search
+onboarding-lists-no-account = No account yet? Both are free, and you only need one. You can disconnect anytime in Settings > Accounts.
+onboarding-search-title = Download sources
 onboarding-search-ready = { $count ->
     [one] { $count } source ready to search.
    *[other] { $count } sources ready to search.
 }
-onboarding-fetch-title = Who fetches
+onboarding-fetch-title = Torrent client
 onboarding-fetch-auto = Let Anibeam handle it
 onboarding-fetch-recommended = Recommended
-onboarding-fetch-auto-line = Anibeam brings its own qBittorrent and runs it quietly in the background. Nothing to install, nothing to fill in.
+onboarding-fetch-auto-line = Anibeam includes a built-in qBittorrent and runs it quietly in the background. No extra setup required.
 onboarding-fetch-existing = I already use qBittorrent
-onboarding-fetch-existing-line = Anibeam connects to the qBittorrent you already run. You enter its address and login in Settings next.
+onboarding-fetch-existing-line = Anibeam connects to the qBittorrent you already run. You will enter its address and login in Settings after setup.
 onboarding-ready-library = Library
-onboarding-ready-library-none = No folder yet. It lives in Settings, Library when you want it.
+onboarding-ready-library-none = No folder yet. You can add one anytime in Settings > Library.
 onboarding-ready-library-series = { $count ->
     [one] { $count } folder
    *[other] { $count } folders
@@ -471,7 +473,7 @@ onboarding-ready-library-scanning = { $count ->
 }, scanning
 onboarding-ready-lists = Your list
 onboarding-ready-lists-as = { $tracker }, as { $user }
-onboarding-ready-lists-none = Not connected yet. It lives in Settings, Accounts when you want it.
+onboarding-ready-lists-none = Not connected yet. You can connect anytime in Settings > Accounts.
 onboarding-ready-downloads = Downloads
 onboarding-ready-downloads-state = { $sources ->
     [0] No sources yet
@@ -479,15 +481,15 @@ onboarding-ready-downloads-state = { $sources ->
    *[other] { $sources } sources
 }, { $client ->
     [own] your own qBittorrent.
-   *[bundled] Anibeam's own qBittorrent.
+   *[bundled] Anibeam's built-in qBittorrent.
 } { $next ->
     [ready] All set.
-    [opens] Settings, Downloads opens next.
-   *[sources] Add a source list to search.
+    [opens] Settings > Downloads will open next.
+   *[sources] Add a source list to start searching.
 }
 onboarding-ready-together = Watch together
-onboarding-ready-together-as = Rooms show you as { $name }.
-onboarding-ready-together-none = No name yet. The room panel asks the first time.
+onboarding-ready-together-as = You will appear as { $name }.
+onboarding-ready-together-none = No name yet. You will be asked the first time you join or start a room.
 onboarding-together-you = You
 onboarding-together-code = Room code
 onboarding-together-episode = Frieren · Episode 3
@@ -543,8 +545,8 @@ fix-keep = Keep the fix
 fix-leave-as-read = Leave this file as it reads
 fix-read-by-name = Read this file by its name again
 fix-report = File an issue on GitHub
-fix-report-body = Opens a filled in issue for you to send. It is public and names these files.
-fix-report-body-agent = Opens a filled in issue for you to send. It is public and names these files. { $agent } looks into it first.
+fix-report-body = Opens a pre-filled issue for you to review and submit. It is public and includes these file names.
+fix-report-body-agent = Opens a pre-filled issue for you to review and submit. It is public and includes these file names. { $agent } will look into it first.
 fix-close-unapplied =
     { $count ->
         [one] Close without applying { $count } fix?
@@ -570,7 +572,7 @@ match-found-mal = Found it on MyAnimeList
 # The sites a series is matched on, two at a time: "AniList and MyAnimeList"
 match-sites-and = { $first } and { $next }
 match-matched-on = Matched on { $sites }
-match-provider-silent = { $provider } did not answer
+match-provider-silent = { $provider } did not respond
 # The heading in a walk through several series, with "2 of 5"
 match-title-walk = Match, { $walk }
 match-title = Match
@@ -635,14 +637,14 @@ watching-connect-body = Connect it and this page lists the shows you are watchin
 watching-connect-waiting = Waiting for the browser
 watching-connect-anilist = Connect AniList
 watching-load-failed-title = The watching list did not load
-watching-load-failed-body = AniList could not be reached. The list comes back on the next refresh.
+watching-load-failed-body = Could not reach AniList. The list will reload on the next refresh.
 watching-planning-failed-title = The planning list did not load
-watching-planning-failed-body = Its cache could not be read. Try again, or it comes back on the next refresh.
+watching-planning-failed-body = Could not read the cached list. Try again, or wait for the next refresh.
 watching-planning-empty-title = Nothing on your planning list
-watching-planning-empty-body = Plan to watch on Airing now, or Planning in a show's list menu, puts a show here.
+watching-planning-empty-body = Click Plan to watch on Airing now, or choose Planning in a show's list menu, to add a show here.
 watching-airing-now = Airing now
 watching-empty-title = Nothing on your watching list
-watching-empty-body = Mark a show as Watching on AniList and it lands here.
+watching-empty-body = Mark a show as Watching on AniList and it will appear here.
 watching-open-anilist = Open AniList
 
 ## LibraryPage.qml
@@ -654,8 +656,8 @@ library-hidden =
     }
 library-hidden-sync-stops =
     { $count ->
-        [one] { $count } show hidden, and their tracker sync stops
-       *[other] { $count } shows hidden, and their tracker sync stops
+        [one] { $count } show hidden, and its tracker sync is paused
+       *[other] { $count } shows hidden, and their tracker sync is paused
     }
 library-unhidden =
     { $count ->
@@ -763,7 +765,7 @@ library-no-matches = No matches for "{ $query }"
 library-none-in-genre =
     { $what ->
         [series] No { $genre } series here
-        [films] No { $genre } films here
+        [films] No { $genre } movies here
         [watched] No { $genre } watched shows here
         [hidden] No { $genre } hidden shows here
        *[shows] No { $genre } shows here
@@ -771,7 +773,7 @@ library-none-in-genre =
 library-none-here =
     { $what ->
         [series] No series here
-        [films] No films here
+        [films] No movies here
         [watched] No watched shows here
         [hidden] No hidden shows here
        *[shows] No shows here
@@ -783,33 +785,33 @@ library-none-in-tab-body = Your library has none of these yet. All shows everyth
 library-all-filtered-body = Everything in your library is filtered out of this view.
 library-clear-search = Clear search
 library-show-all = Show all
-library-picked = { $count } picked
+library-picked = { $count } selected
 library-pick-all = All
-library-pick-all-tip = Pick every card shown (Ctrl+A)
+library-pick-all-tip = Select all visible cards (Ctrl+A)
 library-unhide = Unhide
 library-hide = Hide
 library-rate = Rate
-library-rate-tip = One score for every pick, on every connected tracker
+library-rate-tip = Apply one score to every selected show on all connected trackers
 library-needs-tracker = Needs a connected tracker and a matched show
 library-move-to-list = Move to list
 library-rescan = Rescan
 library-find-match = Find a match
-library-find-match-tip = Search for each pick without a match
-library-all-matched = Every pick has a match
+library-find-match-tip = Search for a match for each unmatched selection
+library-all-matched = Every selected show already has a match
 
 ## MetadataPage.qml
 
 metadata-title = Show info
 metadata-filter-all = All { $count }
 metadata-filter-series = Series { $count }
-metadata-filter-films = Films { $count }
+metadata-filter-films = Movies { $count }
 metadata-filter-missing = Missing { $count }
 metadata-scan-started = Scan started
 # Complete's own sort
 metadata-sort-added = Added
 metadata-sort-season = Season
 metadata-sort-a-to-z = A to Z
-metadata-section-unmatched = Not recognised
+metadata-section-unmatched = Not recognized
 metadata-section-missing = Folder not found
 metadata-section-incomplete = Missing episodes
 metadata-section-empty = Not downloaded
@@ -830,8 +832,8 @@ metadata-walk-position = { $at } of { $total }
 metadata-walk-done = That was the last one
 metadata-walk-left =
     { $count ->
-        [one] One left under Needs a match
-       *[other] { $count } left under Needs a match
+        [one] 1 left under Not recognized
+       *[other] { $count } left under Not recognized
     }
 metadata-countdown-days = { $days }d { $hours }h
 metadata-countdown-hours = { $hours }h { $minutes }m
@@ -854,11 +856,11 @@ metadata-found =
     }
 metadata-found-some-left =
     { $count ->
-        [one] Found { $count } show, { $unmatched } still not recognised
-       *[other] Found { $count } shows, { $unmatched } still not recognised
+        [one] Found { $count } show, { $unmatched } still not recognized
+       *[other] Found { $count } shows, { $unmatched } still not recognized
     }
-metadata-found-nothing = Found nothing new, { $unmatched } still not recognised
-metadata-all-recognised = Every show is recognised
+metadata-found-nothing = Found nothing new, { $unmatched } still not recognized
+metadata-all-recognised = Every show is recognized
 metadata-count =
     { $count ->
         [one] { $count } series
@@ -867,10 +869,10 @@ metadata-count =
 metadata-search-placeholder = Filter titles
 metadata-find-rest = Find the rest
 metadata-find-rest-started = Looking up the folders Anibeam does not know yet
-metadata-find-rest-tip = Looks up every folder Anibeam does not know yet, on each show info site in the order Settings gives them
+metadata-find-rest-tip = Looks up every unmatched folder using the metadata sites in the order set in Settings
 metadata-refresh-all = Refresh all
-metadata-refresh-all-started = Updating the info of every show
-metadata-refresh-all-tip = Fetches the info of every recognised show again
+metadata-refresh-all-started = Updating info for every show
+metadata-refresh-all-tip = Fetches metadata for every recognized show again
 metadata-crawling = Finding franchise links
 metadata-crawl-progress = { $done } of { $total }
 metadata-load-failed-title = Show info did not load
@@ -881,7 +883,7 @@ metadata-nothing-under =
     { $filter ->
         [Series] Nothing under Series
         [Movies] Nothing under Movies
-        [MissingFiles] Nothing under MissingFiles
+        [MissingFiles] Nothing under Missing
        *[other] Nothing under { $filter }
     }
 metadata-load-failed-body = Anibeam could not read the library just now. Try again in a moment.
@@ -897,7 +899,7 @@ metadata-refreshing = Refreshing { $title }
 metadata-refresh-tip = Fetch this show's info again
 metadata-forget-armed = Remove it
 metadata-forget-confirm-tip = Click again to remove this show and its watch history from Anibeam
-metadata-forget-tip = The folder is not on the disk any more: remove this show and its history from Anibeam
+metadata-forget-tip = The folder is not on the disk anymore: remove this show and its history from Anibeam
 
 ## AiringPage.qml
 
@@ -905,7 +907,7 @@ airing-title = Airing now
 airing-sort-popular = Popularity
 airing-sort-score = Score
 airing-sort-trending = Trending
-airing-sort-favourites = Favourites
+airing-sort-favourites = Favorites
 airing-sort-soonest = Next episode
 airing-sort-aired = Episodes aired
 airing-sort-episodes = Episode count
@@ -955,17 +957,17 @@ airing-dismissed =
         [one] { $count } show won't show up here again
        *[other] { $count } shows won't show up here again
     }
-airing-planned-already-one = { $title } is on your list already
-airing-planned-already-all = They are all on your list already
+airing-planned-already-one = { $title } is already on your list
+airing-planned-already-all = All of them are already on your list
 airing-planned =
     { $count ->
-        [one] { $count } show goes on your Planning list
-       *[other] { $count } shows go on your Planning list
+        [one] Adding { $count } show to your Planning list
+       *[other] Adding { $count } shows to your Planning list
     }
 airing-planned-some-already =
     { $count ->
-        [one] { $count } show goes on your Planning list, { $already } were on it already
-       *[other] { $count } shows go on your Planning list, { $already } were on it already
+        [one] Adding { $count } show to your Planning list ({ $already } already on it)
+       *[other] Adding { $count } shows to your Planning list ({ $already } already on it)
     }
 airing-play-next = Play next
 airing-plan-to-watch = Plan to watch
@@ -994,22 +996,22 @@ airing-out-fewer = Fewer
 airing-out-all = All { $count }
 airing-sort = Sort
 airing-load-failed-title = AniList could not be reached
-airing-load-failed-body = The shows on air come from AniList. They come back on the next refresh.
-airing-reading-title = Reading what is on air
-airing-nothing-now = Nothing on air right now
-airing-nothing-for = Nothing on air for { $season }
-airing-nothing-read = Nothing read yet
-airing-reading-body = Every show on air, from AniList. This takes a few seconds the first time.
-airing-nothing-body = AniList lists no shows for this season yet. Refresh reads it again, or pick another season.
-airing-nothing-read-body = Refresh reads every show on air from AniList.
-airing-hides-empty-title = Your hides leave nothing here
+airing-load-failed-body = Airing shows come from AniList. They will reappear on the next refresh.
+airing-reading-title = Loading airing shows
+airing-nothing-now = Nothing airing right now
+airing-nothing-for = Nothing airing for { $season }
+airing-nothing-read = Nothing loaded yet
+airing-reading-body = Every show airing this season, from AniList. This takes a few seconds the first time.
+airing-nothing-body = AniList lists no shows for this season yet. Click Refresh to check again, or pick another season.
+airing-nothing-read-body = Click Refresh to load airing shows from AniList.
+airing-hides-empty-title = Everything here is hidden by your filters
 airing-lists-empty-title = Nothing here is on your lists
 airing-library-empty-title = Nothing here is in your library
-airing-hides-empty-body = Every show here is on your lists or in your library, and you hid those.
-airing-lists-empty-body = Plan to watch on a card puts it on your list.
-airing-library-empty-body = Get episodes on a card downloads it into your library.
+airing-hides-empty-body = Every show here is on your lists or in your library, and those filters are hiding them.
+airing-lists-empty-body = Click Plan to watch on a card to add it to your list.
+airing-library-empty-body = Click Get episodes on a card to download it into your library.
 airing-show-everything = Show everything
-airing-picked = { $count } picked
+airing-picked = { $count } selected
 airing-undo = Undo
 
 ## EpisodeRow.qml
@@ -1071,8 +1073,8 @@ episodes-pane-refreshing = Refreshing { $title }
 ## ShowDetail.qml
 
 show-detail-not-in-library = This folder is not in the library yet. Once a scan finds it, its poster and episodes show here.
-show-detail-film-on-disk = The film is on disk.
-show-detail-film-not-on-disk = The film is not on disk yet.
+show-detail-film-on-disk = The movie is on disk.
+show-detail-film-not-on-disk = The movie is not on disk yet.
 show-detail-complete-line = Finished airing, and all { $total } episodes are here. Nothing more will come, so the subscription has nothing left to do.
 show-detail-finished = Finished airing.
 show-detail-airing = Airing.
@@ -1127,13 +1129,13 @@ show-detail-taken-adding-line = The rule takes { $taken } of the feed's { $relea
         [one] it.
        *[other] them.
     }
-show-detail-feed-holds-nothing = The feed holds nothing yet. Releases that fit download as soon as they appear in it.
-show-detail-nothing-fits = Nothing in the feed fits the rule yet. Releases that fit download as soon as they appear.
+show-detail-feed-holds-nothing = The feed has no releases yet. Matching releases will download automatically as they appear.
+show-detail-nothing-fits = Nothing in the feed matches the rule yet. Matching releases will download automatically as they appear.
 show-detail-complete = Complete
 show-detail-open-in-library = Open in library
 show-detail-feed-finds-nothing = This feed finds nothing
-show-detail-feed-empty-query = It asks { $source } for “{ $query }”, which comes back empty, so nothing new can reach the rule. A shorter search usually answers; the words it drops can stay in the rule instead.
-show-detail-feed-empty = It asks { $source }, which comes back empty, so nothing new can reach the rule. A shorter search usually answers; the words it drops can stay in the rule instead.
+show-detail-feed-empty-query = It searches { $source } for “{ $query }”, which returned no results, so nothing new can match the rule. A shorter search usually returns results; the dropped words can stay in the rule instead.
+show-detail-feed-empty = It searches { $source }, which returned no results, so nothing new can match the rule. A shorter search usually returns results; the dropped words can stay in the rule instead.
 show-detail-feed-empty-earlier = qBittorrent still shows what an earlier version of this feed found.
 show-detail-repairing = Repairing
 show-detail-repair = Repair
@@ -1176,9 +1178,9 @@ show-detail-torrents-moving =
         [one] { $count } downloading now; the bars fill as they go.
        *[other] { $count } downloading now; the bars fill as they go.
     }
-show-detail-torrents-held = What the client holds for this folder.
+show-detail-torrents-held = Torrents in the client for this folder.
 show-detail-torrents-waiting = Waiting for qBittorrent to add what the rule takes.
-show-detail-torrents-none = The client holds none for this folder.
+show-detail-torrents-none = No torrents in the client for this folder.
 
 ## SeriesPage.qml
 
@@ -1202,8 +1204,8 @@ series-open-in-show-info = Open in Show info
 series-delete-done =
     { $kind ->
         [film] { $count ->
-            [one] { $count } film moved to the trash
-           *[other] { $count } films moved to the trash
+            [one] { $count } movie moved to the trash
+           *[other] { $count } movies moved to the trash
         }
         [episode] { $count ->
             [one] { $count } episode moved to the trash
@@ -1217,23 +1219,23 @@ series-delete-done =
 series-delete-picked =
     { $kind ->
         [film] { $count ->
-            [one] { $count } film picked.
-           *[other] { $count } films picked.
+            [one] { $count } movie selected.
+           *[other] { $count } movies selected.
         }
         [episode] { $count ->
-            [one] { $count } episode picked.
-           *[other] { $count } episodes picked.
+            [one] { $count } episode selected.
+           *[other] { $count } episodes selected.
         }
        *[file] { $count ->
-            [one] { $count } file picked.
-           *[other] { $count } files picked.
+            [one] { $count } file selected.
+           *[other] { $count } files selected.
         }
     }
 series-delete-move-picked =
     { $kind ->
         [film] { $count ->
-            [one] Move { $count } film to the trash
-           *[other] Move { $count } films to the trash
+            [one] Move { $count } movie to the trash
+           *[other] Move { $count } movies to the trash
         }
         [episode] { $count ->
             [one] Move { $count } episode to the trash
@@ -1245,20 +1247,20 @@ series-delete-move-picked =
         }
     }
 series-delete-click = Click the files to delete.
-series-delete-where = They go to the trash, where you can get them back. What you watched stays tracked.
+series-delete-where = They will be moved to the trash so you can recover them. What you watched stays tracked.
 series-delete-move = Move to the trash
-series-pick-none = Pick none
-series-pick-all = Pick all
+series-pick-none = Select none
+series-pick-all = Select all
 series-rescan-started = Rescan started
 series-rated = Rated { $score }
-series-rated-cleared = Rated cleared
+series-rated-cleared = Rating cleared
 series-score-not-saved = Could not save the score.
-series-still-downloading-plays = { $episode } is still downloading. It plays once the download finishes.
+series-still-downloading-plays = { $episode } is still downloading. It will play once the download finishes.
 series-open-downloads = Open Downloads
 series-format-series = Series
-series-tracker-refused = { $tracker } did not take it
-series-tracker-refused-why = { $tracker } did not take it: { $why }
-series-tracker-check-accounts = { $list }. Check the connection in Settings, under Accounts.
+series-tracker-refused = { $tracker } rejected the update
+series-tracker-refused-why = { $tracker } rejected the update: { $why }
+series-tracker-check-accounts = { $list }. Check the connection in Settings > Accounts.
 series-watched-up-to = Watched up to { $episode }
 series-unwatched-from = Unwatched from { $episode }
 series-undo = Undo
@@ -1309,7 +1311,7 @@ series-downloading-episodes =
     }
 series-count-season-ends = Season { $season } ends at episode { $number }
 series-count-ends = Ends at episode { $number }
-series-count-gave-way = You set { $count } episodes; that no longer applies
+series-count-gave-way = You set { $count } episodes, which no longer applies
 # $line is what the user set, the parts joined with " · "
 series-count-set-by-you = { $line }, set by you
 series-change = Change
@@ -1338,7 +1340,7 @@ series-hide-tip = Hidden from every list
 series-fixes = Fixes
 series-fixes-tip = Fix files, the episode count, the match, or rescan
 series-quick-fix = Quick fix
-series-film = Film
+series-film = Movie
 series-episodes = Episodes
 series-extras = Openings, endings and more
 series-extras-openings = Openings
@@ -1361,7 +1363,7 @@ series-match = Match
 series-not-matched = Not matched yet, so there is no poster, synopsis or tracking. Find its show info on AniList or TVmaze.
 series-naming-title = Names that match
 series-naming-body = The folder is the show's title, the way AniList writes it, with the season after it when it is not the first. Each file carries the episode number.
-series-fix-how-files-read = Fix how files read
+series-fix-how-files-read = Fix how files are read
 series-characters = Characters
 series-related = Related
 series-related-filling = Still filling in from AniList.
@@ -1419,13 +1421,13 @@ get-show-subscribe = Subscribe for new episodes
 get-show-nothing-new = Nothing new to get
 get-show-pick-episode = Pick an episode
 # $episodes is get-show-episodes-inline
-get-show-replace-off = Off. The picks for { $episodes } are left out, since the library has them. Turn it on to swap them.
-get-show-replace-on = The files you have for { $episodes } go to the trash once the new ones finish.
+get-show-replace-off = Off. Selected files for { $episodes } are skipped since they are already in your library. Turn on to replace them.
+get-show-replace-on = Existing files for { $episodes } will be moved to the trash once the new downloads finish.
 # $episodes is get-show-episodes
 get-show-replace-on-the-way =
     { $count ->
-        [one] { $episodes } is downloading now: that download is cancelled and what it wrote goes to the trash.
-       *[other] { $episodes } are downloading now: that download is cancelled and what it wrote goes to the trash.
+        [one] { $episodes } is downloading now: that download will be canceled and its partial files will be moved to the trash.
+       *[other] { $episodes } are downloading now: those downloads will be canceled and their partial files will be moved to the trash.
     }
 get-show-kind-on-demand = Started when a search needs it
 get-show-kind-rss-search = RSS search
@@ -1497,18 +1499,18 @@ get-show-batch-episodes =
         [one] { $count } episode, one torrent
        *[other] { $count } episodes, one torrent
     }
-get-show-nothing-new-picked = Nothing new picked
-get-show-nothing-picked = Nothing picked
+get-show-nothing-new-picked = Nothing new selected
+get-show-nothing-picked = Nothing selected
 get-show-pick-provider = Pick a provider
 # $groups is the release groups, joined with get-show-and
 get-show-plan-line = { $episodes } from { $groups } on { $source }.
 get-show-and = { $first } and { $second }
 get-show-library-has =
     { $count ->
-        [one] The library has { $episodes }. Turn on Replace current episodes below to swap it.
-       *[other] The library has { $episodes }. Turn on Replace current episodes below to swap them.
+        [one] Your library already has { $episodes }. Turn on Replace current episodes below to swap it.
+       *[other] Your library already has { $episodes }. Turn on Replace current episodes below to swap them.
     }
-get-show-together = together
+get-show-together = total
 get-show-torrents-unit =
     { $count ->
         [one] torrent
@@ -1516,22 +1518,22 @@ get-show-torrents-unit =
     }
 get-show-replace = Replace current episodes
 get-show-sequential = Download in order
-get-show-sequential-on = On: each new torrent fetches its pieces from the start, so the first episodes finish first and you can watch while the rest comes. A little slower overall.
+get-show-sequential-on = On: each new torrent fetches pieces from the start, so the first episodes finish first and you can watch while the rest downloads. Slightly slower overall.
 get-show-sequential-off = Off: the client fetches pieces in whatever order the swarm offers them.
-get-show-rolling = Keep the next few ready
-get-show-rolling-on = On: { $count } episodes download now, and each one you finish starts the next.
-get-show-rolling-on-delete = On: { $count } episodes download now, and each one you finish starts the next. Watched episodes leave the disk.
-get-show-rolling-off = Off: every picked episode downloads at once.
-get-show-follow-off = Off: new episodes show up here as gaps, and nothing downloads by itself.
-get-show-follow-no-feed = { $source } has no feed to follow, so new episodes cannot download by themselves from it.
+get-show-rolling = Rolling downloads
+get-show-rolling-on = On: { $count } episodes will download now, and finishing one starts the next.
+get-show-rolling-on-delete = On: { $count } episodes will download now, and finishing one starts the next. Watched episodes are deleted automatically.
+get-show-rolling-off = Off: every selected episode downloads at once.
+get-show-follow-off = Off: new episodes show up here as gaps, and nothing downloads automatically.
+get-show-follow-no-feed = { $source } has no feed to follow, so new episodes cannot download automatically from it.
 get-show-follow-pick-group = Pick a group first: a subscription follows one group and quality.
-get-show-follow-batch-only = { $group } has only the batch here, so there is no feed of single episodes to subscribe to.
+get-show-follow-batch-only = { $group } only has a batch here, so there is no single-episode feed to subscribe to.
 # $feed is the release group and its quality
-get-show-follow-on = On: a feed for { $feed } on { $source }. Each new episode downloads as it appears.
+get-show-follow-on = On: a feed for { $feed } on { $source }. New episodes download automatically as they appear.
 get-show-confirm =
     { $count ->
-        [one] { $episodes } is downloading now. Replacing it cancels that download and moves what it wrote to the trash.
-       *[other] { $episodes } are downloading now. Replacing them cancels that download and moves what it wrote to the trash.
+        [one] { $episodes } is downloading now. Replacing it will cancel that download and move its partial files to the trash.
+       *[other] { $episodes } are downloading now. Replacing them will cancel those downloads and move their partial files to the trash.
     }
 get-show-confirm-go = Cancel it and replace
 get-show-state-error = Error
@@ -1556,8 +1558,8 @@ get-show-stopping = Stopping
 get-show-starting = Starting
 get-show-stop = Stop
 get-show-start-tip = Start downloading again
-get-show-stop-tip = Stop downloading; what it has stays
-get-show-cancelling = Cancelling
+get-show-stop-tip = Stop downloading; downloaded data is kept
+get-show-cancelling = Canceling
 get-show-cancel-tip = Cancel this download and move what it wrote to the trash
 get-show-episode-order = Download in episode order
 get-show-episode-order-on = On: pieces come from the start of each file, so the first episodes finish first.
@@ -1629,8 +1631,8 @@ start-source-starting = Starting
 search-progress-why-helper = Anibeam is starting its search helper; this takes a second or two.
 search-progress-why-starting = { $endpoint } runs through a helper that starts when a search needs it. The first search waits for it, up to { $seconds } seconds; the ones after skip this.
 search-progress-why-reading = Splitting the releases into groups and checking them against the library.
-search-progress-why-ondemand = A helper reads { $endpoint } afresh for every new search, which usually takes ten to twenty seconds.
-search-progress-why-slow = { $endpoint } is slow to answer right now.
+search-progress-why-ondemand = A helper queries { $endpoint } fresh for every new search, which usually takes 10 to 20 seconds.
+search-progress-why-slow = { $endpoint } is slow to respond right now.
 search-progress-why-usual = This usually takes a second or two.
 search-progress-why-and-slow = { $why } This is taking longer than usual; cancel to try another source.
 search-progress-searching = Searching
@@ -1649,8 +1651,8 @@ release-table-col-seeders = Seeders
 release-table-col-leechers = Leechers
 release-table-col-downloads = Downloads
 release-table-col-released = Released
-release-table-tick-all = Tick every release
-release-table-untick-all = Untick every release
+release-table-tick-all = Select all releases
+release-table-untick-all = Deselect all releases
 release-table-on-disk = On disk
 release-table-other-on-disk = Other release on disk
 release-table-season-batch = Season { $season } batch
@@ -1668,7 +1670,7 @@ release-table-pick = Pick this release
 downloads-title = Downloads
 downloads-builtin-client = Built-in client
 downloads-start-done = { $name } is running and switched on
-downloads-disk-film = Film
+downloads-disk-film = Movie
 downloads-disk-watched = { $size } watched
 downloads-disk-all-watched = all watched
 downloads-delete-watched-menu =
@@ -1683,20 +1685,20 @@ downloads-delete-finished-menu =
     }
 downloads-titles-and = { $list } and { $last }
 downloads-titles-more = { $list } and { $count } more
-downloads-delete-finished-none = No finished show is watched all the way through
+downloads-delete-finished-none = No finished shows have been completely watched
 downloads-delete-watched-none = Nothing watched is on disk
 downloads-delete-finished-heading =
     { $count ->
         [one] Delete { $count } finished show, { $size }?
        *[other] Delete { $count } finished shows, { $size }?
     }
-downloads-delete-finished-base = { $titles }. Only shows the provider says have finished, every episode watched; a show still airing, or whose end is a guess, stays. Every file of them goes to the trash, extras too. Their torrents leave { $client } too, so they can be downloaded again.
+downloads-delete-finished-base = { $titles }. Includes only shows marked as finished with every episode watched; airing or unconfirmed shows are kept. All of their files (including extras) will be moved to the trash, and their torrents will be removed from { $client } so they can be downloaded again.
 downloads-delete-watched-heading =
     { $count ->
         [one] Delete { $count } watched episode, { $size }?
        *[other] Delete { $count } watched episodes, { $size }?
     }
-downloads-delete-watched-base = Every episode you have watched, in every show. Episodes not watched yet and extras stay. The files and their subtitles go to the trash, so you can get them back from there. Their torrents leave { $client } too, so they can be downloaded again.
+downloads-delete-watched-base = Every episode you have watched across all shows. Unwatched episodes and extras are kept. Files and subtitles will be moved to the trash so you can recover them. Their torrents will be removed from { $client } so they can be downloaded again.
 downloads-move-to-trash = Move to trash
 downloads-remove-group-torrents =
     { $count ->
@@ -1719,12 +1721,12 @@ downloads-gap-then-not-downloaded = { $runs } not downloaded
 downloads-trying-query = Trying { $query }
 downloads-client-settings = Torrent client settings
 downloads-error-unknown = Something went wrong. Try again.
-downloads-search-all-off = Every source is switched off. Switch one on to search.
+downloads-search-all-off = All sources are turned off. Turn one on to search.
 downloads-turn-on = Turn on { $name }
-downloads-search-no-sources = There are no sources to search yet. Add a source list in Settings, under Downloads.
+downloads-search-no-sources = No search sources yet. Add a source list in Settings > Downloads.
 downloads-no-sources = No sources to search yet
 downloads-search-none-started = No source could start the search. Try again in a moment.
-downloads-auto-resolution = Narrowed to { $resolution }, the sharpest on offer
+downloads-auto-resolution = Narrowed to { $resolution }, the highest available
 downloads-search-one-failed = The search on { $name } did not work. Try again, or search another source.
 downloads-search-all-failed = None of the sources could search. Try again in a moment.
 downloads-narrowing-on = Narrowing on { $name }
@@ -1732,9 +1734,9 @@ downloads-refine-zero = That would leave nothing, so the list stays as it is.
 downloads-refine-no-match = No release matches that term.
 downloads-refine-empty = Type a term to narrow by.
 downloads-refine-no-change = That would change nothing.
-downloads-movie-tick-one = Tick one release, then press Download as a movie.
+downloads-movie-tick-one = Select one release, then click Download as a movie.
 downloads-group-downloading = Downloading
-downloads-group-downloading-line = Moving now; Activity at the right has the detail.
+downloads-group-downloading-line = Active now; see Activity on the right for details.
 downloads-group-seeding = Seeding
 downloads-group-seeding-line = Downloaded and still sharing.
 downloads-group-done = Done
@@ -1758,7 +1760,7 @@ downloads-torrents =
         [one] { $count } torrent
        *[other] { $count } torrents
     }
-downloads-rule-film-on-disk = Film, on disk
+downloads-rule-film-on-disk = Movie, on disk
 downloads-rule-all-here = All { $total } here
 downloads-rule-next =
     { $predicted ->
@@ -1788,17 +1790,17 @@ downloads-files-torrents = what the torrents downloaded
 downloads-files-torrents-remote = what the torrents downloaded, deleted by { $client }
 downloads-files-folder-and = { $folder } and { $torrents }
 downloads-unsubscribe-heading = Unsubscribe from { $title }?
-downloads-unsubscribe-base = Its feed and download rule leave { $client }, so nothing new arrives.
+downloads-unsubscribe-base = Its feed and download rule will be removed from { $client }, so no new episodes will download.
 downloads-unsubscribe-complete-heading = Unsubscribe from all { $count } complete shows?
-downloads-unsubscribe-complete-base = Their feeds and download rules leave { $client }. Every episode of them is in the library.
+downloads-unsubscribe-complete-base = Their feeds and download rules will be removed from { $client }. All of their episodes are already in your library.
 downloads-files-folders-and-torrents = their folders and what their torrents downloaded
 downloads-one-at-a-time = They go one at a time; the page shows each as it goes.
 downloads-subscription-stays = { $base } The subscription stays.
 downloads-cancel-heading = Cancel { $title }?
 downloads-cancel-group-base =
     { $count ->
-        [one] Its download stops and leaves { $client }.
-       *[other] Its { $count } downloads stop and leave { $client }.
+        [one] Its download will stop and be removed from { $client }.
+       *[other] Its { $count } downloads will stop and be removed from { $client }.
     }
 downloads-files-so-far-it = what it has downloaded so far
 downloads-files-so-far-they = what they have downloaded so far
@@ -1807,16 +1809,16 @@ downloads-keep-downloading = Keep downloading
 downloads-remove-heading = Remove { $title }?
 downloads-remove-group-base =
     { $count ->
-        [one] Its torrent leaves { $client }; the files stay unless you tick below.
-       *[other] Its { $count } torrents leave { $client }; the files stay unless you tick below.
+        [one] Its torrent will be removed from { $client }; the files stay unless you check the box below.
+       *[other] Its { $count } torrents will be removed from { $client }; the files stay unless you check the box below.
     }
 downloads-remove-detail-base =
     { $count ->
-        [one] Its { $count } torrent leaves { $client }; the files stay unless you tick below.
-       *[other] Its { $count } torrents leave { $client }; the files stay unless you tick below.
+        [one] Its { $count } torrent will be removed from { $client }; the files stay unless you check the box below.
+       *[other] Its { $count } torrents will be removed from { $client }; the files stay unless you check the box below.
     }
 downloads-remove-broken-heading = Remove the torrents of all { $count } shows with files missing?
-downloads-remove-broken-base = Their { $count } torrents leave { $client }. They point at folders that are not there, so no file is touched; subscriptions stay.
+downloads-remove-broken-base = Their { $count } torrents will be removed from { $client }. Their folders are missing, so no files will be touched; subscriptions stay.
 downloads-remove-torrent-heading = Remove this torrent?
 downloads-files-it-downloaded = what it downloaded
 downloads-cancel-torrent-heading = Cancel this download?
@@ -1825,11 +1827,11 @@ downloads-cancel-many-heading =
         [one] Cancel { $count } download?
        *[other] Cancel { $count } downloads?
     }
-downloads-cancel-many-base = Every download of this show stops and leaves { $client }.
+downloads-cancel-many-base = All downloads for this show will stop and be removed from { $client }.
 downloads-cancel-all = Cancel them all
 downloads-summary-connecting = Connecting.
 downloads-summary-client-on = { $client } { $version } is connected.
-downloads-summary-client-off = { $client } is not connected. Check its address and password in Settings, under Downloads.
+downloads-summary-client-off = { $client } is not connected. Check its address and password in Settings > Downloads.
 downloads-summary-native = Anibeam searches your sources itself.
 downloads-summary-native-with = Anibeam searches your sources itself. { $client }
 downloads-summary-starting = Starting downloads.
@@ -1867,16 +1869,16 @@ downloads-activity-hide = Hide activity
 downloads-activity = Activity
 downloads-moving =
     { $count ->
-        [one] { $count } download moving
-       *[other] { $count } downloads moving
+        [one] { $count } active download
+       *[other] { $count } active downloads
     }
 downloads-back = Back to Downloads
 downloads-chip-search-ready = Search ready
 downloads-chip-search-starting = Search starting
 downloads-chip-search-off = Search off
-downloads-chip-answers-at = { $summary } It answers at { $url }.
-downloads-chip-helper-missing = The search helper is not installed. Click for the Downloads settings, which say how to add it
-downloads-chip-helper-failed = The search helper stopped. Reconnect starts it again; the Downloads settings say what went wrong
+downloads-chip-answers-at = { $summary } Listening at { $url }.
+downloads-chip-helper-missing = The search helper is not installed. Click to open Settings > Downloads for setup instructions
+downloads-chip-helper-failed = The search helper stopped. Click Reconnect to restart it, or check Settings > Downloads for details
 downloads-chip-open-settings = Open the Downloads settings
 downloads-chip-client-on = { $client } { $version }
 downloads-chip-client-off = { $client } off
@@ -1887,7 +1889,7 @@ downloads-connecting = Connecting
 downloads-reconnect = Reconnect
 downloads-search-placeholder = Search for a show, or a release name
 downloads-search-go-tip = Search release names on { $names }
-downloads-search-go-off = Every source is switched off.
+downloads-search-go-off = All sources are turned off.
 downloads-suggest-airing =
     { $predicted ->
         [yes] Airing, episode { $episode } predicted in { $time }
@@ -1905,6 +1907,8 @@ downloads-suggest-on-anilist = On AniList, not in your library
 downloads-plan-to-watch = Plan to watch
 downloads-suggest-release-search = Search release names for “{ $query }” on { $names } instead
 downloads-key-return = Return
+downloads-magnet-invalid = This magnet link doesn't name a torrent
+downloads-magnet-film = Download as a film
 downloads-sources = Sources
 downloads-source-hint-starting = starting
 downloads-source-hint-down = not running
@@ -1925,7 +1929,7 @@ downloads-releases-on =
 downloads-found-on = Found on
 downloads-found-searching = searching
 downloads-found-failed = failed
-downloads-found-cancelled = cancelled
+downloads-found-cancelled = canceled
 downloads-releases =
     { $count ->
         [one] { $count } release
@@ -1976,10 +1980,10 @@ downloads-strip-other-on-disk =
 downloads-strip-both = { $first }; { $second }.
 downloads-tick-missing =
     { $count ->
-        [one] Tick the { $count } missing episode
-       *[other] Tick the { $count } missing episodes
+        [one] Select the { $count } missing episode
+       *[other] Select the { $count } missing episodes
     }
-    .tip = For each episode here the library does not have, the release with the most seeders
+    .tip = For each missing episode, selects the release with the most seeders
 downloads-open-in-library = Open in library
 downloads-not-this-show = Not this show
 downloads-no-releases = No releases
@@ -1987,13 +1991,13 @@ downloads-no-releases-body = Nothing on { $name } matches “{ $query }”. Anot
 downloads-try-source = Try { $name }
 downloads-ticked =
     { $count ->
-        [one] { $count } release ticked
-       *[other] { $count } releases ticked
+        [one] { $count } release selected
+       *[other] { $count } releases selected
     }
-downloads-nothing-ticked = Nothing ticked
-downloads-ticked-size = { $size } together.
-downloads-tick-hint = Tick releases in the table, or download them all.
-downloads-tick-all = Tick all
+downloads-nothing-ticked = Nothing selected
+downloads-ticked-size = { $size } total.
+downloads-tick-hint = Select releases in the table, or download them all.
+downloads-tick-all = Select all
 downloads-working = Working
 downloads-download-ticked =
     { $count ->
@@ -2003,9 +2007,9 @@ downloads-download-ticked =
 downloads-download-shown = Download the { $count } shown
 downloads-download-all = Download all { $count }
 downloads-download-movie = Download as a movie
-    .tip = One ticked release, straight into the movie folder
+    .tip = One selected release, saved directly to the movie folder
 downloads-subscribe = Subscribe
-downloads-subscribe-body = New releases that match this search download as they appear, into the folder named here.
+downloads-subscribe-body = New releases matching this search will download automatically into the folder named here.
 downloads-name-placeholder = Picked from the first release
 downloads-subscribe-search = Subscribe to this search
 downloads-subscribe-no-feed = No feed to subscribe to here
@@ -2015,12 +2019,12 @@ downloads-preview-from = From { $host }
 downloads-preview-from-named = From { $host } ({ $name })
 downloads-preview-must = Must contain { $terms }
 downloads-preview-must-not = Must not contain { $terms }
-downloads-helper-changed = Downloads is set to a helper that does not answer
+downloads-helper-changed = Downloads is configured for a search helper that is not responding
 downloads-helper-missing = This copy of Anibeam came without downloads
 downloads-helper-failed = Downloads could not start
-downloads-helper-changed-body = Searches and downloads run through a small helper program. Settings point at another one than Anibeam's own, and it is not answering. Switch back and it starts by itself.
-downloads-helper-missing-body = It was built without the helper program searches and downloads run through. The installers on the releases page have it. Settings, Downloads says how to add it to this copy.
-downloads-helper-failed-body = The helper program searches and downloads run through stopped before it was ready. Starting it again fixes this most of the time.
+downloads-helper-changed-body = Searches and downloads run through a small helper program. Settings currently point to a different helper than Anibeam's built-in one, and it is not responding. Switch back to start Anibeam's helper automatically.
+downloads-helper-missing-body = This build does not include the search and download helper program. Official installers on the releases page include it, or check Settings > Downloads to set it up.
+downloads-helper-failed-body = The helper program used for searches and downloads stopped before it was ready. Starting it again usually fixes this.
 downloads-helper-use-own = Use Anibeam's own
 downloads-helper-start-again = Start again
 downloads-helper-show-how = Show me how
@@ -2030,11 +2034,11 @@ downloads-lens-airing-count = Airing  { $count }
 downloads-lens-following-count = Following  { $count }
 downloads-lens-downloaded-count = Downloaded  { $count }
 downloads-lens-gaps = Gaps in your library
-downloads-lens-gaps-line = Aired episodes that are not on disk. Open a show to see who has them.
+downloads-lens-gaps-line = Aired episodes missing from your disk. Open a show to search for them.
 downloads-lens-gaps-none = Nothing is missing: every aired episode of every show is on disk.
 downloads-lens-airing-line = Shows in your library with episodes still to come. Open one to follow it.
 downloads-lens-airing-none = Nothing in your library is airing
-downloads-lens-airing-none-body = A show lands here once it is in your library and has episodes still to come. Airing now lists everything on air.
+downloads-lens-airing-none-body = Shows appear here once they are in your library and still have upcoming episodes. Check Airing now to browse everything currently airing.
 downloads-airing-now = Airing now
 downloads-lens-following = Following
 downloads-card-next =
@@ -2077,8 +2081,8 @@ downloads-on-disk-line = In your library with no torrent in { $client }, the big
 downloads-nothing-downloaded = Nothing downloaded
 downloads-nothing-downloaded-body = What you download or subscribe to shows up here, a show at a time.
 downloads-client-off-title = { $client } is not connected
-downloads-client-off-body = Check it is running, then connect again. Its address and password are in Settings, under Downloads.
-downloads-connect-again = Connect again
+downloads-client-off-body = Make sure it is running, then reconnect. You can check its address and password in Settings > Downloads.
+downloads-connect-again = Reconnect
 downloads-view-grid = Grid
 downloads-view-list = List
 downloads-chip-subscribed = Subscribed
@@ -2107,7 +2111,7 @@ track-picker-off = Off
 roll-controls-window = Keeping { $ahead } ready: episodes { $next } to { $through } of { $total }
 roll-controls-window-watched = Keeping { $ahead } ready: episodes { $next } to { $through } of { $total }, { $watched } watched
 roll-controls-more = Get { $count } more
-roll-controls-more-tip = Download the next episodes now. Anibeam keeps the next few ready again once you catch up.
+roll-controls-more-tip = Download the next episodes now. Rolling downloads resume once you catch up.
 roll-controls-fewer-tip = Keep one fewer ahead
 roll-controls-ahead = { $count } ahead
 roll-controls-further-tip = Keep one more ahead
@@ -2145,11 +2149,11 @@ room-name-bad = That name does not work. Use 1 to 32 characters.
 room-error-not-found = No room has that code. Check it with whoever sent it; the room may have closed.
 room-error-full = That room is full. Rooms take 10 people.
 room-error-unreachable = Could not reach the room server. Check your connection and try again.
-room-error-refused = The room server turned this down. Try again in a minute.
-room-error-proto = That room runs on a newer version of rooms. Update { -app-name } to join it.
+room-error-refused = The room server rejected the request. Try again in a minute.
+room-error-proto = That room uses a newer Watch together version. Update { -app-name } to join.
 room-error-not-in-room = You are no longer in that room. Start or join one again.
 room-error-bad-code = A room code is 6 letters and digits, like K7QM2X.
-room-error-bad-relay = The room server in Settings, Playback is not a web address. Fix it there and try again.
+room-error-bad-relay = The room server in Settings > Playback is not a valid web address. Fix it there and try again.
 room-error-cannot-fetch = The host can't share this episode right now. Try again once they are back in the room.
 room-error-needs-episode = That room server needs an episode to start a room. Start it from the player instead.
 
@@ -2167,7 +2171,7 @@ room-panel-start = Start a room
 room-panel-or-join = Or join one with its code
 room-panel-join-label = Room code
 room-panel-join = Join
-room-panel-you-are = You show as { $name }
+room-panel-you-are = Showing as { $name }
 room-panel-change-name = Change
 room-panel-code-label = Room code
 room-panel-copy = Copy link
@@ -2197,7 +2201,7 @@ room-panel-searching = Searching
 room-panel-failed = Couldn't get it
 room-panel-percent = { $percent }%
 room-panel-left = { $time } left
-room-panel-nothing-picked = Nothing picked yet
+room-panel-nothing-picked = Nothing selected yet
 room-panel-this-episode = This episode
 room-panel-whole-show = Whole show
 # The host's ready gate (#922): how many in the room have the episode open
@@ -2288,7 +2292,7 @@ endpoint-repos-panel-fields-changed = Its fields changed.
 endpoint-repos-panel-needs-fields = Needs its { $fields } before it searches.
 endpoint-repos-panel-no-longer-offered = No longer offered by its source list.
 endpoint-repos-panel-update-requests-to = The update sends requests to { $host }.
-endpoint-repos-panel-unreadable = This list could not be read. Refresh lists tries it again.
+endpoint-repos-panel-unreadable = Could not read this source list. Click Refresh lists to try again.
 endpoint-repos-panel-checking = Checking
 endpoint-repos-panel-add = Add
 endpoint-repos-panel-fingerprint = Key fingerprint  { $fingerprint }
@@ -2339,7 +2343,7 @@ schedule-tile-last = Last
 schedule-tile-out = Out
 schedule-ends-at = Ends at episode { $number }
 schedule-dated-by-site = { $count } dated by { $site }
-schedule-dated-by-record = { $count } dated by the record
+schedule-dated-by-record = { $count } from metadata
 schedule-set-by-you = { $count } set by you
 schedule-guessed-weekly = { $count } guessed weekly
 schedule-nothing-set = Nothing set yet
@@ -2393,8 +2397,8 @@ show-anilist-score = AniList { $score }
 show-forecast = { $percent }% for you
 show-because-you-watched = Because you watched
 show-hidden-loved = { $count ->
-    [one] A hidden tag you love is behind it
-   *[other] { $count } hidden tags you love are behind it
+    [one] Matches a hidden tag you tend to like
+   *[other] Matches { $count } hidden tags you tend to like
 }
 show-you-gave-it = You gave it { $score }
 show-story = Story
@@ -2416,7 +2420,7 @@ connect-finish-in-browser = Finish in your browser
 connect-signed-in-anilist = Signed in as { $account }. Your list is on the Watching page.
 connect-signed-in-mal = Signed in as { $account }. Episodes are marked there as you watch.
 connect-setup-lead = { $name } signs Anibeam in through an app of your own. It takes about a minute, once.
-connect-page-open = { $name }'s sign-in page is open in your browser. Approve Anibeam there and this closes itself.
+connect-page-open = { $name }'s sign-in page is open in your browser. Approve Anibeam there and this dialog will close automatically.
 connect-page-opening = Opening { $name }'s sign-in page in your browser.
 connect-open-watching = Open Watching
 connect-done = Done
@@ -2436,7 +2440,7 @@ connect-step-paste-id-anilist = AniList calls it Client ID: the number on your n
 connect-step-paste-id-mal = MyAnimeList calls it Client ID: the long string on your new app's page.
 connect-client-id = Client ID
 connect-client-secret-web = Client secret (only for Web apps)
-connect-step-connect-body = The browser opens, { $name } asks you to sign in and approve Anibeam, and Anibeam catches the reply.
+connect-step-connect-body = Your browser will open so you can sign in to { $name } and approve Anibeam.
 
 ## SettingsPage
 
@@ -2484,7 +2488,7 @@ settings-find-title-language =
 settings-find-mode =
     .words = dark light system theme night
 settings-find-colours-from =
-    .words = terminal desktop system theme source kitty
+    .words = colour color terminal desktop system theme source kitty
 settings-find-dark-theme =
     .words = colour scheme base16
 settings-find-light-theme =
@@ -2534,7 +2538,7 @@ settings-find-styled =
 settings-find-font =
     .words = typeface
 settings-find-text-colour =
-    .words = color
+    .words = colour color
 settings-find-outline =
     .words = border stroke
 settings-find-background =
@@ -2598,10 +2602,10 @@ settings-downloads-title = Downloads
 settings-downloads-anirss-ready = Running, version { $version } at { $url }.
 settings-downloads-anirss-starting = Starting the search helper.
 settings-downloads-anirss-missing = The search helper is not installed. Reinstall Anibeam, or name your own anirss under Command.
-settings-downloads-anirss-failed = The search helper stopped. Try again starts it; Details says what it said.
+settings-downloads-anirss-failed = The search helper stopped. Click Try again to restart it, or open Details to see the error output.
 settings-downloads-anirss-idle = Not started yet. It starts the first time you search on the Downloads page.
 settings-downloads-torrent-trying = Trying { $client }.
-settings-downloads-torrent-answered = { $client } { $version } answered.
+settings-downloads-torrent-answered = Connected to { $client } { $version }.
 settings-downloads-torrent-failed = { $client } did not connect. Check the address and password above, then test again.
 settings-downloads-torrent-untried = Not tried yet.
 settings-downloads-password-saved = A password is saved here for this client.
@@ -2610,7 +2614,7 @@ settings-downloads-password-none = No password saved. A client that bypasses its
 settings-downloads-mismatch = The search helper talks to { $helperUrl } while Anibeam talks to { $url }. A search helper you run yourself reads the address from its own config.toml, so switching clients here does not move it.
 settings-downloads-torrent-title = Torrent client
 settings-downloads-which-client = Which client
-settings-downloads-pick-for-me = Pick for me
+settings-downloads-pick-for-me = Auto
 settings-downloads-my-own = My own
 settings-downloads-built-in = Built-in
 settings-downloads-saved-clients = Saved clients
@@ -2630,7 +2634,7 @@ settings-downloads-save-to-pick = Save downloads to
 settings-downloads-connection = Connection
 settings-downloads-open-config = Open its config
 settings-downloads-details = Details
-settings-downloads-details-torrent = { $client } said this when Anibeam tried it.
+settings-downloads-details-torrent = Error returned by { $client }.
 settings-downloads-test-trying = Trying
 settings-downloads-test-save = Save and test
 settings-downloads-test = Test
@@ -2643,22 +2647,27 @@ settings-downloads-runs-sidecar = Anibeam runs it
 settings-downloads-runs-remote = I run it
 settings-downloads-command = Command
 settings-downloads-key = Key
-settings-downloads-details-anirss = The search helper said this when it stopped.
+settings-downloads-details-anirss = Search helper details.
 settings-downloads-starting = Starting
 settings-downloads-reconnect = Reconnect
 settings-downloads-save-first = Save your changes first
-settings-downloads-roll-title = Keep the next few ready
-settings-downloads-roll-big = For long shows
+settings-downloads-roll-title = Rolling downloads
+settings-downloads-roll-big = Auto-enable for long shows
 settings-downloads-roll-ahead = Episodes ahead
 # The unit after a slider's number: "12 episodes"
 settings-downloads-unit-episodes = episodes
-settings-downloads-roll-over = Long means over
+settings-downloads-roll-over = Roll shows longer than
 settings-downloads-roll-watched = Watched episodes
 settings-downloads-keep-all = Keep all
-settings-downloads-keep-behind = Keep behind
+settings-downloads-keep-behind = Watched episodes to keep
 settings-downloads-subscriptions-title = Subscriptions and searches
 settings-downloads-last-search = Keep the last search
 settings-downloads-prune = Unsubscribe from finished shows
+settings-downloads-magnet = Magnet links
+settings-downloads-magnet-anibeam = Anibeam opens them
+settings-downloads-magnet-other = Another app opens them
+settings-downloads-magnet-none = Nothing opens them
+settings-downloads-magnet-use = Open them in Anibeam
 settings-downloads-sources-title = Search sources
 settings-downloads-sources-empty = No sources set up yet
 settings-downloads-sources-connect = Connect the search helper to list them
@@ -2685,7 +2694,7 @@ settings-developer-peak = Peak
 settings-developer-heap = Heap
 settings-developer-files-mapped = Files mapped
 settings-developer-threads = Threads
-settings-developer-give-back = Give memory back
+settings-developer-give-back = Free memory
 settings-developer-released = { $before } to { $after }
 settings-developer-free-now = Free now
 settings-developer-images-total = Images since the start
@@ -2707,8 +2716,8 @@ settings-developer-load-no-images = { $page }, no images
 settings-developer-offscreen-of = { $offscreen } of { $total }
 settings-developer-loads-empty = Open any page and it shows up here.
 settings-developer-load-images-off = { $page }, images off
-settings-developer-load-frames = { $frames } frames painted while it loaded, the longest gap between two { $gap }.
-settings-developer-load-frames-timed-out = { $frames } frames painted while it loaded, the longest gap between two { $gap }. Gave up waiting for its images after 15 s.
+settings-developer-load-frames = { $frames } frames painted while loading; longest frame gap was { $gap }.
+settings-developer-load-frames-timed-out = { $frames } frames painted while loading; longest frame gap was { $gap }. Timed out waiting for images after 15 s.
 settings-developer-built = Built
 settings-developer-settled = Settled
 settings-developer-core-data = Data from the core
@@ -2779,22 +2788,22 @@ key-help-key-ctrl-q = Ctrl+Q
 key-help-play-pause = Play or pause
 key-help-seek-5 = Seek 5 s
 key-help-seek-10 = Seek 10 s
-key-help-skip = Skip the intro or outro, else 90 s
+key-help-skip = Skip intro or outro, or jump 90 s
 key-help-frame-step = One frame back or forward
 key-help-speed = Slower or faster, in steps of 0.25
 key-help-normal-speed = Normal speed
 key-help-volume = Volume up or down by 5
 key-help-mute = Mute
-key-help-subtitles-toggle = Subtitles off and back
+key-help-subtitles-toggle = Toggle subtitles
 key-help-subtitle-delay = Subtitle delay 100 ms earlier or later
 key-help-audio-delay = Audio delay 100 ms earlier or later
 key-help-hold-speed = 2× speed while held
 key-help-screenshot = Save a screenshot to Pictures
 key-help-episode = Next or previous episode
 key-help-chapter = Previous or next chapter
-key-help-start-end = The start, or the outro
+key-help-start-end = Jump to start or outro
 key-help-fullscreen = Fullscreen
-key-help-escape-player = Close what is open, else leave fullscreen, else leave the player
+key-help-escape-player = Close what is open, or exit fullscreen, or leave the player
 key-help-toggle-list = Show or hide this list
 key-help-library-search = Library and search
 key-help-search-page = Search this page
@@ -2803,21 +2812,21 @@ key-help-room = Watch together
 key-help-settings = Settings
 key-help-quit = Quit
 key-help-forward = Forward
-key-help-escape-app = Close what is open, else back
+key-help-escape-app = Close what is open, or go back
 key-help-context-menu = The right-click menu
-key-help-pick-card = Pick a card, to act on several
-key-help-pick-range = Pick every card up to this one
-key-help-pick-all = Pick every card shown
+key-help-pick-card = Select a card to act on multiple
+key-help-pick-range = Select all cards up to this one
+key-help-pick-all = Select all visible cards
 
 ## SettingsAboutTab
 
 settings-about-title = About
 settings-about-update-failed = The update did not finish. Try again, or get it from the release page.
 settings-about-update-ready = { $version } is ready to install.
-settings-about-update-command = { $version } is out. Update it with { $command }
+settings-about-update-command = { $version } is available. Update with { $command }
 settings-about-update-progress = { $headline }  ·  { $detail }
-settings-about-update-source = { $version } is out. This copy is built from source: pull and rebuild.
-settings-about-update-elsewhere = { $version } is out, with no download here for this computer.
+settings-about-update-source = { $version } is available. This copy is built from source: pull and rebuild.
+settings-about-update-elsewhere = { $version } is available, with no installer for this computer.
 settings-about-version = Version
 settings-about-build = Anibeam { $build }
 settings-about-whats-new = What's new
@@ -2842,7 +2851,7 @@ settings-playback-skipping = Skipping
 settings-playback-skip-intros = Skip intros
 settings-playback-skip-outros = Skip outros
 settings-playback-next-episode = Next episode
-settings-playback-name-next = Name the next episode
+settings-playback-name-next = Show next episode title
 settings-playback-languages = Languages
 settings-playback-subtitle-languages = Subtitle languages
 settings-playback-audio-languages = Audio languages
@@ -2857,7 +2866,7 @@ discord-ask-wants = { $name } wants to join you
 discord-ask-start-room = Start room
 discord-ask-let-in = Let in
 discord-ask-no = No
-settings-playback-discord-blocked = Told no on Discord
+settings-playback-discord-blocked = Blocked on Discord
 room-panel-discord = On Discord
 room-panel-discord-open = Open
 room-panel-discord-invite = Invite only
@@ -2918,7 +2927,7 @@ settings-accounts-days-unit = days
 settings-phone-title = Phone app
 settings-phone-online = Online
 settings-phone-offline = Offline
-settings-phone-untrusted = Gets nothing from this computer
+settings-phone-untrusted = No access to this computer
 settings-phone-share = Share over Tailscale
 settings-phone-stream = Stream episodes
 settings-phone-host-service = Host service
@@ -2927,7 +2936,7 @@ settings-phone-running = Running
 settings-phone-copy-command = Copy command
 settings-phone-command-copied = Command copied
 # Tailscale ties the device to no person, so this computer cannot tell whose it is.
-settings-phone-nobody = Gets nothing: Tailscale names no person for it
+settings-phone-nobody = No access: Tailscale reported no user for this device
 # The people whose devices this computer serves, its own person first.
 settings-phone-people = People
 # The chip on the person this computer belongs to.
@@ -2963,27 +2972,27 @@ settings-help-report = Report a problem
 ## SettingsPlaybackTab: subtitles
 
 settings-subtitles-title = Subtitles
-settings-subtitles-reset-done = Subtitles look as they did at first
+settings-subtitles-reset-done = Subtitle style reset to defaults
 settings-subtitles-size-place = Size and place
 settings-subtitles-size = Size
 settings-subtitles-position = Position
 settings-subtitles-style = Style
 settings-subtitles-styled = Styled subtitles
-settings-subtitles-as-made = As made
+settings-subtitles-as-made = Original
 settings-subtitles-size-only = Size only
-settings-subtitles-mine = Mine
+settings-subtitles-mine = Override
 settings-subtitles-font = Font
 settings-subtitles-font-invalid = Type a font name, such as Noto Sans.
 settings-subtitles-bold = Bold
-settings-subtitles-text-colour = Text colour
-settings-subtitles-colour-invalid = Type a colour like #ffcc00.
+settings-subtitles-text-colour = Text color
+settings-subtitles-colour-invalid = Type a color like #ffcc00.
 settings-subtitles-outline = Outline
 settings-subtitles-outline-invalid = The width is a number, 0 or more.
-settings-subtitles-outline-colour-invalid = Type the colour like #000000.
+settings-subtitles-outline-colour-invalid = Type a color like #000000.
 settings-subtitles-shadow = Shadow
 settings-subtitles-shadow-invalid = A number, 0 or more. 0 means no shadow.
 settings-subtitles-box = Background box
-settings-subtitles-start-over = Start over
+settings-subtitles-start-over = Reset subtitle style
 settings-subtitles-reset = Reset
 
 ## SettingsAboutTab: storage and backup
@@ -3023,13 +3032,13 @@ settings-data-summary-resume-points =
     }
 settings-data-summary-accounts =
     { $count ->
-        [one] { $count } list account brought in
-       *[other] { $count } list accounts brought in
+        [one] { $count } list account imported
+       *[other] { $count } list accounts imported
     }
 settings-data-summary-fixes =
     { $count ->
-        [one] { $count } file takes a fix you made.
-       *[other] { $count } files take a fix you made.
+        [one] Applied saved fixes to { $count } file.
+       *[other] Applied saved fixes to { $count } files.
     }
 settings-data-summary-unavailable =
     { $count ->
@@ -3131,12 +3140,12 @@ settings-appearance-text-large = Large
 settings-appearance-text-larger = Larger
 settings-appearance-text-largest = Largest
 settings-appearance-title = Appearance
-settings-appearance-colours = Colours
+settings-appearance-colours = Colors
 settings-appearance-mode = Mode
 settings-appearance-mode-dark = Dark
 settings-appearance-mode-light = Light
 settings-appearance-mode-system = System
-settings-appearance-colours-from = Colours from
+settings-appearance-colours-from = Color source
 settings-appearance-from-desktop = Desktop
 settings-appearance-from-theme = Theme
 settings-appearance-dark-theme = Dark theme
@@ -3158,10 +3167,10 @@ settings-appearance-poster-size = Poster size
 settings-appearance-poster-small = Small
 settings-appearance-poster-medium = Medium
 settings-appearance-poster-large = Large
-settings-appearance-out-now = Out now on Airing
+settings-appearance-out-now = Airing "Out now" style
 settings-appearance-out-now-cards = Cards
 settings-appearance-out-now-list = List
-settings-appearance-out-now-grid = Out now cards
+settings-appearance-out-now-grid = "Out now" grid size
 # A grid of cards, columns by rows: "4 × 2"
 settings-appearance-grid = { $columns } × { $rows }
 settings-appearance-reduce-motion = Reduce motion
@@ -3255,7 +3264,7 @@ recommended-no-list-title = Nothing to learn from yet
 recommended-never-fitted-title = Ranking your shows
 recommended-nothing-left-title = Nothing left here
 recommended-no-scores-body = Recommendations learn from the scores on your list. Score a few shows on AniList and they appear here.
-recommended-no-list-body = Connect AniList in Settings, or keep a list on this device, and the shows you rate teach this page.
+recommended-no-list-body = Connect AniList in Settings, or keep a local list on this device, to get recommendations based on your ratings.
 recommended-never-fitted-body = The first ranking reads AniList for a minute or two. It runs in the background.
 recommended-nothing-left-library-body = Everything in your library that fits is watched. All finds shows you do not have yet.
 recommended-nothing-left-body = Everything on your lists that fits is watched. All finds shows you have not listed.
@@ -3279,7 +3288,7 @@ move-lists-head-here = On this computer
 move-lists-head-tracker = On { $site } now
 move-lists-nothing = Nothing
 move-lists-not-on-list = Not on your list
-move-lists-later-hint = Later: Settings, Accounts
+move-lists-later-hint = Later: Settings > Accounts
 move-lists-not-now = Not now
 move-lists-move =
     { $count ->
@@ -3371,8 +3380,8 @@ remove-also-torrents =
         [one] Also remove its torrent
        *[other] Also remove its { $count } torrents
     }
-remove-torrents-go-with-files = Deleting the files takes the torrents with them.
-remove-torrents-files-stay = They leave the client; the files stay.
+remove-torrents-go-with-files = Deleting the files also removes their torrents.
+remove-torrents-files-stay = Removes them from the client while keeping the files.
 remove-also-files = Also delete the files
 remove-files-default-where = what the torrents downloaded
 remove-files-detail-rule = Moves { $where } to the trash, and removes the torrents.
@@ -3404,8 +3413,8 @@ recommended-hover-anilist-score = AniList { $score }
 recommended-hover-forecast = { $percent }%
 recommended-hover-hidden-tags =
     { $count ->
-        [one] A hidden tag you love
-       *[other] { $count } hidden tags you love
+        [one] Matches a hidden tag you like
+       *[other] Matches { $count } hidden tags you like
     }
 recommended-hover-because = Because you watched
 
@@ -3470,6 +3479,24 @@ tokens-cube-no-release = No release
 ## Card
 
 card-not-interested = Not interested
+card-no-poster = No poster
+card-tag-new = New
+card-tag-downloading = Downloading
+card-tag-hidden = Hidden
+card-watched-of = { $watched } of { $total }
+card-watched-of-estimate = { $watched } of { $total }+
+card-watched = { $watched } watched
+card-files =
+    { $count ->
+        [one] { $count } file
+       *[other] { $count } files
+    }
+card-predicted = predicted { $time }
+card-countdown-days = { $days }d { $hours }h
+card-countdown-hours = { $hours }h { $minutes }m
+card-countdown-minutes = { $minutes }m
+card-season-span = S{ $season } { $span }
+card-episode-next = Episode { $number } next
 
 ## PagePlaceholder
 
@@ -3517,60 +3544,60 @@ fmt-episode-span = Episodes { $first } to { $through }
 
 problem-report = Try again. If it keeps happening, report it from the activity log.
 problem-try-later = Try again later.
-problem-helper-unreachable = The search helper did not answer.
-problem-helper-unauthorized = The search helper turned down the login.
+problem-helper-unreachable = The search helper did not respond.
+problem-helper-unauthorized = The search helper rejected the login.
 problem-helper-not-running = The search helper is not running.
 problem-helper-missing = The search helper is not installed.
 problem-helper-failed = The search helper could not do that.
 problem-helper-no-login = The search helper cannot log in to the torrent client.
-problem-helper-no-login-next = Save the torrent client's password in Settings, under Downloads.
-problem-torrent-unreachable = The torrent client did not answer.
-problem-torrent-unauthorized = The torrent client turned down the login.
+problem-helper-no-login-next = Save the torrent client's password in Settings > Downloads.
+problem-torrent-unreachable = The torrent client did not respond.
+problem-torrent-unauthorized = The torrent client rejected the login.
 problem-torrent-not-running = The torrent client is not running.
 problem-torrent-missing = The torrent client is not installed.
 problem-torrent-failed = The torrent client could not do that.
-problem-downloads-unreachable-next = Check it is running and its address is right in Settings, under Downloads.
-problem-downloads-unauthorized-next = Check the username and password in Settings, under Downloads.
-problem-downloads-not-running-next = Start it from Settings, under Downloads.
-problem-downloads-missing-next = Settings, under Downloads, says how to set it up.
+problem-downloads-unreachable-next = Make sure it is running and its address is correct in Settings > Downloads.
+problem-downloads-unauthorized-next = Check the username and password in Settings > Downloads.
+problem-downloads-not-running-next = Start it from Settings > Downloads.
+problem-downloads-missing-next = Open Settings > Downloads to set it up.
 problem-trash = { -app-name } could not move the files to the trash.
 problem-trash-next = Check the files are yours and the disk is not read only.
 problem-source-list = That source list did not work.
-problem-source-list-next = Check its address in Settings, under Downloads, Source lists.
+problem-source-list-next = Check its address in Settings > Downloads > Source lists.
 # $name is a search source or a site, by its own name.
-problem-remote-unreachable = { $name } did not answer.
+problem-remote-unreachable = { $name } did not respond.
 problem-remote-unreachable-next = The site may be down. Try again later, or search another source.
-problem-remote-unauthorized = { $name } turned down the key it was given.
-problem-remote-unauthorized-next = Change its key in Settings, under Downloads, Source lists.
+problem-remote-unauthorized = { $name } rejected the key.
+problem-remote-unauthorized-next = Update its key in Settings > Downloads > Source lists.
 problem-remote-failed = { $name } could not do that.
 problem-remote-failed-next = Try again later, or search another source.
 # $name is AniList, MyAnimeList, TVmaze and the like.
-problem-provider-sign-in = { $name } turned down { -app-name }'s sign-in.
-problem-provider-sign-in-next = Connect it again in Settings, under Accounts.
-problem-provider-turned-away = { $name } turned { -app-name } away.
+problem-provider-sign-in = { $name } rejected { -app-name }'s sign-in.
+problem-provider-sign-in-next = Reconnect it in Settings > Accounts.
+problem-provider-turned-away = { $name } denied access to { -app-name }.
 problem-provider-busy = { $name } is busy right now.
 problem-provider-busy-next = Wait a minute, then try again.
-problem-provider-no-answer = { $name } did not answer.
+problem-provider-no-answer = { $name } did not respond.
 problem-provider-no-answer-next = Check your internet connection, then try again.
 problem-provider-trouble = { $name } is having trouble right now.
 problem-provider-trouble-next = Try again in a few minutes.
 problem-provider-rejected = { $name } did not accept that.
-problem-not-found = { -app-name } could not find that any more.
-problem-not-found-next = It may have been removed. Try again to load the page afresh.
+problem-not-found = { -app-name } could not find that anymore.
+problem-not-found-next = It may have been removed. Try reloading the page.
 problem-invalid-next = Check it and try again.
 problem-unavailable = That folder cannot be reached right now.
-problem-unavailable-next = Plug in its drive or check the folder in Settings, under Library.
+problem-unavailable-next = Plug in its drive or check the folder in Settings > Library.
 problem-not-connected = { $tracker } is not connected.
-problem-not-connected-next = Connect it in Settings, under Accounts.
+problem-not-connected-next = Connect it in Settings > Accounts.
 problem-io = { -app-name } could not read or write a file.
 problem-io-next = Check the disk has room and the folder is yours, then try again.
 problem-storage = { -app-name } could not save your library.
 problem-storage-next = Check the disk has room, then try again.
-problem-keyring = The system password store did not answer.
+problem-keyring = The system password store did not respond.
 problem-keyring-next = Unlock your desktop's keyring, then try again.
 problem-unsupported = { -app-name } cannot do that here yet.
 problem-version = This backup comes from a newer { -app-name }.
-problem-version-next = Update { -app-name } in Settings, under About, then import it again.
+problem-version-next = Update { -app-name } in Settings > About, then import it again.
 problem-internal = Something went wrong inside { -app-name }.
 problem-downloading-next = It plays once the download finishes.
 problem-refused-hidden = That show is hidden.
@@ -3645,5 +3672,5 @@ door-not-a-torrent-action = { $value } is not a torrent action
 ## apps/linux/src/bridge/shell.rs: the first-run starter folder and the update notice
 
 # $folder is a path, $error the system's own reason.
-shell-starter-folder-failed = Could not make { $folder }: { $error }
-shell-update-gone = { -app-name } { $version } is no longer on offer
+shell-starter-folder-failed = Could not create { $folder }: { $error }
+shell-update-gone = { -app-name } { $version } is no longer available

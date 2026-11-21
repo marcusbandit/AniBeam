@@ -66,10 +66,6 @@ on:
       - '!apps/phone/src/**/metal.rs'
       - '!apps/phone/src/**/metal/**'
       - '!apps/phone/scripts/*ios*'
-      # Every iPhone PR carries one. The build embeds them as text (build.rs) and the app
-      # parses them at run time, so no change file can fail this; ci.yml checks their format
-      # (core/tests/changelog.rs).
-      - '!apps/phone/changes/**'
   workflow_dispatch:
 
 permissions:

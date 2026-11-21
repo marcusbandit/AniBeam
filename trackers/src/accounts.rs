@@ -45,7 +45,7 @@ const MAL_EXPIRED: &str = "MAL auth expired, reconnect in Settings.";
 /// `core-trackers-mal-wants-secret` in the catalog; this is their English, which
 /// the tests hold the catalog to.
 #[cfg(test)]
-pub(crate) const MAL_WANTS_SECRET: &str = "MyAnimeList wants this app's client secret. Add it under Trackers in Settings, or register the app with App Type \"other\".";
+pub(crate) const MAL_WANTS_SECRET: &str = "MyAnimeList requires this app's client secret. Add it under Accounts in Anibeam's settings, or register the app with App Type \"other\".";
 
 // Keys and bundled credentials ----------------------------------------------
 

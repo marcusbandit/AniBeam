@@ -752,8 +752,8 @@ mod tests {
         assert_eq!(code, "http_404");
         assert_eq!(
             message,
-            "http://localhost:9090 answered 404, but not as qBittorrent's Web UI. Check the address \
-             in Settings, and that the Web UI is turned on in qBittorrent"
+            "http://localhost:9090 returned HTTP 404, which does not look like qBittorrent's Web UI. \
+             Check the address in Settings and make sure the Web UI is enabled in qBittorrent"
         );
     }
 
@@ -874,8 +874,8 @@ mod tests {
         assert_eq!(code, "http_200");
         assert_eq!(
             message,
-            "http://localhost:9090 answered 200, but not as qBittorrent's Web UI. Check the address \
-             in Settings, and that the Web UI is turned on in qBittorrent"
+            "http://localhost:9090 returned HTTP 200, which does not look like qBittorrent's Web UI. \
+             Check the address in Settings and make sure the Web UI is enabled in qBittorrent"
         );
         assert_eq!(
             http.requests().len(),

@@ -1446,6 +1446,8 @@ core-downloads-replace-bad-item = элемента { $item } нет среди �
 # $episode is the episode's number
 core-downloads-not-replaced = Серия { $episode } не заменена.
 core-downloads-replaced = Серия { $episode } заменена новой загрузкой.
+core-downloads-no-video-moved = В «{ $name }» нет видео, поэтому Anibeam не сможет это воспроизвести. Теперь он в { $folder }.
+core-downloads-no-video = В «{ $name }» нет видео, поэтому Anibeam не сможет это воспроизвести.
 
 ## downloads/src/rolling.rs
 

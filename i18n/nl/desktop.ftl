@@ -408,7 +408,8 @@ onboarding-title-ready = Je bent klaar
 onboarding-title-later = { $count ->
     [1] Klaar, één ding voor later
     [2] Klaar, twee dingen voor later
-   *[other] Klaar, drie dingen voor later
+    [3] Klaar, drie dingen voor later
+   *[other] Klaar, { $count } dingen voor later
 }
 onboarding-body-welcome = Anibeam houdt je anime op één plek. Het vindt de series op je schijf, speelt ze hier af en houdt AniList of MyAnimeList bij terwijl je kijkt.
 onboarding-body-library = Kies de map waarin je je series bewaart. Elke map daarin wordt een serie, met poster, afleveringen en waar je bleef. Anibeam leest de map alleen. Het verplaatst of hernoemt nooit een bestand.
@@ -1855,6 +1856,8 @@ downloads-suggest-on-anilist = Op AniList, niet in je bibliotheek
 downloads-plan-to-watch = Later kijken
 downloads-suggest-release-search = Zoek in plaats daarvan releasenamen voor “{ $query }” op { $names }
 downloads-key-return = Enter
+downloads-magnet-invalid = Deze magnetlink wijst geen torrent aan
+downloads-magnet-film = Als film downloaden
 downloads-sources = Bronnen
 downloads-source-hint-starting = starten
 downloads-source-hint-down = draait niet
@@ -2515,6 +2518,11 @@ settings-downloads-keep-behind = Achter houden
 settings-downloads-subscriptions-title = Abonnementen en zoekopdrachten
 settings-downloads-last-search = Laatste zoekopdracht houden
 settings-downloads-prune = Afgelopen series opzeggen
+settings-downloads-magnet = Magnetlinks
+settings-downloads-magnet-anibeam = Anibeam opent ze
+settings-downloads-magnet-other = Een andere app opent ze
+settings-downloads-magnet-none = Niets opent ze
+settings-downloads-magnet-use = Open ze in Anibeam
 settings-downloads-sources-title = Zoekbronnen
 settings-downloads-sources-empty = Nog geen bronnen ingesteld
 settings-downloads-sources-connect = Koppel de zoekhulp om ze te tonen
@@ -3308,6 +3316,24 @@ tokens-cube-no-release = Geen release
 ## Card
 
 card-not-interested = Niet interessant
+card-no-poster = Geen poster
+card-tag-new = Nieuw
+card-tag-downloading = Downloaden
+card-tag-hidden = Verborgen
+card-watched-of = { $watched } van { $total }
+card-watched-of-estimate = { $watched } van { $total }+
+card-watched = { $watched } gekeken
+card-files =
+    { $count ->
+        [one] { $count } bestand
+       *[other] { $count } bestanden
+    }
+card-predicted = voorspeld { $time }
+card-countdown-days = { $days }d { $hours }u
+card-countdown-hours = { $hours }u { $minutes }m
+card-countdown-minutes = { $minutes }m
+card-season-span = S{ $season } { $span }
+card-episode-next = Aflevering { $number } hierna
 
 ## PagePlaceholder
 

@@ -1,265 +1,139 @@
-# Anibeam for Android
+# Anibeam for Phone
 
 <!--
-The app shows this file in What's new, newest version first. Keep it short.
-- One line per change a person can notice, under New, Changed, Fixed or Removed.
-- A pull request writes its lines in changes/<branch>.md, never here. The
-  release folds them in under the version they ship in.
-- 80 characters at most, no full stop. Say what they see, never why or how.
-- The newest heading is the app's versionName. A version bump adds a heading,
-  and a new heading bumps the version.
-- Tests, CI, refactors and docs get no line.
+The app shows this file in What's new, and anibeam.app/whats-new/ builds from it.
+Write for people who use Anibeam, not as a commit log:
+- Pull requests do not add lines here. Curate each release from git history before
+  shipping (`.github/changelog-draft.sh phone`), or update the newest heading as a
+  living draft for major milestones.
+- Start a release with a warm, natural intro saying what we're happy to bring to the
+  app, followed by a short list of the actual highlights (`- **Feature.** ...`), an
+  optional `### Heads up` when users need to know something, and a 1-2 line
+  `### Fixes & polish` roundup for smaller fixes. Tiny patch releases can be a single
+  paragraph.
+- The newest heading matches the version in apps/phone/Cargo.toml, with an optional
+  title of at most 40 characters: `## 2.5.0 · Watch together · 2026-11-21`.
+- No em or en dashes. Keep lists tight (15 items at most; aim for 3-8).
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
-## 2.4.3 · 2026-11-05
+## 2.4.3 · iPhone nightly & full show pages · 2026-11-21
 
-### Fixed
-- Seeders show for releases from more trackers
-- A refine or subscribe on a source you just removed says it is gone
-- Seeders show for releases from a tracker written with backslashes
-- Shows followed earlier no longer keep their source's key in the app's files
-- A source with no public address no longer stops DNS-blocked sources loading
-- A busy sign-in port says to try again, not that another Anibeam is open
-- A show's synopsis reads as paragraphs instead of showing <br> tags
-- Episode codes like S03E01 fit their column instead of running into the title
-- An extra marked with a v2, like SP01v2, no longer reads as an episode
-- A failed torrent download names only the site, never a login in its link
-- A show titled with a word like Trailer or Special no longer reads as extras
-- Sources on your home network answer sooner
-- Search skips a saved source whose address cannot take a search
-- Spy x Family episodes no longer show up as specials
-- A phone call or another app's sound pauses the episode; a call's end resumes it
-- An episode open when Android closes the app resumes where you left it
-- Changing a phone setting mid-episode no longer leaves the app stuck sideways
-- The first download asks for permission to show its notification
+We're happy to bring the first sideloadable iPhone nightly builds, along with full show and list management, rolling downloads, Stats, and 13 languages across the phone app.
+
+- **iPhone nightly & sideload source.** Install Anibeam and Anibeam Nightly side by side on iPhone through AltStore, SideStore, or LiveContainer using one shared source, with local and streamed playback.
+- **Full show & list management.** Set list status, score, notes, start/finish dates, and rewatches from any show page, browse characters, related shows, recommendations, and IMDb scores, fix wrong matches, edit episode counts and air dates, and long-press episodes to mark watched up to there.
+- **Rolling downloads & send to computer.** Keep long shows a few episodes ahead automatically, delete watched episodes to reclaim storage, hide shows, send downloads straight to your computer's library, and follow progress in notifications.
+- **Home feed, Stats, and 13 languages.** Browse recently released and upcoming episodes on Home, check your watching Stats and year recap in More, explore any Airing season back to 1940, and use Anibeam in 13 languages.
+- **Appearance, subtitles, and player controls.** Customize theme, accent color, text size, and subtitle styling in More, adjust audio/subtitle delay and jump chapter notches in the player, carry playback speed across episodes, pick between multiple files for an episode, and cast transcoded desktop streams to DLNA TVs.
+- **Updates, backups, and Tailscale profiles.** GitHub APKs now notify you about Stable or Nightly updates in More, libraries can be backed up and restored, and shared Tailscale hosts show each person's own progress with automatic quality over relayed links.
+
+### Fixes & polish
+
+Fixed leaving Downloads freezing the app, made downloads keep their progress and pause state across restarts, improved pause/resume during phone calls, and fixed foldable crease layouts, iPhone video colors and status bar hiding, multi-season tracking, Jikan outages, MAL/AniList sync, secret masking, and lowercase Anibeam branding.
 
 ## 2.4.2 · 2026-11-02
 
-### Fixed
-- The app opens from its home screen icon instead of closing at once
+Fixed a crash that caused the app to close immediately when opened from the home screen icon.
 
 ## 2.4.1 · 2026-11-02
 
-### Fixed
-- The app starts on phones again instead of closing at once
+Fixed a startup crash on phones.
 
-## 2.4.0 · 2026-11-01
+## 2.4.0 · Streaming, Calendar & foldables · 2026-11-01
 
-### New
-- Unfolded, the Calendar shows the week as a board or as days, your pick
-- Airing now, in the Calendar: this season's shows, Plan to watch and Get
-- Not interested hides a show here and on your computer
-- See your computer's calendar beside this phone's
-- Pick the app icon in More: Default, Dark, or bare Line art in your colours
-- A Calendar tab: what airs from two days back to a week ahead
-- Unfolded, the tabs move to a rail and pages split into two columns
-- Half folded, everything moves off the crease to either side of it
-- Stood up half folded, the video plays above the crease, controls below
-- Downloads show the show's poster; tap one to open the show
-- Tap a site you added yourself to change its name or address
-- Lock the player so a stray touch does nothing
-- Swipe up or down on the left for brightness, on the right for volume
-- Hold the picture to play at 2x until you let go
-- Hold a poster to get or delete its episodes
-- Tap a missing episode to find it in Downloads
-- Search fields have a clear button
-- Refresh your computer's library, and check repos for new sites
-- A download stopped by an error offers Retry
-- Play episodes from your computer's library over Tailscale
-- Pick how streams play in More: Auto, Original, 1080p, 720p or 480p
-- Cast an episode from your computer to a Chromecast, converted to play
-- Episodes watched from your computer keep their place there
+A major update for the phone app: stream your desktop library over Tailscale, browse what's airing in the new Calendar tab, and enjoy layouts designed for foldables and tablets.
 
-### Changed
-- A series page slides in and out; picking another one swaps it at once
-- Airing now unfolded lists its filters and shows Out now as a grid
-- With a series open, the Calendar moves beside it, all of it in reach
-- Stood up half folded, back, cast and lock sit below the crease too
-- A batch in Downloads is a stacked card with a Batch tag
-- Episode squares when picking what to get are bigger, numbered, easier to tap
-- Small buttons and chips take a touch a little outside their edge
-- Bending the phone slides everything into place instead of jumping
-- Half folded, the two sides sit either side of the crease without boxes
-- Turned sideways and half folded, pages keep the unfolded layout
-- Home lists the next episodes to air, with a way into the Calendar
-- Downloads shows free space instead of upload speed
-- When your computer cannot be reached, the app says what to do about it
-- An episode your computer cannot stream yet says to update Anibeam there
-- Editing a site keeps its keys out of the address and offers to change them
-- More opens on a list of settings, each saying how it stands right now
-- Each part of the settings opens as its own page
-- Search the settings to land right on the one you want
-- Paused, the player keeps its controls up
-- Skip intro and Skip outro stay up while the controls hide
-- Tap anywhere on a switch row to flip it
-- Back leaves delete mode before it leaves the show
-- Settings say search sites instead of endpoints, and plain words for the rest
+- **Stream & cast from your computer.** Play episodes from your desktop library over Tailscale with selectable quality (Auto, Original, 1080p, 720p, 480p), sync watch progress back, and cast transcoded episodes to Chromecast.
+- **Calendar & Airing now.** See what airs from two days back to a week ahead, browse this season's shows, and plan, download, or mark shows Not interested (synced with your computer).
+- **Foldable & tablet layouts.** Unfolded screens switch to a side rail and split two-column pages; half-folded phones adapt cleanly around the crease, keeping video above and controls below.
+- **Better player controls.** Swipe for brightness and volume, hold the video to play at 2x, lock the screen against stray touches, and keep Skip intro/outro accessible while controls hide.
+- **Redesigned More & custom icons.** Searchable, per-page Settings in plain language, custom app icons (Default, Dark, or Line art), long-press poster actions, and retry buttons on failed downloads.
 
-### Fixed
-- A search whose picked endpoint fails says why instead of showing no results
-- Seeders and leechers show for trackers whose address carries a passkey
-- Next from a season's last episode plays the next season's first
-- A series page beside Home no longer drags sideways
-- Opening a folded phone a little no longer splits the outer screen's player
-- The Library's device switch keeps its highlight under the label on a bend
-- Rows of filter and source buttons are no longer cut off at the bottom
-- Library's posters glide into place when the phone bends instead of jittering
-- Sideways and half folded, the video keeps its shape above the crease
-- Rows of buttons that fit no longer scroll
-- Skip intro skips the opening, not the scene before it
-- A long search wraps instead of running off the screen
-- Storage says how much the episodes use
-- A failed sign-in says why
-- No more "Nothing on this phone yet" while the app starts
-- A password or key in a site's address is stored as a secret, not in the open
+### Fixes & polish
+
+Smoother animations and touch targets, cleaner batch cards and episode pickers, and fixes for foldable transitions, skip-intro timing, tracker and search errors, and secret storage.
 
 ## 2.2.0 · 2026-10-31
 
-### New
-- An endpoint repo can search your own Prowlarr or Jackett over torznab
-- An endpoint repo can add a source that answers in JSON
-
-### Changed
-- Searches wait a second between requests to one site, except your own server
-
-### Fixed
-- The connection check keeps home-network names off public DNS
+Added Torznab (Prowlarr and Jackett) and JSON source support in endpoint repos, polite per-site search pacing, and a fix keeping home-network names off public DNS.
 
 ## 2.1.1 · 2026-10-26
 
-### Fixed
-- Numbered specials and OVAs keep their own episode numbers
+Fixed episode numbering for numbered specials and OVAs.
 
 ## 2.1.0 · 2026-10-25
 
-### New
-- What's new opens after an update, marked at the version you came from
-- What's new stays in More, under About
+Added in-app What's new after updates, also available anytime in More > About.
 
 ## 2.0.8 · 2026-10-24
 
-### Changed
-- Dragging the seek bar moves only the preview until you let go
-
-### Fixed
-- Letting go near where the drag started no longer seeks
+Dragging the seek bar now moves only the preview until you let go, and letting go near where you started no longer seeks.
 
 ## 2.0.7 · 2026-10-24
 
-### New
-- A thumbnail of the frame under your finger while you drag the seek bar
-
-### Changed
-- The video follows your finger while you drag the seek bar
+Added frame thumbnail previews while dragging the seek bar, with live scrubbing as your finger moves.
 
 ## 2.0.4 · 2026-10-24
 
-### New
-- Delete episodes from a series page: pick them, then Delete
-
-### Fixed
-- Episodes watched on another device no longer count as on this phone
-- Those episodes can be downloaded without following the show
-- Countdowns read "in 3d 1h", not "in in 3d 1h"
+You can now select and delete episodes right from a series page. Also fixed remote watch counts, downloading unwatched episodes without following, and duplicate "in" in countdowns.
 
 ## 2.0.2 · 2026-10-24
 
-### Fixed
-- Endpoint cards keep their buttons inside on narrow phones
-- An endpoint that needs a token asks for it inside its own row
+Fixed endpoint card layouts on narrow phones and inline token prompts on endpoint rows.
 
 ## 2.0.0 · 2026-10-24
 
-### Changed
-- The version jumps to 2.0.0, in step with the desktop
-- Tap an installed endpoint to add or change its token
-
-### Removed
-- The preloaded sources: add a repo or an endpoint under More
+Version numbers now move in step with the desktop app (2.0.0). Tap any installed endpoint to add or update its token. Preloaded sources have been removed; add a repo or endpoint in More instead.
 
 ## 0.9.0 · 2026-10-24
 
-### New
-- Endpoint repos: add one by its address, check its key, install endpoints
-- Add an endpoint by hand, such as 1337x through Jackett
-- First run has an Endpoints step
+Added endpoint repos (with key verification), manual custom endpoints, and an Endpoints step in first-run setup.
 
 ## 0.8.0 · 2026-10-23
 
-### New
-- Cast to a Chromecast or a DLNA TV from the player
-- The phone is the remote while an episode casts
+Cast episodes to Chromecast or DLNA TVs directly from the player, using your phone as the remote.
 
 ## 0.7.0 · 2026-10-23
 
-### New
-- Episodes play in the app, on the same player as the desktop
-- Skip intro, Skip outro and the next episode, as on the desktop
-- Double tap a side of the picture to jump ten seconds
-- Watching marks your AniList and MyAnimeList lists
+Built-in playback arrives on the same player engine as desktop, with Skip intro/outro, double-tap 10-second seeks, and AniList and MyAnimeList progress syncing.
 
 ## 0.6.1 · 2026-10-23
 
-### Fixed
-- Back from a show returns to your search instead of closing the app
-- Shows with a slash in the name download into a working folder
-- Airing shows found through AniList can be followed
-- With no connection, search says AniList could not be reached
+Fixed back navigation returning to search results, folder names containing slashes, following airing shows from AniList, and offline search errors.
 
 ## 0.6.0 · 2026-10-23
 
-### New
-- Downloads has its own tab
-- Search by show: type a series, see who has it, pick episodes off a grid
-
-### Changed
-- Every screen takes the look of the desktop's Downloads page
+Added a dedicated Downloads tab with show search and an episode picker grid, and unified every screen with the desktop look.
 
 ## 0.5.4 · 2026-10-23
 
-### New
-- Copy the connection check's results
-
-### Fixed
-- Nyaa loads on networks that block it by name
+Added a button to copy connection check results, and improved loading on networks with DNS blocking.
 
 ## 0.5.3 · 2026-10-23
 
-### New
-- Check the connection: see where a source stops, from DNS to HTTPS
+Added a connection check tool that shows where a source fails, from DNS to HTTPS.
 
 ## 0.5.1 · 2026-10-23
 
-### Changed
-- Sources blocked by a network's DNS load anyway
-- A blocked source says so
+Sources blocked by a network's DNS now load automatically, with clearer status when a source is blocked.
 
 ## 0.4.0 · 2026-10-23
 
-### New
-- Search your sources and download on the phone, no desktop needed
-- A storage cap, set with a slider
-
-### Changed
-- Downloads wait for Wi-Fi unless you allow mobile data
+Search sources and download episodes directly on your phone without a desktop, with a storage cap slider and Wi-Fi-only download protection.
 
 ## 0.3.0 · 2026-10-23
 
-### New
-- The phone is its own Anibeam: Home, Library, More and a first-run setup
+The phone app now works standalone with Home, Library, More, and first-run setup.
 
 ## 0.2.0 · 2026-10-17
 
-### New
-- Calendar, library and series pages, in the desktop's look
+Added Calendar, Library, and series pages matching the desktop design.
 
 ## 0.1.2 · 2026-10-17
 
-### Fixed
-- Long titles wrap onto two lines
+Fixed long titles wrapping cleanly onto two lines.
 
 ## 0.1.0 · 2026-10-17
 
-### New
-- First build: what airs next and what the desktop has on disk
+First build of the phone app, showing upcoming air times and your desktop library.

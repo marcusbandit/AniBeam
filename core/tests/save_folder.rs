@@ -221,6 +221,7 @@ fn a_folder_picked_in_settings_wins_and_reset_goes_back_to_the_library() {
         &r.core,
         Call::DownloadMovie {
             link: format!("magnet:?xt=urn:btih:{:040x}", 7),
+            needs_video: false,
         },
     );
     common::wait_job(&r.c, job);

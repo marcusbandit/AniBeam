@@ -15,6 +15,7 @@ pub mod anilist;
 pub mod aniskip;
 pub mod doh;
 pub mod front;
+pub mod gzip;
 pub mod images;
 pub mod imdb;
 pub mod jikan;

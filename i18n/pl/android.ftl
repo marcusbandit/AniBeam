@@ -232,10 +232,13 @@ more-icon-note = Ikona na ekranie głównym i w szufladzie aplikacji.
 more-icon-line-note = Ikona liniowa przyjmuje kolory tapety, jak Twoje inne ikony Material You.
 more-icon-moved-note = Niektóre launchery usuwają ikonę z ekranu głównego po jej zmianie. Zostaje w szufladzie aplikacji; przeciągnij ją stamtąd z powrotem.
 more-set-whats-new = Co nowego
-more-whats-new-note = Co zmieniło się w każdej wersji, od najnowszej.
 more-set-onboarding = Od nowa
-more-onboarding-note = Przejdź jeszcze raz przez pytania z pierwszego uruchomienia.
-more-set-version = Wersja
+more-update-out = Wyszedł Anibeam { $version }
+more-update-download = Pobierz
+more-about-status-update = Jest nowa wersja
+more-updates = Aktualizacje
+more-updates-stable = Stabilny
+more-updates-nightly = Nightly
 
 ## Status lines Rust writes on the pages
 
@@ -341,7 +344,7 @@ more-words-check = sieć dns test https bezpieczne połączenie internet
 more-words-computer = tailscale tailnet host adres komputer biblioteka przesyłanie test zapisz urządzenie
 more-words-whats-new = dziennik zmian changelog nowości aktualizacja
 more-words-onboarding = wprowadzenie pierwsze uruchomienie początek od nowa
-more-words-version = kompilacja wersja build info
+more-words-updates = kompilacja wersja build info stabilny nightly kanał sprawdź aktualizacje
 more-words-stats = godziny odcinki gatunki studia sezony rok obejrzane podsumowanie miesiąc historia
 more-words-backup = kopia zapasowa backup eksport plik zapisz kopiuj przenieś komputer json prywatne logowania
 more-words-restore = przywróć import plik wczytaj biblioteka scal

@@ -220,10 +220,13 @@ more-icon-note = El icono de tu pantalla de inicio y del cajón de apps.
 more-icon-line-note = El icono lineal toma los colores de tu fondo de pantalla, como tus otros iconos de Material You.
 more-icon-moved-note = Algunos lanzadores quitan el icono de la pantalla de inicio al cambiarlo. Sigue en el cajón de apps; arrástralo de vuelta desde ahí.
 more-set-whats-new = Novedades
-more-whats-new-note = Qué cambió en cada versión, la más reciente primero.
 more-set-onboarding = Volver a empezar
-more-onboarding-note = Repasa otra vez las preguntas del primer inicio.
-more-set-version = Versión
+more-update-out = Ya está aquí Anibeam { $version }
+more-update-download = Descargar
+more-about-status-update = Hay una versión nueva
+more-updates = Actualizaciones
+more-updates-stable = Estable
+more-updates-nightly = Nightly
 
 ## Status lines Rust writes on the pages
 
@@ -325,7 +328,7 @@ more-words-check = red dns prueba https seguro conexión internet
 more-words-computer = tailscale tailnet host dirección ordenador escritorio biblioteca streaming probar guardar dispositivo
 more-words-whats-new = novedades cambios registro versión actualización
 more-words-onboarding = bienvenida primer inicio empezar de nuevo configurar
-more-words-version = compilación build acerca versión
+more-words-updates = compilación build acerca versión estable nightly canal comprobar actualizaciones
 more-words-stats = horas episodios géneros estudios temporadas año vistos resumen mes historial
 more-words-backup = copia respaldo exportar archivo guardar mover ordenador json privado sesiones
 more-words-restore = restaurar importar archivo cargar biblioteca combinar

@@ -1,389 +1,98 @@
 # Anibeam for desktop
 
 <!--
-The app shows this file in What's new, newest version first. Keep it short.
-- One line per change a person can notice, under New, Changed, Fixed or Removed.
-- A pull request writes its lines in changes/<branch>.md, never here. The
-  release folds them in under the version they ship in.
-- 80 characters at most, no full stop. Say what they see, never why or how.
-- The newest heading is the workspace version in the root Cargo.toml. A version
-  bump adds a heading, and a new heading bumps the version.
-- A version may have a title between its number and its day, 40 characters at
-  most: "## 2.5.0 · Quality of life · 2026-11-02". The release goes out under it.
-- Tests, CI, refactors and docs get no line.
+The app shows this file in What's new, and anibeam.app/whats-new/ builds from it.
+Write for people who use Anibeam, not as a commit log:
+- Pull requests do not add lines here. Curate each release from git history before
+  shipping (`.github/changelog-draft.sh desktop`), or update the newest heading as a
+  living draft for major milestones.
+- Start a release with a warm, natural intro saying what we're happy to bring to the
+  app, followed by a short list of the actual highlights (`- **Feature.** ...`), an
+  optional `### Heads up` when users need to know something, and a 1-2 line
+  `### Fixes & polish` roundup for smaller fixes. Tiny patch releases can be a single
+  paragraph.
+- The newest heading matches the workspace version in the root Cargo.toml, with an
+  optional title of at most 40 characters: `## 2.5.0 · Watch together · 2026-11-21`.
+- No em or en dashes. Keep lists tight (15 items at most; aim for 3-8).
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
-## 2.5.0 · New app ID, pin it again if it left · 2026-11-12
+## 2.5.0 · Watch together · 2026-11-21
+
+We're happy to bring Watch together to Anibeam, along with 13 languages, personalized recommendations on Home, and a much cleaner layout across the app.
+
+- **Watch together.** Start a room before or during an episode and invite friends with a six-letter code, a `rooms.anibeam.app` link, a QR code, or right through Discord. Friends who don't have the episode can grab the host's copy directly in the room, and playback can wait until everyone is ready.
+- **Simpler navigation.** The sidebar is down to four tabs (Home, Library, Airing, Downloads), with Watching, Stats, and Show info folded into Library and Settings reorganized into seven cleaner sections.
+- **Recommendations on Home.** Get show suggestions ranked from your own ratings, and open shows outside your library on their own page to grab their episodes.
+- **13 languages.** Pick your language during setup or in Settings > Appearance.
+- **Easier Linux installs.** Official apt (Ubuntu and Debian) and dnf (Fedora) repositories, a one-line installer on anibeam.app, and a much smaller AppImage.
+- **Smoother downloads & setup.** Paste a source list once to turn on its sources, built-in qBittorrent now saves straight into your library folder, and you can right-click active downloads to open their folder.
+- **Terminal control.** Drive an open Anibeam window from scripts or agents with `anibeam ctl`.
+
+### Heads up
+
+Anibeam is now spelled with a lowercase `b` and uses a new app ID, so you may need to re-pin it to your dock or taskbar. On macOS, allow it once more in Privacy & Security if prompted; on apt, run `apt update --allow-releaseinfo-change` once for the renamed repository.
+
+### Fixes & polish
+
+Fixes for multi-season episode tracking, season-pack folders, long-running shows and outages on Jikan, MAL and AniList syncing, Flatpak Discord detection, casting, converted streams, Mac dock icons, keyboard navigation, and narrow-window layouts.
 
 ## 2.4.0 · Quality of life · 2026-10-30
 
-### New
-- Settings shows whether Discord is connected, under Playback
-- Set a show's schedule under Fixes: pick episodes and a date, or paste a list
-- Fixes is three items: Episodes and dates, Files and Match
-- Refresh a show's info from its Match panel, and rescan its folder from Files
-- A season on a break stops showing a made-up next episode
-- Show Out now on Airing as a list instead of cards, in Settings under Appearance
-- Pick how many Out now episodes Airing shows, in Settings under Appearance
-- Sort Airing by score, next episode, episode count or title
-- Airing can show any season: open the arrow beside the next season
-- Hide what is on your lists or in your library from Airing
-- Run Anibeam as a service with no window, so your devices always reach it
-- Settings shows whether that service runs, under Phone app
-- Pick a dark app icon in Settings, under Appearance
-- The phone app plays this library's episodes over Tailscale
-- Shows you mark not interested on the phone are hidden here too
-- Episodes too big for the phone's link are converted as they play
-- Developer options, in Settings under About, time every page and turn images off
-- Magnet-only search results show their seeders and leechers
-- Pick Stable or Nightly updates in Settings, under About
-- Update installs the new version and restarts, no trip to GitHub
-- An AUR install shows the command that updates it, once the AUR has it
-- Downloaded lists every show on disk, not only what the torrent client holds
-- Downloaded shows how much of the disk is watched and how much is not
-- Delete watched clears every watched episode, or every finished show you saw
-- Right-click a show on Gaps or Downloaded to delete it
-- Deleting episodes removes their torrent too, so they can be downloaded again
-- Ctrl-click a release group or one of its episodes to pick all it has missing
-- Get says it is sending to your torrent client the moment you click it
-- Set how many episodes a TVmaze show's season has, so no more are predicted
-- A version can have a name, shown in What's new and when an update is out
-- Hold a show on Airing now, or Ctrl+click it, to pick several at once
-- Put every picked show on Planning, or mark them all Not interested
-- Get lights the episodes a click will pick, before you click
-- Hold the mouse on the video to play at 2x until you let go
-- Page Up and Page Down jump between chapters, now marked on the seek bar
-- S saves a screenshot of the video to Pictures/Anibeam
-- Home goes to the start of an episode and End to its outro
-- F11 toggles fullscreen
-- A resumed episode says where it picked up, with Start over
-- The Next button names the next episode, or only its number if you like
-- Arrow keys and Enter pick audio and subtitle tracks
-- N, P and C say why when there is nothing to do
-- Right-click a show for Open, Open folder, Copy title and Open on AniList
-- Right-click an episode to play it, open its folder or copy its path
-- Forward, from the menu, Alt+Right or the mouse's forward button
-- Library tabs show how many each holds, and so do Airing now's filters
-- Ctrl+F searches the page you are on
-- Select and copy a show's synopsis
-- Pick all when deleting episodes
-- Characters open their page on AniList
-- Marking several episodes watched at once has Undo, and so has Hide
-- Toasts have a close button and stay while the pointer is on them
-- A missing episode in Metadata opens Get
-- This week on Home links to Airing now
-- Airing now's menu leads with Play next for shows you have
-- Mark episodes watched on a show with no tracker; Anibeam keeps them
-- An unmatched show shows what folder and file names match
-- Right-click a release to copy its magnet or open its page
-- Open the folder a download is saving to
-- A failed source says why, and a click asks it again
-- A slow search offers the other sources
-- Downloads opens with your last search, unless you switch that off
-- Reset subtitles to how they came, in Settings, Playback
-- Check for updates now, in Settings, About
-- Open the folder an export went to
-- Click a line in Activity to copy it
-- Shift+F10 or the Menu key opens the right-click menu
-- Tooltips show on keyboard focus too
-- Press ? anywhere for the list of keys
-- Exports carry an episode count you set by hand
-- Exports carry quick fixes, and an import applies them
-- The player's controls set subtitle and audio delay; a and A shift the audio
-- Discord shows what you are watching, a switch in Settings, Playback
-- An endpoint repo can search your own Prowlarr or Jackett over torznab
-- An endpoint repo can add a source that answers in JSON
-- Airing times of your shows can go to a calendar app, set in Settings
-- Change a show's list status from its status pill or right-click menu
-- Pick several shows in Library with Ctrl or Shift and hide, rate or move them
-- A first-run setup walks you through your folder, your list and downloads
-- No anime folder yet? Setup makes one for you
-- Run setup again from Settings, under About
-- Home shows what is out now and popular this season before you add a folder
-- A first scan ends with what it found, and walks you through what did not match
-- Watching has a Planning tab: start a planned show or get its episodes
-- Starting and finishing a show dates it on AniList and MyAnimeList
-- Finishing a completed show again counts a rewatch
-- Write notes on a show's list entry from its page
-- A followed show's feed is read the moment a new episode airs
-- The activity log says when a followed episode has not turned up after three days
-- A Stats page shows hours watched, genres and seasons, and a year recap
-- Screen readers can name every button, switch, field and card
-- Change the text size in Settings, under Appearance, from smaller to largest
-- Help in Settings answers common questions, each with a button to the fix
-- Ask Claude Code to look a show's episode dates up, under Episodes and dates
-- Errors say what to do next, with a button for it and details a click away
-- Settings, Downloads picks whether Anibeam or anirss runs searches
-- Switch off any device on your tailnet in Settings, Phone app
-- Stream episodes has its own switch in Settings, Phone app
-- Watch history, resume points and matches merge between your computers
-- A notification says when an episode of a show you watch is out
-- Set a status and a score with no AniList or MyAnimeList account
-- Export carries the lists kept on this device
-- Connecting AniList or MyAnimeList offers to move the list kept on this computer
-- Each person on your tailnet sees their own progress from this computer
-- Airing sorts the season by score, trending, start date and more
-- Home's Coming up can hide the days with nothing on
-- Your phone can send downloads to this computer, into its library
-- Click a show on Watching or Planning to search its episodes at once
-- Plan to watch from a Downloads search result or a show's Get page
-- Cast the playing episode to a Chromecast or DLNA TV from the player
+This is a huge quality-of-life update. Anibeam now streams to your phone over Tailscale, casts to your TV, searches and follows shows on its own built-in engine, and feels faster and clearer from first launch on.
 
-### Changed
-- A show you marked not interested leaves that list once it is off the air
-- Out now on Airing shows its episodes as small cards with their wide banners
-- Library sorts and groups from two menus, with the order said in words
-- This week shows what is out to watch, then a calendar of the days ahead
-- Two files of one episode share one row, and you pick which release plays
-- Searches wait a second between requests to one site, except your own server
-- Settings lists its sections down the left, each saying how it stands now
-- Search settings: type a word and land on the setting it names
-- Accounts, Subtitles, Keyboard, Phone app and About are sections of their own
-- Unsaved download settings wait in a bar with Save, wherever you scroll
-- A show's Fixes menu holds Fix files, the episode count, the match and Rescan
-- Skip outro stays up with the controls hidden, like Skip intro
-- Skipping an intro lands right where the episode starts
-- The speed you watch at carries over to the next episode
-- Tracks read in plain words, like English (file)
-- Switching a track says which one on the video
-- The rating prompt goes away by itself
-- Anibeam opens at the size and place you left it
-- Settings opens on the tab you left it on
-- A page from the rail comes back with its search, filter and scroll
-- The rail icon of the page you are on takes it back to the top
-- See all on Home opens the Library at that list
-- Clear match and Forget ask before they drop anything
-- Closing Fix files with fixes not applied asks first
-- A click anywhere on a match result applies it, and Return works too
-- The match panel says where a show is matched, without ids
-- Searching for an unmatched show starts from a clean folder name
-- Tabs and switches across the app work with the arrow keys
-- Films are called movies everywhere in the Library
-- Library's controls read Sort by and Group by
-- A downloading show says Cancel, and clears what it wrote unless you untick it
-- Download all takes the releases the table shows, and says how many
-- Rows hold still until seeders and dates are in, then sort once
-- Your column sort stays for the next search
-- Speeds say down or up, sizes go up to TB, and seeders are called seeders
-- Later on an update hides it until Anibeam opens again, not for good
-- Unsaved Downloads settings survive a switch to another tab
-- Test saves your changes first, then tests them
-- A subtitle value Settings cannot use turns red
-- Sliders say what they count, like 60 days
-- Enter flips a switch, as Space does
-- Activity's Clear asks first, Copy says Copied, older lines show the day
-- Downloading now shows the rest past twelve on a click
-- The status strip says Nothing is running when nothing is
-- Reduce motion stops every slide and grow, scrolling aside
-- Settings and errors use plain words instead of anirss terms
-- The activity log speaks plain words and leaves out background chores
-- Library, Airing and Feed open two to four times faster and use less memory
-- Plain words replace jargon: Metadata is Show info, endpoints are sources
-- On disk marks the release a file was downloaded from, even when it was renamed
-- Downloads errors say what to do next, with a button that does it
-- Settings errors say what to do next, with a button that does it
-- Empty and failed pages say why, with the button that fills them
-- With Anibeam's own engine, best fit follows the preferences saved in anirss
-- On Anibeam's own engine, Downloads lists your sources and needs no helper
-- Downloads search and follow on Anibeam itself, unless you picked the helper
-- Sources set only in the helper's own config need adding again in Anibeam
-- A source added by hand needs {query} where the search goes
-- Get show names each source by the kind of search it runs
-- Best fit prefers the release groups your sources list as trusted
-- Some sources need their update under Endpoints to keep their show feeds
-- The Metadata page opens faster on a large library
-- Downloads: folders and feeds without a show are full-size cards in the grid
-- The Next up card puts the poster on the right, fading into the show's colour
-- A series page reads synopsis, characters, related, tags, then recommendations
-- Recommendations sit as an even 4x2 grid, or one row of eight when wide
-- Library groups by Nothing first, set apart from the other groupings
-- The right-click menu puts a line between its groups of actions
-- Continue on Home includes the Up next series too
+- **Stream to your phone & cast to TV.** Share your library over Tailscale (even as a background service with no window open) with automatic transcoding, per-person progress, and downloads sent from your phone. You can also cast directly from the player to Chromecast and DLNA TVs.
+- **Built-in downloads & richer sources.** Search and follow shows natively in Anibeam without needing an external helper, with Torznab (Prowlarr and Jackett) and JSON source support in endpoint repos.
+- **First-run setup & clearer Settings.** A new setup walkthrough helps create or pick your library folder, connect a tracker, and match unmatched shows. Settings now has a searchable sidebar, and plain wording replaces jargon across the app.
+- **Local lists, Stats, and Discord.** Track status and scores locally without an account, log start/finish dates, rewatches, and notes on AniList and MyAnimeList, explore your watching stats and year recap, export airing times to a calendar app, and show what you're watching on Discord.
+- **Upgraded player & library.** Hold the video to play at 2x, jump between chapter markers, save screenshots with `S`, adjust audio and subtitle delay, pick between multiple files for the same episode, multi-select shows in Library and Airing, and customize episode schedules under Fixes.
+- **Faster & self-updating.** Library, Airing, and Feed open 2 to 4x faster, in-app updates install and restart automatically (with a Stable or Nightly toggle), and screen readers and adjustable text sizes are supported throughout.
 
-### Fixed
-- A show's synopsis shows symbols like & instead of their codes, in paragraphs
-- Endpoints from repos reach an anirss built from source, whatever its version
-- Seeders show for releases from a tracker written with backslashes
-- Discord shows a series whose title is a single letter
-- The activity log keeps no feed key after a subscription repair
-- The activity log keeps no feed key after a new subscription
-- Sources installed from a repo show up in search on every desktop install
-- Seeking in an episode converted for the phone works on Nvidia graphics
-- A busy sign-in port says to try again, not that another Anibeam is open
-- A qBittorrent address with a backslash is no longer read as this computer
-- Spy x Family episodes no longer show up as specials
-- A subscription from a show's page saves new episodes into that show's folder
-- JSON sources show sizes written with units, and links in capitals
-- A trusted-only source shows every upload when nothing trusted matches
-- A source added by hand earlier moves its key out of the address at launch
-- A search whose picked endpoint fails says why instead of showing no results
-- A web page answering at the qBittorrent address no longer counts as a login
-- A library card's right-click menu offers Open on AniList again
-- Seeders and leechers show for trackers whose address carries a passkey
-- Next from a season's last episode plays the next season's first
-- Double clicking the picture into fullscreen no longer plays at 2x
-- Skip intro skips the opening, not the scene before it
-- A show you watched to the end no longer stays in Catch up
-- Cards count a show's episodes, not its files, when two releases share one
-- A download's speed and time left no longer run under its Stop button
-- The Replay button no longer stays on the video after you go back
-- Watching an episode again after its end keeps your place
-- The rating prompt no longer covers the subtitle delay line
-- The Movies tab counts movies, not series
-- Airing now's count follows the filter
-- Space on a Watching show you do not have no longer opens an empty page
-- A tracker that refuses a change now says so
-- Watching no longer says Connected before you connect AniList
-- An empty Home shows how to connect AniList or MyAnimeList
-- Tooltips no longer blink and vanish when moving between cards
-- A show you watched to the end with no tracker reads caught up
-- An unfolded run of repeated lines in Activity folds back up
-- Episode cubes in Get now grow under the pointer
-- A hiccup reaching qBittorrent no longer reads as a wrong password
-- Episodes listed as "S2 Episode 3" get episode 3's title, not episode 2's
-- A password or key in a site's address is stored as a secret, not in the open
-- An imported backup keeps a watched opening or ending as last watched
-- An endpoint at an IPv6 address shows its full host
-- An episode folder beside Specials or a sample joins its show
-- Auto-match tells a second OVA run apart from the first, and finds a first film
-- Restoring a backup applies your file fixes right away
-- An extra marked with a v2, like SP01v2, no longer reads as an episode
-- A feed error names only the feed's host, never a login in its address
-- A qBittorrent at a name like this computer's no longer counts as this computer
-- A show titled with a word like Trailer or Special no longer reads as extras
-- Downloads says plainly why it cannot start, with one button that fixes it
-- An episode titled with a word like Special or Trailer stays an episode
-- Two releases of one extra, like SP01 and SP01v2, are one row with one history
-- On a narrow window the player's buttons no longer cover the volume
-- A torrent link written with backslashes downloads instead of being refused
-- A tracker written with backslashes shows its host, not its passkey
-- A source behind an anirss you run says to add it to that anirss's config
-- Subscribing to a show you already have saves only into its own folder
-- Following a show on a source with no feed says so, instead of never matching
-- The activity log keeps no source's login or API key, older lines included
-- On a very narrow window the player's right-hand buttons fold into a menu
-- Downloads no longer show the old anirss after switching to another one
-- A subscription on a source with no feed says it cannot fetch new episodes
-- A source with an empty category or filter searches every upload
-- A source whose address carries its own parameters searches correctly
-- A poster asked for twice at once is saved whole
-- Stats counts a rewatch in the year you watched it again
-- Episodes marked watched by hand no longer add hours to Stats
-- Out now fills the full width in your chosen grid and shows the last 24 hours
-- Downloads grids fill the page width, four across on the show tabs
-- Recommendation posters round their corners like every other card
-- Hovering a selected menu entry now brightens it instead of dimming it
-- Library posters now reach the same right edge as the search bar
-- Holding a card to pick no longer scrolls the page; drag to paint more picks
-- Picking cards keeps each show's list and library tag
-- On a very wide window, grids fill the width instead of dropping a column
-- This week keeps episodes that aired today or yesterday, with how long ago
-- A show reopens on the subtitles you picked, not a signs-only twin of them
-- A show with nothing downloaded says not downloaded, not missing
+### Fixes & polish
+
+Dozens of fixes across episode and special parsing, skip-intro timing, multi-release counts, Nvidia transcode seeking, credential masking in logs and URLs, tracker and qBittorrent error handling, keyboard shortcuts, and responsive layouts.
 
 ## 2.3.0 · 2026-10-27
 
-### New
-- Anibeam runs on Windows: an installer, or a zip to run from anywhere
-- Long shows download a few episodes at a time, 12 ahead by default
-- Each episode you finish starts the next; older watched ones leave the disk
-- Get more episodes now, or all of them, from a rolling download
-- Rolling download settings in Settings, Downloads
-- A notice says when a new version is out, with a button to download it
-- Airing now: every show on air, and each episode as it comes out
-- Mark a show not interested and it stays off Airing now
-- Plan to watch or get episodes straight from Airing now
-- Media keys and Control Centre play, pause and skip on the Mac
-- Set how many episodes a show has, and nothing past it is predicted
-- Release lists show a Rip column: WEB-DL, WEBRip, BluRay and the rest
-- This week shows nine days, two back and six ahead, every day even when empty
-- Right-click a card to delete its watched episodes or all of them, to the trash
+Anibeam arrives on Windows, adds Airing now to browse the current season, and introduces rolling downloads for long-running shows.
 
-### Fixed
-- This week cards keep the airing time inside the card
-- On disk marks only the release you have, not every release of that episode
-- An episode that aired earlier today stays on Today and says if it landed
-- An episode that aired with no file yet says it is late
-- Episodes you get for a show land in its folder and join it, not new shows
+- **Windows support.** Install for your user with the new Windows installer, or run the portable zip from anywhere.
+- **Rolling downloads.** Keep long shows a set number of episodes ahead (12 by default), grabbing the next episode as you watch and clearing older watched files automatically.
+- **Airing now.** Browse everything airing this season, mark shows Not interested, and plan or download episodes straight from the page.
+- **Update notices & macOS media keys.** Get notified when a new release is out, control playback with Mac media keys and Control Centre, and right-click shows to move episodes to the trash.
+
+### Fixes & polish
+
+More reliable episode folder routing, Rip quality tags in release tables, a nine-day This week calendar, and fixes for airing statuses and "On disk" badges.
 
 ## 2.2.0 · 2026-10-26
 
-### New
-- What's new opens after an update, marked at the version you came from
-- Click the version in the sidebar to open What's new again
-- Endpoint repos in Settings, Downloads: add one, check its key, install
-- Add an endpoint by hand, such as 1337x through Jackett
-- Change an installed endpoint's token
-- Move episodes to the trash from a series page
-- Get episodes straight from a series page
-- Fix files that read as the wrong episode from the series page
-- The series page says how long an episode runs
-- Watching series untouched for 60 days move to On hold, beside Continue
-- Double-click the picture to toggle fullscreen
+Manage sources through endpoint repos, act on episodes straight from a series page, and see what changed after every update.
 
-### Fixed
-- Episodes watched on another device no longer count as on disk
-- Numbered specials and OVAs keep their own episode numbers
+- **Endpoint repos.** Add source repositories in Settings > Downloads, add custom endpoints by hand, and update source tokens in place.
+- **Series page tools.** Download episodes, move files to the trash, and fix misidentified episode files right from a series page.
+- **What's new & On hold.** Release notes open automatically after an update, and shows untouched for 60 days move to On hold beside Continue.
+
+### Fixes & polish
+
+Double-click to toggle fullscreen, episode runtimes on series pages, and fixes for numbered specials, OVAs, and remote watch counts.
 
 ## 2.1.0 · 2026-10-24
 
-### New
-- The Downloads page: search by show, subscribe, see what is downloading
-- IMDb scores on the series page
-- Dropped series get their own shelf, out of every suggestion
-- The series band shows other titles, scores and list status
-- Seasons in the library, with Order and Sort
-- Episode cubes on the series page, missing and upcoming episodes included
-- Predicted air dates for episodes not announced yet
-- Episodes take their title from the file name when no provider has one
-- Arrow keys move between cards; Return opens one, Space plays it
-- Install on a Mac with brew
+Built-in Downloads arrives in the native app, the legacy Electron shell is retired, and browsing and playback get a thorough round of polish.
 
-### Changed
-- The wheel scrolls the way your browser does
-- Pages scroll from anywhere in the window
-- Home's Continue row follows what your tracker says you started
-- The week on Home says which episode lands, and when
-- Skip intro sits where Next does
-- Group franchises is a switch, kept over any order in the library
-- Metadata is one grid of tiles, with an episodes pane
+- **Downloads page.** Search releases by show, subscribe to airing series, and watch active downloads right inside Anibeam.
+- **Richer series pages.** Added IMDb scores, episode cubes (including missing and upcoming episodes with predicted air dates), a Dropped shelf, and season sorting.
+- **Keyboard & Homebrew.** Move between cards with arrow keys (`Return` to open, `Space` to play), and install on macOS with Homebrew.
 
-### Fixed
-- The display stays awake while an episode plays
-- Posters fill their cards on a Retina display
-- An episode counts as watched at the mark line, not only at its very end
-- The series page's play button counts what you watched here
-- The seek bar scrubs, and a release off the groove still seeks
-- The removal sheet removes what it says
-- Tracker progress counts the season the files are in
-- An airing show's newest episode is not taken for its last
-- File names like 01x36, OVAs and S05E extras read the right episode
+### Fixes & polish
 
-### Removed
-- The Electron app
-- The scroll speed slider
+Natural browser-style scrolling, sharper Retina posters, display sleep prevention during playback, better episode filename parsing, and fixes for seeking, watch thresholds, and seasonal tracker sync. The Electron app and scroll speed slider have been removed.
 
 ## 2.0.0 · 2026-10-13
 
-### New
-- Anibeam is rebuilt as a native app
-- Home: the series to go on with, the week ahead, episodes waiting
-- The library as sections of one grid, filtered by a genre picked on Home
-- A slim sidebar with Home and Library first
-- TVmaze matches series that AniList does not carry
-
-### Fixed
-- A series with no episode count is not marked watched at its newest episode
+Anibeam has been rebuilt from the ground up as a fast native app, with a slim sidebar, Home's Continue row and week ahead, a single-grid Library with genre filtering, and TVmaze fallback matching. Also fixed shows without a known episode count being marked complete on their latest episode.
 
 ## 1.0.0 · 2026-09-03
 
-### New
-- The first release
-- MyAnimeList is the default search
-
-### Changed
-- The window opens at 1080p
-
-### Fixed
-- Search finds series in sub-folders
+The first release of Anibeam, with MyAnimeList search by default, subfolder library scanning, and a 1080p default window.

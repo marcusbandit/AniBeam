@@ -56,8 +56,8 @@ Window {
     Tokens { id: theme }
     // The words every component below shows, by message ID (#792)
     Words { id: words }
-    // The tokens the native poster cards draw with (CardFace, #289), handed over at start and
-    // again whenever the theme moves
+    // The tokens and catalog words the native poster cards draw with (CardFace, #289, #1276),
+    // handed over at start and again whenever the theme or language moves
     QtObject {
         id: cardTokens
         readonly property var tokens: ({
@@ -66,7 +66,14 @@ Window {
             text: theme.text, textDim: theme.textDim, textFaint: theme.textFaint, accent: theme.accent, focusRing: theme.focusRing,
             onPoster: theme.onPoster, onPosterDim: theme.onPosterDim, accentOnPoster: theme.accentOnPoster, posterScrim: theme.posterScrim,
             downloadInk: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3),
-            cubes: theme.cubeStates
+            cubes: theme.cubeStates,
+            noPoster: words.t("card-no-poster"),
+            tagFilm: words.t("series-film"),
+            tagNew: words.t("card-tag-new"),
+            tagDownloading: words.t("card-tag-downloading"),
+            tagOnHold: words.t("status-on-hold"),
+            tagDropped: words.t("status-dropped"),
+            tagHidden: words.t("card-tag-hidden")
         })
         onTokensChanged: CardStyle.set(tokens)
         Component.onCompleted: CardStyle.set(tokens)

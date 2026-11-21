@@ -5,7 +5,8 @@
 // over one pane of rows closed by hairlines.
 
 import { Theme } from "theme.slint";
-import { AppData, EpisodeVersionLine } from "data.slint";
+import { AppData, EpisodeVersionLine, Nav } from "data.slint";
+import { PlayerData } from "player.slint";
 import { Button, Field, Figure, ListGroup, ListRow, Lit, PageTitle, SearchField, SectionHead, Segmented, Slider } from "widgets.slint";
 import { RepoData, RepoPanes } from "repos.slint";
 import { Area, Fold } from "fold.slint";
@@ -82,7 +83,9 @@ global Status {
     out property <bool> connection-warn: !AppData.checking && AppData.check-failed > 0;
     out property <string> computer: AppData.host-result != "" ? AppData.host-result : Tr.t("more-computer-status-none");
     out property <bool> computer-warn: AppData.host-tone == 1;
-    out property <string> about: AppData.version;
+    out property <string> about: AppData.update-new ? Tr.t("more-about-status-update") : AppData.version;
+    // A newer version's line, as About's row says it.
+    out property <string> update-line: Tr.s("more-update-out", "version", AppData.update-version);
     out property <string> icon: [Tr.t("more-icon-default"), Tr.t("more-icon-dark"), Tr.t("more-icon-line")][AppData.app-icon];
     out property <string> subtitles: Tr.t("more-subs-status");
     out property <string> data: BackupData.busy ? Tr.t("common-working") : Tr.t("more-data-status");
@@ -167,6 +170,66 @@ component HostRow inherits Rectangle {
     }
 }
 
+// A newer version is out: its name, and Download, which opens it in the browser (#809).
+component UpdateRow inherits Rectangle {
+    height: Math.max(15 * Theme.unit, label.preferred-height + 7 * Theme.unit);
+    label := Text {
+        x: Theme.pad;
+        width: parent.width - 3 * Theme.pad - get.width;
+        height: parent.height;
+        text: Status.update-line;
+        color: Theme.text;
+        font-family: Theme.strong-face;
+        vertical-alignment: center;
+        wrap: word-wrap;
+    }
+    get := Button {
+        x: parent.width - self.width - Theme.pad;
+        y: (parent.height - self.height) / 2;
+        width: self.min-width;
+        text: Tr.t("more-update-download");
+        small: true;
+        primary: true;
+        clicked => { AppData.open-update(); }
+    }
+    Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// Which builds the update check hears about, as the desktop's Updates choice: Stable or
+// Nightly (#809).
+component TrackRow inherits Rectangle {
+    height: column.preferred-height;
+    column := VerticalLayout {
+        padding: Theme.unit * 3;
+        padding-left: Theme.pad;
+        padding-right: Theme.pad;
+        spacing: Theme.unit * 2;
+        Text {
+            text: Tr.t("more-updates");
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Segmented {
+            options: [Tr.t("more-updates-stable"), Tr.t("more-updates-nightly")];
+            picked: AppData.update-nightly ? 1 : 0;
+            pick(i) => { AppData.set-update-nightly(i == 1); }
+        }
+    }
+    Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
 // One source the phone searches: its name, its address in the faint ledger cut, Remove.
 component SourceItem inherits Rectangle {
     in property <string> name;
@@ -218,6 +281,8 @@ component IndexRow inherits Rectangle {
     in property <string> name;
     in property <string> status;
     in property <bool> warn;
+    // The dot's colour: a warning by default, the accent for news.
+    in property <color> dot-color: Theme.warn;
     in property <bool> last;
     // The section the row opens; split, the open one is lit.
     in property <int> section: -2;
@@ -251,7 +316,7 @@ component IndexRow inherits Rectangle {
                 width: 1.5 * Theme.unit;
                 height: self.width;
                 border-radius: self.width / 2;
-                background: Theme.warn;
+                background: root.dot-color;
             }
             Text {
                 horizontal-stretch: 1;
@@ -532,6 +597,8 @@ component IndexPage inherits Rectangle {
                     icon: @image-url("icons/info.svg");
                     name: Tr.t("more-about");
                     status: Status.about;
+                    warn: AppData.update-new;
+                    dot-color: Theme.accent;
                     last: true;
                     clicked => { Settings.open(6, ""); }
                 }
@@ -1019,15 +1086,37 @@ export component MorePage inherits Rectangle {
     }
 
     if root.shown == 6: about := SectionPage {
+        // A newer version counts as seen only while About is on screen: More stays alive
+        // behind the other tabs, with this page open in it
+        property <string> offered: AppData.update-version;
+        // Nor while What's new, onboarding or the player covers it
+        property <bool> on-screen: Nav.page == 3 && AppData.foreground
+            && !AppData.notes-open && !AppData.onboarding && !PlayerData.open;
+        init => { AppData.mark-update-seen(); }
+        changed offered => {
+            if (self.on-screen) {
+                AppData.mark-update-seen();
+            }
+        }
+        changed on-screen => {
+            if (self.on-screen) {
+                AppData.mark-update-seen();
+            }
+        }
         title: Tr.t("more-about");
-        note: Status.about;
+        note: AppData.version;
         ListGroup {
+            if AppData.update-new: UpdateRow { }
+            if AppData.update-offered: Lit {
+                on: Settings.lit == Tr.t("more-updates");
+                reveal(y) => { about.reveal(y); }
+                TrackRow { }
+            }
             Lit {
                 on: Settings.lit == Tr.t("more-set-whats-new");
                 reveal(y) => { about.reveal(y); }
                 ListRow {
                     label: Tr.t("more-set-whats-new");
-                    helper: Tr.t("more-whats-new-note");
                     tappable: true;
                     chevron: true;
                     clicked => { AppData.open-notes(); }
@@ -1038,7 +1127,6 @@ export component MorePage inherits Rectangle {
                 reveal(y) => { about.reveal(y); }
                 ListRow {
                     label: Tr.t("more-set-onboarding");
-                    helper: Tr.t("more-onboarding-note");
                     tappable: true;
                     chevron: true;
                     clicked => { AppData.restart-onboarding(); }
@@ -1050,14 +1138,6 @@ export component MorePage inherits Rectangle {
                 ListRow {
                     label: AppData.ratings-label;
                     helper: AppData.ratings-credit;
-                }
-            }
-            Lit {
-                on: Settings.lit == Tr.t("more-set-version");
-                reveal(y) => { about.reveal(y); }
-                ListRow {
-                    label: Tr.t("more-set-version");
-                    helper: AppData.version;
                     last: true;
                 }
             }

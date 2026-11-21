@@ -820,7 +820,7 @@ mod tests {
         let shown = err.to_string();
         assert!(!shown.to_lowercase().contains("anibeam"), "{shown}");
         assert!(!shown.contains("file"), "{shown}");
-        assert!(shown.starts_with("Signing in could not start: "), "{shown}");
+        assert!(shown.starts_with("Could not start sign-in: "), "{shown}");
         assert!(shown.contains(&format!("port {port}")), "{shown}");
         assert!(shown.contains("in use by another program"), "{shown}");
         assert!(shown.contains("try again"), "{shown}");
@@ -916,12 +916,12 @@ mod tests {
         titled(
             &page(Page::Failed("why")),
             "Anibeam, sign-in failed",
-            "The sign-in did not finish",
+            "Sign-in did not finish",
         );
         titled(
             &page(Page::Cancelled),
-            "Anibeam, sign-in cancelled",
-            "This sign-in was cancelled",
+            "Anibeam, sign-in canceled",
+            "Sign-in was canceled",
         );
         let cancelled = page(Page::Cancelled);
         assert!(

@@ -979,6 +979,8 @@ export component NavItem inherits Rectangle {
     in property <image> icon;
     in property <string> label;
     in property <bool> active;
+    // Something new waits behind the tab: a small accent dot on the icon's corner.
+    in property <bool> dot;
     callback clicked();
     accessible-role: tab;
     accessible-label: root.label;
@@ -999,6 +1001,14 @@ export component NavItem inherits Rectangle {
             height: self.width;
             source: root.icon;
             colorize: root.active ? Theme.accent : Theme.dim;
+        }
+        if root.dot: Rectangle {
+            x: parent.width / 2 + 1.5 * Theme.unit;
+            y: parent.height / 2 - 3.5 * Theme.unit;
+            width: 2 * Theme.unit;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Theme.accent;
         }
     }
     Text {

@@ -359,7 +359,8 @@ onboarding-title-ready = 모두 준비됐어요
 onboarding-title-later = { $count ->
     [1] 준비 완료, 나중에 할 일 하나
     [2] 준비 완료, 나중에 할 일 둘
-   *[other] 준비 완료, 나중에 할 일 셋
+    [3] 준비 완료, 나중에 할 일 셋
+   *[other] 준비 완료, 나중에 할 일 { $count }개
 }
 onboarding-body-welcome = Anibeam은 애니를 한곳에 모아 줘요. 디스크에 있는 작품을 찾아 바로 여기서 재생하고, 보는 대로 AniList나 MyAnimeList를 업데이트해요.
 onboarding-body-library = 작품을 보관하는 폴더를 고르세요. 그 안의 폴더 하나하나가 포스터, 에피소드, 이어 볼 위치를 가진 작품이 돼요. Anibeam은 폴더를 읽기만 하고, 파일을 옮기거나 이름을 바꾸지 않아요.
@@ -1671,6 +1672,8 @@ downloads-suggest-on-anilist = AniList에 있음, 라이브러리에는 없음
 downloads-plan-to-watch = 시청 예정
 downloads-suggest-release-search = 대신 { $names }에서 “{ $query }” 릴리스 이름 검색
 downloads-key-return = Enter
+downloads-magnet-invalid = 이 마그넷 링크는 토렌트를 가리키지 않아요
+downloads-magnet-film = 영화로 다운로드
 downloads-sources = 소스
 downloads-source-hint-starting = 시작 중
 downloads-source-hint-down = 실행 안 됨
@@ -2320,6 +2323,11 @@ settings-downloads-keep-behind = 뒤에 남길 화수
 settings-downloads-subscriptions-title = 구독과 검색
 settings-downloads-last-search = 마지막 검색 유지
 settings-downloads-prune = 완결 작품 구독 해지
+settings-downloads-magnet = 마그넷 링크
+settings-downloads-magnet-anibeam = Anibeam이 열어요
+settings-downloads-magnet-other = 다른 앱이 열어요
+settings-downloads-magnet-none = 여는 앱이 없어요
+settings-downloads-magnet-use = Anibeam에서 열기
 settings-downloads-sources-title = 검색 소스
 settings-downloads-sources-empty = 아직 설정된 소스가 없어요
 settings-downloads-sources-connect = 목록을 보려면 검색 도우미를 연결하세요
@@ -3071,6 +3079,20 @@ tokens-cube-no-release = 릴리스 없음
 ## Card
 
 card-not-interested = 관심 없음
+card-no-poster = 포스터 없음
+card-tag-new = 신규
+card-tag-downloading = 다운로드 중
+card-tag-hidden = 숨김
+card-watched-of = { $watched } / { $total }
+card-watched-of-estimate = { $watched } / { $total }+
+card-watched = { $watched }화 시청
+card-files = 파일 { $count }개
+card-predicted = 예상 { $time }
+card-countdown-days = { $days }일 { $hours }시간
+card-countdown-hours = { $hours }시간 { $minutes }분
+card-countdown-minutes = { $minutes }분
+card-season-span = S{ $season } { $span }
+card-episode-next = 다음: { $number }화
 
 ## PagePlaceholder
 
