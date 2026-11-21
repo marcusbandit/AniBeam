@@ -698,8 +698,9 @@ pub fn bind(rolls: &mut [Roll], torrents: &[Torrent]) {
         .map(|p| p.hash.clone())
         .collect();
     for r in rolls.iter_mut() {
-        let since = r.created_at - BIND_SLACK_SECS;
         for p in r.parts.iter_mut().filter(|p| p.added && p.hash.is_empty()) {
+            // A held single handed over late looks from its own handover on
+            let since = p.added_at.max(r.created_at) - BIND_SLACK_SECS;
             let found = torrents
                 .iter()
                 .filter(|t| {
@@ -954,7 +955,7 @@ pub async fn tick<C: RollClient>(
     let mut drop = HashSet::new();
     let mut changed = false;
     for roll in rolls.iter_mut() {
-        if step(downloads, client, roll, torrents, here, &mut changed).await == Step::Drop {
+        if step(downloads, client, roll, torrents, here, now, &mut changed).await == Step::Drop {
             drop.insert(roll.id);
         }
     }
@@ -977,6 +978,7 @@ async fn step<C: RollClient>(
     roll: &mut Roll,
     torrents: &[Torrent],
     here: bool,
+    now: i64,
     changed: &mut bool,
 ) -> Step {
     // Find the torrents, and count a batch's episodes once its list is in
@@ -1124,6 +1126,7 @@ async fn step<C: RollClient>(
                 *changed = true;
                 for &p in &m.add {
                     roll.parts[p].added = true;
+                    roll.parts[p].added_at = now;
                 }
                 let mut parts: Vec<&mut Part> = roll
                     .parts
@@ -1820,28 +1823,91 @@ mod tests {
         assert!(r.parts[0].hash.is_empty());
     }
 
+    /// A client that takes every add and lists nothing yet.
+    struct Quiet;
+
+    impl RollClient for Quiet {
+        async fn files(&self, _: &str) -> Result<Vec<TorrentFile>, CoreError> {
+            Ok(Vec::new())
+        }
+        async fn set_file_priority(&self, _: &str, _: &[usize], _: i64) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn set_sequential(&self, _: &[String], _: bool) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn delete(&self, _: &[String], _: bool) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn recheck(&self, _: &[String]) -> Result<(), CoreError> {
+            Ok(())
+        }
+        fn files_here(&self, _: &Services) -> bool {
+            false
+        }
+        async fn add(
+            &self,
+            _: &Arc<Downloads>,
+            _: &[Release],
+            _: &Roll,
+        ) -> Result<Vec<String>, CoreError> {
+            Ok(Vec::new())
+        }
+    }
+
     #[test]
     fn a_held_single_added_late_is_given_its_own_time_to_show() {
+        let dir = tempfile::tempdir().unwrap();
+        let teams = crate::testing::Teams::open(dir.path(), anibeam_net::FakeHttp::new());
         let titles: Vec<String> = (1..=40).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
         let items = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
+        let day = 86_400;
+        // Picked four days ago; the first twelve were listed and the first is watched
         let mut r = plan(
             &items,
             &DownloadOptions::default(),
             &RollingSettings::default(),
             None,
-            0,
+            now_secs() - 4 * day,
         )
         .rolls
         .remove(0);
         for p in r.parts.iter_mut().filter(|p| p.added) {
             p.seen = true;
         }
-        // Day 10: the thirteenth is handed over and not listed yet
-        let day = 86_400;
-        r.parts[12].added = true;
-        r.parts[12].added_at = 10 * day;
-        assert!(!finished(&r, 10 * day + 60));
-        assert!(finished(&r, 14 * day));
+        r.parts[0].units[0].watched = true;
+        // The pass hands over the thirteenth, which the client has not listed yet
+        teams.services.handle.block_on(async {
+            add_rolls(&teams.services, vec![r]).await.unwrap();
+            tick(&teams.downloads, &Quiet, &[]).await;
+        });
+        let rolls = load(&teams.services).unwrap();
+        assert_eq!(rolls.len(), 1, "the roll was dropped");
+        let r = &rolls[0];
+        assert!(r.parts[12].added);
+        assert!(!finished(r, now_secs() + 60));
+        // A torrent that never shows still ends the roll in time
+        assert!(finished(r, now_secs() + 4 * day));
+        // The next pass binds it to the torrent the client took at the handover, not to an
+        // older one of the same name from before it
+        let listed = |hash: String, added_on: i64| Torrent {
+            hash,
+            name: "[G] Show - 13.mkv".into(),
+            added_on,
+            ..crate::qbt::tests_torrent()
+        };
+        let torrents = [
+            listed("a".repeat(40), now_secs() - 2 * day),
+            listed("b".repeat(40), now_secs()),
+        ];
+        teams
+            .services
+            .handle
+            .block_on(tick(&teams.downloads, &Quiet, &torrents));
+        let r = &load(&teams.services).unwrap()[0];
+        assert_eq!(r.parts[12].hash, "b".repeat(40));
+        assert!(r.parts[12].seen);
+        teams.shutdown();
     }
 
     #[test]
