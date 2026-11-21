@@ -150,7 +150,7 @@ core-repos-unreadable = could not read { $path }: { $error }
 core-repos-no-such-endpoint = no installed source with that ID
 core-repos-key-changed = this source list is now signed with a different key than the one you trusted. Remove and re-add it to accept the new key.
 core-repos-stale = the source list returned an older index (serial { $serial } after { $kept }); keeping the newer one
-core-repos-key-not-shown = the signing key does not match the one shown to you. Add it again and compare the fingerprint.
+core-repos-key-not-shown = the signing key does not match the one shown to you. Add the source list again and compare the fingerprint.
 core-repos-repo-added = Added a source list.
 core-repos-repo-removed = Removed a source list.
 # $key is the field's key in quotes.

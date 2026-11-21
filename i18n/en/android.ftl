@@ -77,13 +77,13 @@ onb-sites-title = Source lists
 onb-sites-note = Anibeam ships with no download sources. A source list is a signed catalog of sites to search. Paste its address, check its key, and install the sources you want. You can do this later in More.
 # The last step: which computer's Anibeam the phone reaches, if any.
 onb-computer-title = Your computer
-onb-computer-note = Anibeam on a computer can share its library with this phone over Tailscale so its shows appear in Library and play here. Enter its Tailscale name and port, then tap Test. No computer? Leave it blank and continue; you can set this up later in More.
+onb-computer-note = Anibeam on a computer can share its library with this phone over Tailscale so its shows appear in Library and play here. Enter its Tailscale name and port, then tap Test. No computer? Leave it blank and tap Start; you can set this up later in More.
 onb-wifi-only = Only on Wi-Fi
 onb-wifi-on = On. Anibeam asks before using mobile data.
 onb-wifi-off = Off. Downloads use mobile data too.
 onb-storage-caption = 18 GB is about 12 episodes. Slide it anywhere up to the phone's whole storage.
 onb-use-cap = Use this cap
-onb-cap-on = On. At { $cap }, Anibeam stops downloading until you delete episodes.
+onb-cap-on = On. At { $cap }, Anibeam won't start new downloads until you delete episodes.
 onb-cap-off = Off. Anibeam downloads until the phone is full.
 onb-start = Start
 onb-continue = Continue
@@ -234,7 +234,7 @@ more-roll-behind-help = { $count ->
     [0] Finishing an episode deletes the one before it.
    *[other] Watched episodes kept behind the one you just finished. With { $count }, finishing episode { $episode } deletes episode 1.
 }
-more-storage-cap-on = At { $cap }, downloads pause until you delete episodes.
+more-storage-cap-on = At { $cap }, Anibeam won't start new downloads until you delete episodes.
 more-storage-cap-off = Off: Anibeam downloads until the phone is full.
 more-network = Network
 more-network-wifi = Wi-Fi only
@@ -1120,7 +1120,7 @@ stream-quality-auto = Auto
 stream-quality-original = Original
 stream-app-starting = The app is still starting
 stream-no-computer = No computer yet. Add yours in More.
-# { $host } is the other device's name. "Stream episodes", "Settings" and "Phone app" are names on its screen.
+# { $host } is the other device's name. "Stream episodes", "Settings", "Accounts" and "Phone app" are names on its screen.
 stream-off-on-host = Streaming is off on { $host }. Turn on Stream episodes there under Settings > Accounts (Phone app).
 # { $host } is the other device's name, { $version } its Anibeam version.
 stream-cannot-stream = { $host } runs Anibeam { $version }, which cannot stream yet. Update it there.

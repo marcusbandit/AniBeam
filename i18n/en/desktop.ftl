@@ -137,7 +137,7 @@ activity-column-today-empty = Searches, downloads and new subscriptions show up 
 activity-column-stopping = Stopping
 activity-column-starting = Starting
 activity-column-start-tip = Start downloading
-activity-column-stop-tip = Pause downloading; downloaded data is kept
+activity-column-stop-tip = Stop downloading; downloaded data is kept
 activity-column-cancelling = Canceling
 activity-column-cancel-all-tip = Cancel these downloads
 activity-column-cancel-tip = Cancel this download
@@ -899,7 +899,7 @@ metadata-refreshing = Refreshing { $title }
 metadata-refresh-tip = Fetch this show's info again
 metadata-forget-armed = Remove it
 metadata-forget-confirm-tip = Click again to remove this show and its watch history from Anibeam
-metadata-forget-tip = The folder is not on the disk any more: remove this show and its history from Anibeam
+metadata-forget-tip = The folder is not on the disk anymore: remove this show and its history from Anibeam
 
 ## AiringPage.qml
 
@@ -1558,7 +1558,7 @@ get-show-stopping = Stopping
 get-show-starting = Starting
 get-show-stop = Stop
 get-show-start-tip = Start downloading again
-get-show-stop-tip = Pause downloading; downloaded data is kept
+get-show-stop-tip = Stop downloading; downloaded data is kept
 get-show-cancelling = Canceling
 get-show-cancel-tip = Cancel this download and move what it wrote to the trash
 get-show-episode-order = Download in episode order
@@ -1721,7 +1721,7 @@ downloads-gap-then-not-downloaded = { $runs } not downloaded
 downloads-trying-query = Trying { $query }
 downloads-client-settings = Torrent client settings
 downloads-error-unknown = Something went wrong. Try again.
-downloads-search-all-off = All sources are turned off. Enable one to search.
+downloads-search-all-off = All sources are turned off. Turn one on to search.
 downloads-turn-on = Turn on { $name }
 downloads-search-no-sources = No search sources yet. Add a source list in Settings > Downloads.
 downloads-no-sources = No sources to search yet
@@ -1889,7 +1889,7 @@ downloads-connecting = Connecting
 downloads-reconnect = Reconnect
 downloads-search-placeholder = Search for a show, or a release name
 downloads-search-go-tip = Search release names on { $names }
-downloads-search-go-off = Every source is switched off.
+downloads-search-go-off = All sources are turned off.
 downloads-suggest-airing =
     { $predicted ->
         [yes] Airing, episode { $episode } predicted in { $time }
