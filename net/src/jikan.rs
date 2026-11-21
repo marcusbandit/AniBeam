@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 
 use super::limiter::ProviderClient;
-use super::{HttpRequest, null_to_default};
-use anibeam_contract::{CoreError, Provider};
+use super::null_to_default;
+use anibeam_contract::CoreError;
 
 pub const JIKAN_API: &str = "https://api.jikan.moe/v4";
 
@@ -118,15 +118,9 @@ pub struct JikanClient {
 
 impl JikanClient {
     pub fn new(client: ProviderClient) -> JikanClient {
-        JikanClient::with_budget(client, JIKAN_READ_BUDGET)
-    }
-
-    /// A client whose reads stop asking for pages after `budget`, for a
-    /// test that cannot wait out the real one.
-    pub fn with_budget(client: ProviderClient, budget: Duration) -> JikanClient {
         JikanClient {
             client,
-            budget_ms: AtomicU64::new(budget.as_millis() as u64),
+            budget_ms: AtomicU64::new(JIKAN_READ_BUDGET.as_millis() as u64),
         }
     }
 
@@ -265,25 +259,14 @@ impl JikanClient {
     /// One page of the episode list, or `None` for a 404. The first page
     /// is asked for without a page number, the way Jikan's own links do.
     async fn page(&self, mal_id: u64, page: u32) -> Result<Option<EpisodesReply>, CoreError> {
-        let mut url = format!("{JIKAN_API}/anime/{mal_id}/episodes");
-        if page > 1 {
-            url.push_str(&format!("?page={page}"));
-        }
-        let response = self
-            .client
-            .send(HttpRequest::get(url).header("Accept", "application/json"))
-            .await?;
-        if response.status == 404 {
-            return Ok(None);
-        }
-        if !response.is_success() {
-            return Err(CoreError::provider(
-                Provider::Mal,
-                Some(u32::from(response.status)),
-                format!("Jikan {}: {}", response.status, response.text()),
-            ));
-        }
-        Ok(Some(response.json()?))
+        let query = if page > 1 {
+            format!("?page={page}")
+        } else {
+            String::new()
+        };
+        self.client
+            .get_json(format!("{JIKAN_API}/anime/{mal_id}/episodes{query}"))
+            .await
     }
 }
 
@@ -307,6 +290,7 @@ mod tests {
     use super::*;
     use crate::limiter::ProviderClient;
     use crate::{FakeHttp, Upstream};
+    use anibeam_contract::Provider;
     use std::sync::Arc;
 
     fn client(http: Arc<FakeHttp>) -> JikanClient {
@@ -545,10 +529,8 @@ mod tests {
         let http = FakeHttp::new();
         http.push_json(200, page(1, 100, true));
         http.push_json(200, page(101, 150, false));
-        let jikan = JikanClient::with_budget(
-            ProviderClient::new(Upstream::Jikan, http.clone(), Duration::from_millis(1)),
-            Duration::ZERO,
-        );
+        let jikan = client(http.clone());
+        jikan.set_budget(Duration::ZERO);
         let read = jikan.episodes(21).await.unwrap();
         assert!(!read.whole);
         assert!(read.stopped.is_none());

@@ -9,10 +9,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use backon::{ExponentialBuilder, Retryable};
+use serde::de::DeserializeOwned;
 use tokio::time::Instant;
 
 use super::{Http, HttpRequest, HttpResponse, Upstream};
 use anibeam_contract::CoreError;
+use anibeam_foundation::sync::recover;
 
 /// The retry schedule the spec fixes: 1, 2, 4, 8, 16, 32 seconds, capped
 /// at 60, six retries after the first request.
@@ -64,7 +66,7 @@ impl Pace {
     async fn turn(&self) -> Instant {
         loop {
             let when = {
-                let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                let mut st = recover(&self.state);
                 let now = Instant::now();
                 let gap = self.floor.max(st.live_gap);
                 let mut when = st.last_sent.map_or(now, |t| t + gap);
@@ -97,7 +99,7 @@ impl Pace {
         if limit.is_none() && remaining.is_none() {
             return;
         }
-        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut st = recover(&self.state);
         if let Some(limit) = limit
             && st.live_from.is_none_or(|t| sent_at >= t)
         {
@@ -251,7 +253,7 @@ impl ProviderClient {
     }
 
     pub async fn send(&self, req: HttpRequest) -> Result<HttpResponse, CoreError> {
-        self.send_capped(req, self.attempt_timeout).await
+        self.send_capped(req, None).await
     }
 
     /// `send` with a cap on each request. The retries keep their own
@@ -265,11 +267,55 @@ impl ProviderClient {
         self.send_capped(req, Some(timeout)).await
     }
 
-    async fn send_capped(
+    /// A GET that asks for JSON, read into `T`. A 404 is `None`: the
+    /// provider holds nothing at that url.
+    pub(crate) async fn get_json<T: DeserializeOwned>(
+        &self,
+        url: String,
+    ) -> Result<Option<T>, CoreError> {
+        let response = self.get(url).await?;
+        if response.status == 404 {
+            return Ok(None);
+        }
+        self.json(&response).map(Some)
+    }
+
+    /// A GET that asks for JSON.
+    pub(crate) async fn get(&self, url: String) -> Result<HttpResponse, CoreError> {
+        self.send(HttpRequest::get(url).header("Accept", "application/json"))
+            .await
+    }
+
+    /// The reply's JSON. A failing status is the provider's own answer,
+    /// `<label> <status>: <body>`, carried with its status so a job can
+    /// tell it from a transport failure.
+    pub(crate) fn json<T: DeserializeOwned>(
+        &self,
+        response: &HttpResponse,
+    ) -> Result<T, CoreError> {
+        if !response.is_success() {
+            return Err(CoreError::provider(
+                self.upstream.provider(),
+                Some(u32::from(response.status)),
+                format!(
+                    "{} {}: {}",
+                    self.upstream.label(),
+                    response.status,
+                    response.text()
+                ),
+            ));
+        }
+        response.json()
+    }
+
+    /// One call, each request capped at `per_attempt`, or at the client's
+    /// own cap when that is `None`.
+    pub(crate) async fn send_capped(
         &self,
         req: HttpRequest,
         per_attempt: Option<Duration>,
     ) -> Result<HttpResponse, CoreError> {
+        let per_attempt = per_attempt.or(self.attempt_timeout);
         let attempt = || async {
             let sent_at = self.pace.turn().await;
             let sent = match per_attempt {

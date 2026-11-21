@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use super::imdb::title_id;
+use super::imdb::{digits, title_id};
 use super::{Fault, Http, HttpRequest, null_to_default};
 use anibeam_contract::Provider;
 use anibeam_foundation::percent;
@@ -120,10 +120,7 @@ pub fn parse(body: &[u8]) -> Result<Vec<ImdbLink>, Fault> {
 /// Digits and nothing else, above nought. `str::parse` alone would take a
 /// leading `+`, which no id is written with.
 fn plain_id(value: &str) -> Option<u64> {
-    if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    value.parse().ok().filter(|id| *id > 0)
+    digits(value.as_bytes()).filter(|id| *id > 0)
 }
 
 #[cfg(test)]

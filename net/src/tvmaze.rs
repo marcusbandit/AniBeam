@@ -11,8 +11,8 @@
 use serde::Deserialize;
 
 use super::limiter::ProviderClient;
-use super::{HttpRequest, HttpResponse, null_to_default};
-use anibeam_contract::{AiringStatus, CoreError, Provider};
+use super::null_to_default;
+use anibeam_contract::{AiringStatus, CoreError};
 use anibeam_foundation::percent;
 
 pub const TVMAZE_API: &str = "https://api.tvmaze.com";
@@ -246,22 +246,10 @@ impl TvmazeClient {
         TvmazeClient { client }
     }
 
-    async fn get(&self, url: String) -> Result<HttpResponse, CoreError> {
-        self.client
-            .send(HttpRequest::get(url).header("Accept", "application/json"))
-            .await
-    }
-
     /// Every show TVmaze finds for the query, in its own relevance order.
     pub async fn search(&self, query: &str) -> Result<Vec<Show>, CoreError> {
-        let response = self
-            .get(format!(
-                "{TVMAZE_API}/search/shows?q={}",
-                percent::encode(query)
-            ))
-            .await?;
-        check(&response)?;
-        let hits: Option<Vec<SearchHit>> = response.json()?;
+        let url = format!("{TVMAZE_API}/search/shows?q={}", percent::encode(query));
+        let hits: Option<Vec<SearchHit>> = self.client.json(&self.client.get(url).await?)?;
         Ok(hits
             .unwrap_or_default()
             .into_iter()
@@ -272,54 +260,33 @@ impl TvmazeClient {
     /// One show with its episodes and its images. A 404 is a show TVmaze
     /// does not have, which is an answer rather than a failure.
     pub async fn show(&self, id: u64) -> Result<Option<Show>, CoreError> {
-        let response = self
-            .get(format!(
+        self.client
+            .get_json(format!(
                 "{TVMAZE_API}/shows/{id}?embed[]=episodes&embed[]=images"
             ))
-            .await?;
-        if response.status == 404 {
-            return Ok(None);
-        }
-        check(&response)?;
-        Ok(Some(response.json()?))
+            .await
     }
 
     /// The show behind an IMDb title id. TVmaze answers with a redirect to
     /// the show, which the transport follows, so the reply is the show
     /// itself; a 404 is a title it has no show for.
     pub async fn lookup_imdb(&self, imdb: &str) -> Result<Option<u64>, CoreError> {
-        let response = self
-            .get(format!(
+        let show: Option<Option<Show>> = self
+            .client
+            .get_json(format!(
                 "{TVMAZE_API}/lookup/shows?imdb={}",
                 percent::encode(imdb)
             ))
             .await?;
-        if response.status == 404 {
-            return Ok(None);
-        }
-        check(&response)?;
-        let show: Option<Show> = response.json()?;
-        Ok(show.map(|s| s.id).filter(|id| *id > 0))
+        Ok(show.flatten().map(|s| s.id).filter(|id| *id > 0))
     }
-}
-
-/// Anything but a success is TVmaze's own answer, carried with its status
-/// so the jobs can tell it from a transport failure.
-fn check(response: &HttpResponse) -> Result<(), CoreError> {
-    if response.is_success() {
-        return Ok(());
-    }
-    Err(CoreError::provider(
-        Provider::Tvmaze,
-        Some(u32::from(response.status)),
-        format!("TVmaze {}: {}", response.status, response.text()),
-    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{FakeHttp, Upstream};
+    use anibeam_contract::Provider;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -420,9 +387,12 @@ mod tests {
         let http = FakeHttp::new();
         http.push_for("lookup/shows?imdb=tt35854736", 200, SHOW);
         http.push_for("lookup/shows?imdb=tt0000001", 404, "");
+        http.push_for("lookup/shows?imdb=tt0000002", 200, "null");
         let c = client(http.clone());
         assert_eq!(c.lookup_imdb("tt35854736").await.unwrap(), Some(83073));
         assert_eq!(c.lookup_imdb("tt0000001").await.unwrap(), None);
+        // A 200 with no show in it is a miss too, never a parse error.
+        assert_eq!(c.lookup_imdb("tt0000002").await.unwrap(), None);
     }
 
     #[tokio::test]

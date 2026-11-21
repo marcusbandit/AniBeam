@@ -4,8 +4,8 @@
 use serde::Deserialize;
 
 use super::limiter::ProviderClient;
-use super::{HttpRequest, null_to_default};
-use anibeam_contract::{CoreError, Provider, SkipKind, SkipSource, SkipWindow};
+use super::null_to_default;
+use anibeam_contract::{CoreError, SkipKind, SkipSource, SkipWindow};
 
 pub const ANISKIP_API: &str = "https://api.aniskip.com/v2";
 
@@ -52,37 +52,28 @@ impl AniSkipClient {
         let url = format!(
             "{ANISKIP_API}/skip-times/{mal_id}/{episode}?types[]=op&types[]=ed&episodeLength={duration_secs}"
         );
-        let response = self
-            .client
-            .send(HttpRequest::get(url).header("Accept", "application/json"))
-            .await?;
-        if response.status == 404 {
+        let Some(reply) = self.client.get_json::<SkipReply>(url).await? else {
             return Ok(None);
-        }
-        if !response.is_success() {
-            return Err(CoreError::provider(
-                Provider::Mal,
-                Some(u32::from(response.status)),
-                format!("AniSkip {}: {}", response.status, response.text()),
-            ));
-        }
-        let reply: SkipReply = response.json()?;
-        let mut windows = Vec::new();
-        for result in reply.results {
-            // A mixed opening or ending is still the opening or the ending;
-            // a recap is neither, and is dropped.
-            let kind = match result.skip_type.as_str() {
-                "op" | "mixed-op" => SkipKind::Intro,
-                "ed" | "mixed-ed" => SkipKind::Outro,
-                _ => continue,
-            };
-            windows.push(SkipWindow {
-                kind,
-                start: result.interval.start_time,
-                end: result.interval.end_time,
-                source: SkipSource::AniSkip,
-            });
-        }
+        };
+        let windows = reply
+            .results
+            .into_iter()
+            .filter_map(|result| {
+                // A mixed opening or ending is still the opening or the
+                // ending; a recap is neither, and is dropped.
+                let kind = match result.skip_type.as_str() {
+                    "op" | "mixed-op" => SkipKind::Intro,
+                    "ed" | "mixed-ed" => SkipKind::Outro,
+                    _ => return None,
+                };
+                Some(SkipWindow {
+                    kind,
+                    start: result.interval.start_time,
+                    end: result.interval.end_time,
+                    source: SkipSource::AniSkip,
+                })
+            })
+            .collect();
         Ok(Some(windows))
     }
 }
@@ -157,6 +148,22 @@ mod tests {
         let http = FakeHttp::new();
         http.push(404, r#"{"found":false,"message":"Not Found"}"#);
         assert_eq!(client(http).skip_times(1, 1, 1440).await.unwrap(), None);
+
+        let http = FakeHttp::new();
+        http.push(500, "boom");
+        let err = client(http).skip_times(1, 1, 1440).await.unwrap_err();
+        assert!(
+            matches!(
+                &err,
+                CoreError::Provider {
+                    provider: anibeam_contract::Provider::Mal,
+                    status: Some(500),
+                    message,
+                    ..
+                } if message == "AniSkip 500: boom"
+            ),
+            "{err:?}"
+        );
 
         let http = FakeHttp::new();
         http.fail_next("connection refused");
