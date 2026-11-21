@@ -15,6 +15,7 @@
 
 use std::sync::LazyLock;
 
+use fancy_regex::Regex as FancyRegex;
 use regex::Regex;
 
 use anibeam_contract::*;
@@ -46,6 +47,15 @@ static BATCH_WORD: LazyLock<Regex> = LazyLock::new(|| {
 /// A season with no episode after it: `S01 1080p`, `S02.1080p`
 pub(crate) static SEASON_PACK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bS(\d{1,2})(?:[\s._\[(]|$)").unwrap());
+/// A season the title names in words or as a season code, outside an SxxEyy marker:
+/// `Season 04`, `4th Season`, `S2 - 03`. A span of seasons, `Season 1-4` or `S01-S04`,
+/// names none: the lookahead keeps the first end out and the lookbehind the second.
+static SEASON_WORD: LazyLock<FancyRegex> = LazyLock::new(|| {
+    FancyRegex::new(
+        r"(?i)(?:\bseason\s*(\d{1,2})|\b(\d{1,2})(?:st|nd|rd|th)\s+season|(?<![-~])\bs(\d{1,2}))\b(?![-~]\s*s?\d)",
+    )
+    .expect("season word pattern compiles")
+});
 /// Where the video came from: `WEB-DL`, `WEBRip`, `WEB`, `BluRay`, `BDRip`, `HDTV`, `DVD`
 static RIP: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?:^|[^a-z0-9])(web[-. ]?dl|web[-. ]?rip|web|blu[-. ]?ray|bd[-. ]?rip|bd|hdtv|dvd[-. ]?rip|dvd)(?:$|[^a-z0-9])").unwrap()
@@ -77,6 +87,15 @@ pub fn read_name(name: &str) -> ReleaseFacts {
     })
 }
 
+/// The season a title, or a show's name, states in words or as a season code
+/// (`SEASON_WORD`), when it states one. `grid` reads a show's names with it.
+pub(crate) fn season_word(title: &str) -> Option<u32> {
+    let c = SEASON_WORD.captures(title).ok()??;
+    (1..=3)
+        .find_map(|g| c.get(g))
+        .and_then(|m| m.as_str().parse().ok())
+}
+
 pub fn read(item: &Release) -> ReleaseFacts {
     let title = item.title.as_str();
     let group = GROUP_LEAD
@@ -106,6 +125,7 @@ pub fn read(item: &Release) -> ReleaseFacts {
         season = c[1].parse().ok();
         episode = c[2].parse().ok();
     }
+    season = season.or_else(|| season_word(title));
     let batch = episode.is_none()
         && (BATCH_WORD.is_match(title)
             || ranged(title)
@@ -113,7 +133,13 @@ pub fn read(item: &Release) -> ReleaseFacts {
             || (!DASH_EPISODE.is_match(title)
                 && SEASON_PACK
                     .captures(title)
-                    .inspect(|c| season = c[1].parse().ok())
+                    // The far end of a span of seasons ("S01-S04") is no season of its own
+                    .inspect(|c| {
+                        let start = c.get(0).map_or(0, |m| m.start());
+                        if season.is_none() && !title[..start].ends_with(['-', '~']) {
+                            season = c[1].parse().ok();
+                        }
+                    })
                     .is_some()));
     if !batch && episode.is_none() {
         episode = DASH_EPISODE
@@ -214,9 +240,18 @@ fn ranged(title: &str) -> bool {
     span(title).is_some()
 }
 
-/// The first range of episodes a title names, as first and last.
+/// The first range of episodes a title names, as first and last. A pair of numbers after a
+/// season word ("Season 2 - 03") is a season and then an episode, not a range.
 fn span(title: &str) -> Option<(u32, u32)> {
     RANGE.captures_iter(title).find_map(|c| {
+        let start = c.get(0)?.start();
+        if title[..start]
+            .trim_end()
+            .to_ascii_lowercase()
+            .ends_with("season")
+        {
+            return None;
+        }
         let (a, b) = (
             c[1].parse::<u32>().unwrap_or(0),
             c[2].parse::<u32>().unwrap_or(0),
@@ -283,6 +318,32 @@ mod tests {
             "",
         ));
         assert_eq!((f.episode, f.batch), (Some(3.0), false));
+    }
+
+    #[test]
+    fn a_season_word_names_the_season() {
+        // The Judas batch of the show's fourth season, as its own title words it
+        let f = read(&release(
+            "[Judas] Re:Zero kara Hajimeru Isekai Seikatsu (Season 04) [1080p][Batch]",
+            "",
+        ));
+        assert_eq!((f.season, f.batch, f.episode), (Some(4), true, None));
+        let f = read(&release("[Grp] Show 4th Season - 03 [1080p]", ""));
+        assert_eq!((f.season, f.episode, f.batch), (Some(4), Some(3.0), false));
+        let f = read(&release("[Grp] Show Season 2 - 03 [1080p]", ""));
+        assert_eq!((f.season, f.episode, f.batch), (Some(2), Some(3.0), false));
+        assert_eq!(read(&release("Show S02E05 [1080p]", "")).season, Some(2));
+        assert_eq!(read(&release("Show S2 - 03 [1080p]", "")).season, Some(2));
+        // A span of seasons, a year and a plain episode name no season
+        let f = read(&release(
+            "[Judas] Black Clover (Season 1-4) [1080p][Batch]",
+            "",
+        ));
+        assert_eq!((f.season, f.batch), (None, true));
+        let f = read(&release("Show S01-S04 [1080p]", ""));
+        assert_eq!((f.season, f.batch), (None, true));
+        assert_eq!(read(&release("Show Season 2020 [1080p]", "")).season, None);
+        assert_eq!(read(&release("Plain Show - 05", "")).season, None);
     }
 
     #[test]

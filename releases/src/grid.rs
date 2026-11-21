@@ -5,8 +5,13 @@
 //! every shell draws the same grid from the same rules.
 
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
+
+use regex::Regex;
 
 use anibeam_contract::*;
+
+use super::facts;
 
 /// The longest grid drawn, as the desktop's.
 const MAX_EPISODES: u32 = 2000;
@@ -28,6 +33,10 @@ pub struct Show {
     pub here: Option<Vec<u32>>,
     /// The folder downloads go into.
     pub folder: String,
+    /// An AniList entry. AniList keeps each season apart, as an entry of its own, so one
+    /// whose names state no season is its first (`another_season`). False for a TVmaze
+    /// show, numbered within its seasons, and for one made from a torrent's name.
+    pub anilist: bool,
 }
 
 /// One row of the grid.
@@ -70,14 +79,69 @@ fn show_words(show: &Show) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// Whether a release names the show: at least half of one of its names' words, outside the
-/// leading `[group]` (a search matches the group too: "Naruto" finds Naruto-Kun.Hu's One
-/// Piece).
-pub fn names_show(show: &Show, title: &str) -> bool {
-    let words = show_words(show);
-    if words.is_empty() {
-        return true;
+static YEAR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b(?:19|20)\d{2}\b").expect("year pattern compiles"));
+static NUMBER_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\d").expect("number pattern compiles"));
+static ROMAN_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\b").expect("roman pattern compiles")
+});
+static SEASON_WORD_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?:season|part|cour|final|zoku|second|third|fourth|fifth|sequel)\b")
+        .expect("season word pattern compiles")
+});
+/// Non-Latin season marks: 第 and 期 or 季 (kanji), 기 (Korean), ภาค and ซีซั่น (Thai), сезон.
+static SEASON_SCRIPT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)[第期季기]|ภาค|ซีซั่น|сезон").expect("season script pattern compiles")
+});
+
+/// The longest run AniList keeps as one entry: a year of weekly episodes. A longer one (One
+/// Piece, Naruto Shippuuden) is a run its releases cut into seasons of their own.
+const ONE_SEASON: u32 = 52;
+
+/// The names the show goes by: its queries and its title.
+fn names(show: &Show) -> impl Iterator<Item = &str> {
+    show.queries
+        .iter()
+        .map(String::as_str)
+        .chain(std::iter::once(show.title.as_str()))
+}
+
+/// The season one of the show's names states: "2nd Season", "Season 4", "S2".
+fn stated_season(show: &Show) -> Option<u32> {
+    names(show).find_map(facts::season_word)
+}
+
+/// Whether a name hints at a season `stated_season` cannot read: a number that is not a
+/// year, a roman numeral, a word such as Part or Final, or a non-Latin season mark.
+fn season_hint(name: &str) -> bool {
+    let bare = YEAR_RE.replace_all(name, " ");
+    NUMBER_RE.is_match(&bare)
+        || ROMAN_RE.is_match(name)
+        || SEASON_WORD_RE.is_match(name)
+        || SEASON_SCRIPT_RE.is_match(name)
+}
+
+/// Whether the release `title`, whose facts read season `theirs`, is another season of the
+/// show. Against a season the show's names state, any other is. A show whose names state
+/// none is taken for its first season only when nothing says otherwise: it is an AniList
+/// entry, short enough to be one season, none of its names hints at a season, and the
+/// release carries every word of one of its names. A later season known by its arc's name
+/// ("Yuukaku-hen") is left out of a release that says only "Season 2", which may be it.
+fn another_season(show: &Show, title: &str, theirs: u32) -> bool {
+    if let Some(ours) = stated_season(show) {
+        return theirs != ours;
     }
+    theirs != 1
+        && show.anilist
+        && (1..=ONE_SEASON).contains(&show.total)
+        && !names(show).any(season_hint)
+        && carries_a_name(show, title)
+}
+
+/// A release title's words: lower case, without the leading `[group]`, one space between
+/// them and one at either end.
+fn title_words(title: &str) -> String {
     let lower = title.to_lowercase();
     let body = match lower
         .trim_start()
@@ -87,20 +151,40 @@ pub fn names_show(show: &Show, title: &str) -> bool {
         Some((_, rest)) => rest.to_string(),
         None => lower.clone(),
     };
-    let t = format!(
+    format!(
         " {} ",
         body.split(|c: char| !c.is_ascii_alphanumeric())
             .filter(|w| !w.is_empty())
             .collect::<Vec<_>>()
             .join(" ")
-    );
+    )
+}
+
+/// Whether a release carries every word of one of the show's names.
+fn carries_a_name(show: &Show, title: &str) -> bool {
+    let t = title_words(title);
+    show_words(show)
+        .iter()
+        .any(|ws| ws.iter().all(|w| t.contains(&format!(" {w}"))))
+}
+
+/// Whether a release names the show: at least half of one of its names' words, outside the
+/// leading `[group]` (a search matches the group too: "Naruto" finds Naruto-Kun.Hu's One
+/// Piece).
+pub fn names_show(show: &Show, title: &str) -> bool {
+    let words = show_words(show);
+    if words.is_empty() {
+        return true;
+    }
+    let t = title_words(title);
     words.iter().any(|ws| {
         let hit = ws.iter().filter(|w| t.contains(&format!(" {w}"))).count();
         hit >= ws.len().div_ceil(2)
     })
 }
 
-/// The releases that name the show, with their facts; and how many were dropped.
+/// The releases that name the show and no other season of it (`another_season`, by the
+/// season their facts read), with their facts; and how many were dropped.
 pub fn of_show(
     show: &Show,
     items: &[Release],
@@ -109,7 +193,10 @@ pub fn of_show(
     let mut out_items = Vec::new();
     let mut out_facts = Vec::new();
     for (i, item) in items.iter().enumerate() {
-        if names_show(show, &item.title) {
+        let season = facts.get(i).and_then(|f| f.season);
+        if names_show(show, &item.title)
+            && !season.is_some_and(|s| another_season(show, &item.title, s))
+        {
             out_items.push(item.clone());
             if let Some(f) = facts.get(i) {
                 out_facts.push(f.clone());
@@ -558,6 +645,7 @@ mod tests {
             cubes: cubes.into(),
             here: None,
             folder: "Sousou no Frieren".into(),
+            anilist: true,
         }
     }
 
@@ -623,6 +711,151 @@ mod tests {
         assert_eq!(p.items.len(), 2);
         assert_eq!(p.follow_query, "Sousou no Frieren Kumo-Subs 1080p");
         assert_eq!(episodes_phrase(&p.episodes), "Episodes 3 to 4");
+    }
+
+    /// An AniList entry by these names, `total` episodes long.
+    fn entry(title: &str, queries: &[&str], total: u32) -> Show {
+        Show {
+            title: title.into(),
+            queries: queries.iter().map(|q| q.to_string()).collect(),
+            total,
+            anilist: true,
+            ..Default::default()
+        }
+    }
+
+    /// Whether `of_show` keeps the release `title` for the show.
+    fn keeps(show: &Show, title: &str) -> bool {
+        let item = rel(title, 1);
+        let f = facts::read(&item);
+        of_show(show, &[item], &[f]).0.len() == 1
+    }
+
+    /// Re:Zero's first season and its fourth, by the names AniList gives them.
+    fn rezero() -> (Show, Show) {
+        let first = entry(
+            "Re Zero",
+            &[
+                "Re:Zero kara Hajimeru Isekai Seikatsu",
+                "Re:ZERO -Starting Life in Another World-",
+                "Re Zero",
+                "ReZero",
+            ],
+            25,
+        );
+        let fourth = entry(
+            "Re:ZERO -Starting Life in Another World- Season 4",
+            &[
+                "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+                "Re:ZERO -Starting Life in Another World- Season 4",
+            ],
+            19,
+        );
+        (first, fourth)
+    }
+
+    const FOURTH_BATCH: &str = "[Judas] Re:Zero kara Hajimeru Isekai Seikatsu (Re:Zero - Starting Life in Another World) (Season 04) [1080p][HEVC x265 10bit][Dual-Audio][Multi-Subs] (Batch)";
+
+    #[test]
+    fn a_release_of_another_season_is_not_the_shows() {
+        let (first, fourth) = rezero();
+        assert!(!keeps(&first, FOURTH_BATCH));
+        assert!(keeps(&fourth, FOURTH_BATCH));
+        // A release that names no season, or the show's own, stays
+        let plain = "[Lumen] Re Zero kara Hajimeru Isekai Seikatsu - 05 (1080p)";
+        assert!(keeps(&first, plain) && keeps(&fourth, plain));
+        let s1 = "[Lumen] Re Zero kara Hajimeru Isekai Seikatsu - S01E05 (1080p)";
+        assert!(keeps(&first, s1) && !keeps(&fourth, s1));
+        assert!(!keeps(
+            &first,
+            "[Lumen] Re Zero kara Hajimeru Isekai Seikatsu - S02E05 (1080p)"
+        ));
+        // A real first season whose names state none, Kimetsu no Yaiba's
+        let kny = entry(
+            "Kimetsu no Yaiba",
+            &["Kimetsu no Yaiba", "Demon Slayer: Kimetsu no Yaiba", "KnY"],
+            26,
+        );
+        assert!(!keeps(
+            &kny,
+            "[Judas] Kimetsu no Yaiba (Season 2) [1080p][Batch]"
+        ));
+    }
+
+    #[test]
+    fn a_show_naming_no_season_keeps_what_it_cannot_rule_out() {
+        // A later season known by its arc's name: "Season 2" may well be it
+        let arc = entry(
+            "Kimetsu no Yaiba: Yuukaku-hen",
+            &[
+                "Kimetsu no Yaiba: Yuukaku-hen",
+                "Demon Slayer: Kimetsu no Yaiba Entertainment District Arc",
+            ],
+            11,
+        );
+        assert!(keeps(
+            &arc,
+            "[Judas] Kimetsu no Yaiba (Season 2) [1080p][Batch]"
+        ));
+        // A long run whose releases cut seasons of their own, its count known or not
+        let shippuuden = entry("NARUTO: Shippuuden", &["NARUTO: Shippuuden"], 500);
+        assert!(keeps(
+            &shippuuden,
+            "[Judas] Naruto Shippuuden (Season 02) [1080p][Batch]"
+        ));
+        let one_piece = entry("ONE PIECE", &["ONE PIECE"], 0);
+        assert!(keeps(
+            &one_piece,
+            "[Judas] One Piece (Season 21) [1080p][Batch]"
+        ));
+        // Names that hint at a season this cannot read: a roman numeral, a number
+        let overlord = entry("Overlord III", &["Overlord III", "Over Lord 3"], 13);
+        assert!(keeps(&overlord, "[Grp] Overlord III S03E05 [1080p]"));
+        let mob = entry("Mob Psycho 100", &["Mob Psycho 100"], 12);
+        assert!(keeps(&mob, "Mob Psycho 100 S02E01 1080p WEB h264-GRP"));
+        // A year is no hint: the 2019 first season leaves its second out
+        let fruits = entry("Fruits Basket (2019)", &["Fruits Basket (2019)"], 25);
+        assert!(!keeps(
+            &fruits,
+            "Fruits Basket (2019) S02E01 1080p WEB h264-GRP"
+        ));
+        // Not an AniList entry: a TVmaze show numbered within its seasons
+        let tv = Show {
+            anilist: false,
+            ..entry("Breaking Bad", &["Breaking Bad"], 13)
+        };
+        assert!(keeps(&tv, "Breaking Bad S05E01 1080p WEB h264-GRP"));
+    }
+
+    #[test]
+    fn another_seasons_batch_is_never_the_pick() {
+        let (first, _) = rezero();
+        let items = vec![
+            rel(
+                "[Judas] Re:Zero kara Hajimeru Isekai Seikatsu (Season 04) [1080p][Batch]",
+                90,
+            ),
+            rel(
+                "[Lumen] Re Zero kara Hajimeru Isekai Seikatsu - 01 (1080p)",
+                10,
+            ),
+            rel(
+                "[Lumen] Re Zero kara Hajimeru Isekai Seikatsu - 02 (1080p)",
+                10,
+            ),
+        ];
+        let f: Vec<ReleaseFacts> = items.iter().map(facts::read).collect();
+        let (kept, kept_facts, dropped) = of_show(&first, &items, &f);
+        assert_eq!(dropped, 1);
+        let flight = BTreeMap::new();
+        let t = total(&first, &kept_facts, &flight);
+        let lib = library(&first, t, &flight);
+        let rs = rows(&kept, &kept_facts, t, "tracker");
+        let best = best_row(&rs, &lib, t).unwrap();
+        assert_eq!(
+            (rs[best].group.as_str(), rs[best].batch, rs[best].count),
+            ("Lumen", false, 2)
+        );
     }
 
     #[test]
