@@ -30,7 +30,7 @@ We're happy to bring the first sideloadable iPhone nightly builds, along with fu
 
 ### Fixes & polish
 
-Fixed leaving Downloads freezing the app, made downloads keep their progress and pause state across restarts, improved pause/resume during phone calls, and fixed foldable crease layouts, iPhone video colors and status bar hiding, multi-season tracking, Jikan outages, MAL/AniList sync, secret masking, and lowercase Anibeam branding.
+Fixed leaving Downloads freezing the app, made downloads keep their progress and pause state across restarts, improved pause/resume during phone calls, and fixed foldable crease layouts, iPhone video colors and status bar hiding, multi-season tracking, Jikan outages, AniList sync, secret masking, and lowercase Anibeam branding.
 
 ## 2.4.2 · 2026-11-02
 
