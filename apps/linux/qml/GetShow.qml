@@ -302,7 +302,27 @@ Item {
     // The download it would cancel finished or went: nothing left to ask about
     onHadOnTheWayChanged: if (!hadOnTheWay.length) confirming = false
     // When a provider's releases arrive, pick the group that covers the most gaps
-    onRowsChanged: if (chosen === "" && rows.length) pickRow(bestRow(), false)
+    onRowsChanged: {
+        if (chosen !== "") settlePicks()
+        if (chosen === "" && rows.length) pickRow(bestRow(), false)
+    }
+    // The rows changed under the picks: a batch was counted after it was picked, or the
+    // releases changed. Only picks a row still holds stay, a picked batch takes every gap its
+    // count fills, and a choice whose row went is dropped so the automatic pick runs again (#1374).
+    function settlePicks() {
+        var p = {}, changed = false, held = {}
+        for (var r = 0; r < rows.length; r++) for (var e in rows[r].eps) held[e + "|" + rows[r].eps[e]] = true
+        for (var n in picks) { if (held[n + "|" + picks[n]]) p[n] = picks[n]; else changed = true }
+        for (var k = 0; k < rows.length; k++) {
+            var row = rows[k]
+            if (!row.batch || !row.list.length) continue
+            var i = row.eps[row.list[0]]
+            if (!Object.keys(p).some(function(x) { return p[x] === i })) continue
+            wanted(row).forEach(function(x) { if (p[x] === undefined) { p[x] = i; changed = true } })
+        }
+        if (changed) picks = p
+        if (!rows.some(function(row) { return row.key === chosen })) chosen = ""
+    }
     function wanted(row) {
         var out = []
         for (var n = 1; n <= total; n++) if (!have(n) && row.eps[n] !== undefined) out.push(n)
