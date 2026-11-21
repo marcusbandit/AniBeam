@@ -95,4 +95,45 @@ pub mod ffi {
         /// Drops what the scene graph can rebuild, collects JS garbage, trims the heap.
         unsafe fn dev_release(window: *mut QObject);
     }
+
+    extern "Rust" {
+        /// CardFace ledger and airing readouts formatted through the active Fluent catalog.
+        fn card_watched(watched: i64, total: i64, estimate: bool) -> QString;
+        fn card_files(is_movie: bool, distinct: i64, on_disk: i64) -> QString;
+        fn card_short_countdown(secs: f64) -> QString;
+        fn card_airing_time(secs: f64, predicted: bool) -> QString;
+        fn card_airing_episode(season: i32, episode: i32, through: i32) -> QString;
+        fn card_episode_next(number: i64) -> QString;
+        fn card_score(value: f64) -> QString;
+    }
+}
+
+fn card_watched(watched: i64, total: i64, estimate: bool) -> ffi::QString {
+    ffi::QString::from(&crate::format::card_watched(watched, total, estimate))
+}
+
+fn card_files(is_movie: bool, distinct: i64, on_disk: i64) -> ffi::QString {
+    ffi::QString::from(&crate::format::card_files(is_movie, distinct, on_disk))
+}
+
+fn card_short_countdown(secs: f64) -> ffi::QString {
+    ffi::QString::from(&crate::format::card_short_countdown(secs))
+}
+
+fn card_airing_time(secs: f64, predicted: bool) -> ffi::QString {
+    ffi::QString::from(&crate::format::card_airing_time(secs, predicted))
+}
+
+fn card_airing_episode(season: i32, episode: i32, through: i32) -> ffi::QString {
+    ffi::QString::from(&crate::format::card_airing_episode(
+        season, episode, through,
+    ))
+}
+
+fn card_episode_next(number: i64) -> ffi::QString {
+    ffi::QString::from(&crate::format::card_episode_next(number))
+}
+
+fn card_score(value: f64) -> ffi::QString {
+    ffi::QString::from(&crate::format::score(value))
 }

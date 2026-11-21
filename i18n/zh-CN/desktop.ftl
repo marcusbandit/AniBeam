@@ -2694,6 +2694,20 @@ tokens-cube-no-release = 没有资源
 ## Card
 
 card-not-interested = 不感兴趣
+card-no-poster = 无海报
+card-tag-new = 新
+card-tag-downloading = 下载中
+card-tag-hidden = 已隐藏
+card-watched-of = { $watched } / { $total }
+card-watched-of-estimate = { $watched } / { $total }+
+card-watched = 已看 { $watched } 集
+card-files = { $count } 个文件
+card-predicted = 预计 { $time }
+card-countdown-days = { $days }天{ $hours }小时
+card-countdown-hours = { $hours }小时{ $minutes }分
+card-countdown-minutes = { $minutes }分钟
+card-season-span = S{ $season } { $span }
+card-episode-next = 下一集：第 { $number } 集
 
 ## PagePlaceholder
 

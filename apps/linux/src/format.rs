@@ -2,7 +2,7 @@
 //! `VideoPlayer.tsx`: no weeks bucket, zero-padded lower units on a countdown, `m:ss` under
 //! an hour, base 1024 bytes with one decimal past bytes.
 
-use anibeam_core::i18n::{Arg, tr};
+use anibeam_core::i18n::{Arg, Lang, lang, tr, tr_in};
 
 const MIN: f64 = 60.0;
 const HOUR: f64 = 3600.0;
@@ -212,6 +212,10 @@ pub fn plural(n: u64, one: &str, many: &str) -> String {
 /// quarter with an odd numerator: `x * 4.0` is exact (a pure exponent shift, no rounding), and
 /// `.25`/`.75` are ties while `.0`/`.5` are not.
 pub fn score(x: f64) -> String {
+    score_in(lang(), x)
+}
+
+fn score_in(l: Lang, x: f64) -> String {
     let quarters = x * 4.0;
     let is_tie = quarters.fract() == 0.0 && (quarters as i64).rem_euclid(2) != 0;
     let text = if is_tie {
@@ -219,7 +223,130 @@ pub fn score(x: f64) -> String {
     } else {
         format!("{x:.1}")
     };
-    anibeam_core::i18n::decimal(&text)
+    match l.decimal_mark() {
+        '.' => text,
+        mark => text.replace('.', &mark.to_string()),
+    }
+}
+
+/// Progress line on a library card: "3 of 12", "3 of 12+", or "3 watched" when the total is
+/// not known (`total <= 0`).
+pub fn card_watched(watched: i64, total: i64, estimate: bool) -> String {
+    card_watched_in(lang(), watched, total, estimate)
+}
+
+fn card_watched_in(l: Lang, watched: i64, total: i64, estimate: bool) -> String {
+    if total > 0 {
+        let id = if estimate {
+            "card-watched-of-estimate"
+        } else {
+            "card-watched-of"
+        };
+        tr_in(
+            l,
+            id,
+            &[("watched", watched.into()), ("total", total.into())],
+        )
+    } else {
+        tr_in(l, "card-watched", &[("watched", watched.into())])
+    }
+}
+
+/// File or episode count on a library card: shows count distinct episodes, films count files.
+pub fn card_files(is_movie: bool, distinct: i64, on_disk: i64) -> String {
+    card_files_in(lang(), is_movie, distinct, on_disk)
+}
+
+fn card_files_in(l: Lang, is_movie: bool, distinct: i64, on_disk: i64) -> String {
+    if !is_movie && distinct > 0 {
+        tr_in(l, "count-episodes", &[("count", (distinct as u64).into())])
+    } else {
+        tr_in(
+            l,
+            "card-files",
+            &[("count", (on_disk.max(0) as u64).into())],
+        )
+    }
+}
+
+/// Compact countdown for a card: "2d 5h", "4h 12m", "12m" (at least 1 minute).
+pub fn card_short_countdown(secs: f64) -> String {
+    card_short_countdown_in(lang(), secs)
+}
+
+fn card_short_countdown_in(l: Lang, secs: f64) -> String {
+    let total = if secs.is_finite() {
+        secs.floor().max(0.0) as u64
+    } else {
+        0
+    };
+    let (d, h, m) = (total / 86400, (total % 86400) / 3600, (total % 3600) / 60);
+    if d > 0 {
+        tr_in(
+            l,
+            "card-countdown-days",
+            &[("days", d.into()), ("hours", h.into())],
+        )
+    } else if h > 0 {
+        tr_in(
+            l,
+            "card-countdown-hours",
+            &[("hours", h.into()), ("minutes", m.into())],
+        )
+    } else {
+        tr_in(l, "card-countdown-minutes", &[("minutes", m.max(1).into())])
+    }
+}
+
+/// Countdown on an airing card, prefixed when the time is predicted.
+pub fn card_airing_time(secs: f64, predicted: bool) -> String {
+    card_airing_time_in(lang(), secs, predicted)
+}
+
+fn card_airing_time_in(l: Lang, secs: f64, predicted: bool) -> String {
+    let time = card_short_countdown_in(l, secs);
+    if predicted {
+        tr_in(l, "card-predicted", &[("time", time.into())])
+    } else {
+        time
+    }
+}
+
+/// Episode label on an airing card: "Episode 7", "Episodes 7 to 9", or "S2 Episode 7".
+pub fn card_airing_episode(season: i32, episode: i32, through: i32) -> String {
+    card_airing_episode_in(lang(), season, episode, through)
+}
+
+fn card_airing_episode_in(l: Lang, season: i32, episode: i32, through: i32) -> String {
+    let first = episode.max(0) as u32;
+    let last = through.max(0) as u32;
+    let span = if last > first {
+        tr_in(
+            l,
+            "fmt-episode-span",
+            &[("first", first.into()), ("through", last.into())],
+        )
+    } else {
+        tr_in(l, "episode-number", &[("number", first.into())])
+    };
+    if season > 1 {
+        tr_in(
+            l,
+            "card-season-span",
+            &[("season", (season as u32).into()), ("span", span.into())],
+        )
+    } else {
+        span
+    }
+}
+
+/// Next-episode line on a hero card: "Episode 4 next".
+pub fn card_episode_next(number: i64) -> String {
+    card_episode_next_in(lang(), number)
+}
+
+fn card_episode_next_in(l: Lang, number: i64) -> String {
+    tr_in(l, "card-episode-next", &[("number", number.into())])
 }
 
 #[cfg(test)]
@@ -324,5 +451,70 @@ mod tests {
         // Not a tie, and not exactly n.95 either; the surrounding non-tie cases.
         assert_eq!(score(9.95), "9.9");
         assert_eq!(score(10.0), "10.0");
+        assert_eq!(score_in(Lang::Da, 8.5), "8,5");
+        assert_eq!(score_in(Lang::Ja, 8.5), "8.5");
+    }
+
+    #[test]
+    fn card_words_follow_the_catalog_and_its_plurals() {
+        assert_eq!(card_watched_in(Lang::En, 3, 12, false), "3 of 12");
+        assert_eq!(card_watched_in(Lang::En, 3, 12, true), "3 of 12+");
+        assert_eq!(card_watched_in(Lang::En, 3, 0, false), "3 watched");
+        assert_eq!(card_watched_in(Lang::Da, 3, 12, false), "3 af 12");
+        assert_eq!(card_watched_in(Lang::Da, 3, 12, true), "3 af 12+");
+        assert_eq!(card_watched_in(Lang::Da, 3, 0, false), "3 set");
+        assert_eq!(card_watched_in(Lang::Ja, 3, 12, false), "3 / 12");
+        assert_eq!(card_watched_in(Lang::Ja, 3, 0, false), "3話視聴済み");
+
+        assert_eq!(card_files_in(Lang::En, false, 1, 1), "1 episode");
+        assert_eq!(card_files_in(Lang::En, false, 13, 15), "13 episodes");
+        assert_eq!(card_files_in(Lang::En, true, 1, 1), "1 file");
+        assert_eq!(card_files_in(Lang::En, false, 0, 2), "2 files");
+        assert_eq!(card_files_in(Lang::Da, false, 13, 15), "13 afsnit");
+        assert_eq!(card_files_in(Lang::Da, true, 1, 1), "1 fil");
+        assert_eq!(card_files_in(Lang::Da, false, 0, 2), "2 filer");
+        assert_eq!(card_files_in(Lang::Pl, true, 0, 1), "1 plik");
+        assert_eq!(card_files_in(Lang::Pl, true, 0, 3), "3 pliki");
+        assert_eq!(card_files_in(Lang::Pl, true, 0, 5), "5 plików");
+        assert_eq!(card_files_in(Lang::Ru, true, 0, 1), "1 файл");
+        assert_eq!(card_files_in(Lang::Ru, true, 0, 3), "3 файла");
+        assert_eq!(card_files_in(Lang::Ru, true, 0, 5), "5 файлов");
+
+        assert_eq!(card_short_countdown_in(Lang::En, 30.0), "1m");
+        assert_eq!(
+            card_short_countdown_in(Lang::En, 4.0 * 3600.0 + 12.0 * 60.0),
+            "4h 12m"
+        );
+        assert_eq!(
+            card_short_countdown_in(Lang::En, 2.0 * 86400.0 + 5.0 * 3600.0),
+            "2d 5h"
+        );
+        assert_eq!(
+            card_airing_time_in(Lang::En, 3600.0, true),
+            "predicted 1h 0m"
+        );
+        assert_eq!(
+            card_airing_time_in(Lang::Da, 2.0 * 86400.0 + 5.0 * 3600.0, false),
+            "2 d 5 t"
+        );
+        assert_eq!(
+            card_airing_time_in(Lang::Da, 3600.0, true),
+            "forventet 1 t 0 m"
+        );
+
+        assert_eq!(card_airing_episode_in(Lang::En, 1, 7, 0), "Episode 7");
+        assert_eq!(
+            card_airing_episode_in(Lang::En, 2, 7, 9),
+            "S2 Episodes 7 to 9"
+        );
+        assert_eq!(card_airing_episode_in(Lang::Da, 1, 7, 0), "Afsnit 7");
+        assert_eq!(
+            card_airing_episode_in(Lang::Da, 2, 7, 9),
+            "S2 Afsnit 7 til 9"
+        );
+        assert_eq!(card_airing_episode_in(Lang::Es, 2, 7, 0), "T2 Episodio 7");
+
+        assert_eq!(card_episode_next_in(Lang::En, 4), "Episode 4 next");
+        assert_eq!(card_episode_next_in(Lang::Da, 4), "Afsnit 4 næste");
     }
 }

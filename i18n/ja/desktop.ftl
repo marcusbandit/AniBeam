@@ -2771,6 +2771,20 @@ tokens-cube-no-release = リリースなし
 ## Card
 
 card-not-interested = 興味なし
+card-no-poster = ポスターなし
+card-tag-new = 新着
+card-tag-downloading = ダウンロード中
+card-tag-hidden = 非表示
+card-watched-of = { $watched } / { $total }
+card-watched-of-estimate = { $watched } / { $total }+
+card-watched = { $watched }話視聴済み
+card-files = { $count }ファイル
+card-predicted = 予定 { $time }
+card-countdown-days = { $days }日{ $hours }時間
+card-countdown-hours = { $hours }時間{ $minutes }分
+card-countdown-minutes = { $minutes }分
+card-season-span = S{ $season } { $span }
+card-episode-next = 次は第{ $number }話
 
 ## PagePlaceholder
 
