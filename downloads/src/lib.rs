@@ -2044,6 +2044,14 @@ pub fn download_telling(
             anibeam_contract::i18n::tr("core-downloads-nothing-selected", &[]),
         ));
     }
+    // A magnet's scheme in any case reaches the client as `magnet:?`
+    let items: Vec<Release> = items
+        .into_iter()
+        .map(|mut r| {
+            r.link = anibeam_foundation::magnet::normalize(&r.link);
+            r
+        })
+        .collect();
     let owner = downloads.clone();
     // What rolls is held back before anything else is asked of it, so a
     // held episode gets no followup that would wait days for its torrent
@@ -2207,9 +2215,12 @@ pub fn movie(
     link: String,
     needs_video: bool,
 ) -> Result<u64, CoreError> {
-    let link = link.trim().to_string();
-    if !(link.starts_with("magnet:") || link.starts_with("http://") || link.starts_with("https://"))
-    {
+    let link = anibeam_foundation::magnet::normalize(&link);
+    let scheme = |s: &str| {
+        link.get(..s.len())
+            .is_some_and(|h| h.eq_ignore_ascii_case(s))
+    };
+    if !(scheme("magnet:") || scheme("http://") || scheme("https://")) {
         return Err(CoreError::invalid(
             "link",
             anibeam_contract::i18n::tr("core-downloads-movie-link", &[]),
@@ -3675,6 +3686,27 @@ pub async fn host_read(
 
 #[cfg(test)]
 mod tests {
+    /// A film link's scheme reads in any case: an uppercase magnet starts the job, and
+    /// anything that is no link is refused (#1391).
+    #[test]
+    fn a_film_link_takes_its_scheme_in_any_case() {
+        let dir = tempfile::tempdir().unwrap();
+        let http = anibeam_net::FakeHttp::new();
+        let teams = Teams::open(dir.path(), http.clone());
+        let hex = "0123456789abcdef0123456789abcdef01234567";
+        assert!(super::movie(&teams.downloads, format!("MAGNET:?xt=urn:btih:{hex}"), true).is_ok());
+        assert!(
+            super::movie(
+                &teams.downloads,
+                "HTTPS://example.com/a.torrent".into(),
+                false
+            )
+            .is_ok()
+        );
+        assert!(super::movie(&teams.downloads, "example.com/a.torrent".into(), false).is_err());
+        teams.shutdown();
+    }
+
     /// A magnet's name reads as a release title does: the show, the episode, a batch; a link
     /// with no hash in it comes back empty (#1391).
     #[test]

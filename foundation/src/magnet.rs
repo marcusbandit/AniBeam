@@ -47,6 +47,17 @@ pub fn hash(link: &str) -> Option<String> {
     None
 }
 
+/// `link` trimmed, with a magnet scheme written in any case (`MAGNET:?`, as a browser may
+/// hand it over) as `magnet:?`, the way torrent clients take it. Anything else comes back
+/// trimmed and otherwise as it was.
+pub fn normalize(link: &str) -> String {
+    let link = link.trim();
+    match link.get(..8) {
+        Some(head) if head.eq_ignore_ascii_case("magnet:?") => format!("magnet:?{}", &link[8..]),
+        _ => link.to_string(),
+    }
+}
+
 /// The name a magnet link carries in its first `dn`, decoded (`+` reads as a space, as a
 /// browser writes it in a query). None for anything that is not a magnet, or a magnet
 /// with no name.
@@ -178,6 +189,21 @@ mod tests {
             hash(&format!("Magnet:?xt=urn:btih:{hex}")).as_deref(),
             Some(hex)
         );
+    }
+
+    #[test]
+    fn a_magnet_scheme_in_any_case_is_written_lowercase() {
+        assert_eq!(
+            normalize(" MAGNET:?xt=urn:btih:ABC&dn=Example "),
+            "magnet:?xt=urn:btih:ABC&dn=Example"
+        );
+        assert_eq!(normalize("Magnet:?dn=x"), "magnet:?dn=x");
+        assert_eq!(normalize("magnet:?dn=x"), "magnet:?dn=x");
+        assert_eq!(
+            normalize("HTTPS://example.com/a.torrent"),
+            "HTTPS://example.com/a.torrent"
+        );
+        assert_eq!(normalize("magnet:"), "magnet:");
     }
 
     #[test]
