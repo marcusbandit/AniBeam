@@ -1695,7 +1695,10 @@ mod tests {
         };
         assert!(settled(&[bound(1, false)], &[1]));
         assert!(!settled(&[bound(1, true)], &[1]), "files not known yet");
-        assert!(!settled(&[unbound.clone()], &[3]), "not listed yet");
+        assert!(
+            !settled(std::slice::from_ref(&unbound), &[3]),
+            "not listed yet"
+        );
         // Another add's followup waits on its own reads, not these
         assert!(settled(&[bound(1, false), unbound], &[1]));
         // Gone: done, or dropped by a tick
