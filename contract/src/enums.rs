@@ -123,9 +123,6 @@ pub enum AiringStatus {
 }
 
 impl AiringStatus {
-    /// Applies Electron's `normalizeStatus` (`src/shared/airingStatus.ts`):
-    /// trim, lower case, and collapse whitespace and hyphens to underscores
-    /// before matching.
     /// AniList's spelling of the status, the vocabulary a stored media
     /// row speaks and `from_provider` reads back.
     pub fn anilist_word(self) -> &'static str {
@@ -138,6 +135,8 @@ impl AiringStatus {
         }
     }
 
+    /// The status in any provider's spelling, read trimmed and in lower case, with each
+    /// run of whitespace and hyphens as one underscore.
     pub fn from_provider(s: &str) -> Option<AiringStatus> {
         let normalised = normalise_status(s);
         match normalised.as_str() {
@@ -790,5 +789,32 @@ mod tests {
         Stage::assert_columns_round_trip();
         JobPhase::assert_columns_round_trip();
         JobKind::assert_columns_round_trip();
+    }
+
+    #[test]
+    fn a_status_reads_in_any_provider_s_spelling() {
+        use AiringStatus::*;
+        for status in [Releasing, Finished, NotYetReleased, Cancelled, Hiatus] {
+            assert_eq!(
+                AiringStatus::from_provider(status.anilist_word()),
+                Some(status)
+            );
+        }
+        for (word, status) in [
+            ("Currently Airing", Releasing),
+            ("  ongoing ", Releasing),
+            ("Finished Airing", Finished),
+            ("Ended", Finished),
+            ("not-yet-released", NotYetReleased),
+            ("Not  yet - aired", NotYetReleased),
+            ("TBA", NotYetReleased),
+            ("Canceled", Cancelled),
+            ("On Hiatus", Hiatus),
+        ] {
+            assert_eq!(AiringStatus::from_provider(word), Some(status), "{word:?}");
+        }
+        for word in ["", "airing soon", "on_hold", "fin ished"] {
+            assert_eq!(AiringStatus::from_provider(word), None, "{word:?}");
+        }
     }
 }
