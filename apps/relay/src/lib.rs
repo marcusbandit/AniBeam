@@ -82,9 +82,11 @@ pub async fn serve(listener: TcpListener) -> std::io::Result<()> {
 
 /// [`serve`] with options other than the defaults.
 pub async fn serve_with(listener: TcpListener, options: Options) -> std::io::Result<()> {
-    let relay = Relay::default();
-    relay.lock().options = options;
-    tokio::spawn(tick_loop(Arc::downgrade(&relay.0)));
+    let relay = Relay {
+        inner: Arc::default(),
+        options,
+    };
+    tokio::spawn(tick_loop(Arc::downgrade(&relay.inner), options.clock));
     let app = Router::new()
         .route("/health", get(health))
         .route("/rooms", post(create))
@@ -100,15 +102,18 @@ pub async fn serve_with(listener: TcpListener, options: Options) -> std::io::Res
     .await
 }
 
-#[derive(Clone, Default)]
-struct Relay(Arc<Mutex<Inner>>);
+#[derive(Clone)]
+struct Relay {
+    inner: Arc<Mutex<Inner>>,
+    /// Set once at the start, so it is read without the lock.
+    options: Options,
+}
 
 #[derive(Default)]
 struct Inner {
     rooms: HashMap<String, Entry>,
     limits: HashMap<IpAddr, Limit>,
     next_conn: u64,
-    options: Options,
 }
 
 /// A room and the sockets in it, member or not yet.
@@ -140,7 +145,11 @@ enum Kind {
 
 impl Relay {
     fn lock(&self) -> MutexGuard<'_, Inner> {
-        lock(&self.0)
+        lock(&self.inner)
+    }
+
+    fn now(&self) -> u64 {
+        (self.options.clock)()
     }
 }
 
@@ -329,8 +338,7 @@ async fn join_page(
     };
     let view = {
         let mut inner = relay.lock();
-        let now = (inner.options.clock)();
-        if !inner.allow(addr.ip(), Kind::Page, now) {
+        if !inner.allow(addr.ip(), Kind::Page, relay.now()) {
             return (StatusCode::TOO_MANY_REQUESTS, "too many pages").into_response();
         }
         inner.rooms.get(&room_code).map(|e| e.room.view())
@@ -348,16 +356,15 @@ async fn join_page(
 /// not, and one that has not said hello by the deadline is closed.
 async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
     let (tx, mut rx) = mpsc::channel(QUEUE);
-    let (conn, hello_wait, clock) = {
+    let Options { hello_wait, clock } = relay.options;
+    let conn = {
         let mut inner = relay.lock();
         let conn = ConnId(inner.next_conn);
         inner.next_conn += 1;
-        let Options { hello_wait, clock } = inner.options;
-        let conn = inner.rooms.get_mut(&room_code).map(|entry| {
+        inner.rooms.get_mut(&room_code).map(|entry| {
             entry.sockets.insert(conn, tx);
             conn
-        });
-        (conn, hello_wait, clock)
+        })
     };
     let Some(conn) = conn else {
         // The room closed between the upgrade and now.
@@ -419,10 +426,6 @@ async fn run_socket(relay: Relay, room_code: String, mut socket: WebSocket) {
 }
 
 impl Relay {
-    fn now(&self) -> u64 {
-        (self.lock().options.clock)()
-    }
-
     fn is_member(&self, room_code: &str, conn: ConnId) -> bool {
         self.lock()
             .rooms
@@ -452,7 +455,7 @@ impl Relay {
 
 /// Once a second: the rooms' timers, dropping closed rooms, and forgetting old
 /// limit counts. Ends when the relay is gone.
-async fn tick_loop(relay: Weak<Mutex<Inner>>) {
+async fn tick_loop(relay: Weak<Mutex<Inner>>, clock: fn() -> u64) {
     let mut interval = tokio::time::interval(Duration::from_secs(1));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
@@ -460,8 +463,9 @@ async fn tick_loop(relay: Weak<Mutex<Inner>>) {
         let Some(relay) = relay.upgrade() else {
             return;
         };
+        // Read under the lock, so no message applied before it has a later time.
         let mut inner = lock(&relay);
-        let now = (inner.options.clock)();
+        let now = clock();
         for entry in inner.rooms.values_mut() {
             let outs = entry.room.tick(now);
             entry.send(outs);
