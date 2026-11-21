@@ -3079,6 +3079,20 @@ tokens-cube-no-release = 릴리스 없음
 ## Card
 
 card-not-interested = 관심 없음
+card-no-poster = 포스터 없음
+card-tag-new = 신규
+card-tag-downloading = 다운로드 중
+card-tag-hidden = 숨김
+card-watched-of = { $watched } / { $total }
+card-watched-of-estimate = { $watched } / { $total }+
+card-watched = { $watched }화 시청
+card-files = 파일 { $count }개
+card-predicted = 예상 { $time }
+card-countdown-days = { $days }일 { $hours }시간
+card-countdown-hours = { $hours }시간 { $minutes }분
+card-countdown-minutes = { $minutes }분
+card-season-span = S{ $season } { $span }
+card-episode-next = 다음: { $number }화
 
 ## PagePlaceholder
 

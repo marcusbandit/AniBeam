@@ -3479,6 +3479,24 @@ tokens-cube-no-release = No release
 ## Card
 
 card-not-interested = Not interested
+card-no-poster = No poster
+card-tag-new = New
+card-tag-downloading = Downloading
+card-tag-hidden = Hidden
+card-watched-of = { $watched } of { $total }
+card-watched-of-estimate = { $watched } of { $total }+
+card-watched = { $watched } watched
+card-files =
+    { $count ->
+        [one] { $count } file
+       *[other] { $count } files
+    }
+card-predicted = predicted { $time }
+card-countdown-days = { $days }d { $hours }h
+card-countdown-hours = { $hours }h { $minutes }m
+card-countdown-minutes = { $minutes }m
+card-season-span = S{ $season } { $span }
+card-episode-next = Episode { $number } next
 
 ## PagePlaceholder
 

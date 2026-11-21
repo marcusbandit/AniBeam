@@ -3317,6 +3317,24 @@ tokens-cube-no-release = Ingen udgivelse
 ## Card
 
 card-not-interested = Ikke interesseret
+card-no-poster = Ingen plakat
+card-tag-new = Ny
+card-tag-downloading = Downloader
+card-tag-hidden = Skjult
+card-watched-of = { $watched } af { $total }
+card-watched-of-estimate = { $watched } af { $total }+
+card-watched = { $watched } set
+card-files =
+    { $count ->
+        [one] { $count } fil
+       *[other] { $count } filer
+    }
+card-predicted = forventet { $time }
+card-countdown-days = { $days } d { $hours } t
+card-countdown-hours = { $hours } t { $minutes } m
+card-countdown-minutes = { $minutes } m
+card-season-span = S{ $season } { $span }
+card-episode-next = Afsnit { $number } næste
 
 ## PagePlaceholder
 

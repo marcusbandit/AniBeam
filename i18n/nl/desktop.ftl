@@ -3316,6 +3316,24 @@ tokens-cube-no-release = Geen release
 ## Card
 
 card-not-interested = Niet interessant
+card-no-poster = Geen poster
+card-tag-new = Nieuw
+card-tag-downloading = Downloaden
+card-tag-hidden = Verborgen
+card-watched-of = { $watched } van { $total }
+card-watched-of-estimate = { $watched } van { $total }+
+card-watched = { $watched } gekeken
+card-files =
+    { $count ->
+        [one] { $count } bestand
+       *[other] { $count } bestanden
+    }
+card-predicted = voorspeld { $time }
+card-countdown-days = { $days }d { $hours }u
+card-countdown-hours = { $hours }u { $minutes }m
+card-countdown-minutes = { $minutes }m
+card-season-span = S{ $season } { $span }
+card-episode-next = Aflevering { $number } hierna
 
 ## PagePlaceholder
 

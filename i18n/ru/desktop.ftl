@@ -3630,6 +3630,26 @@ tokens-cube-no-release = Нет релиза
 ## Card
 
 card-not-interested = Не интересно
+card-no-poster = Нет постера
+card-tag-new = Новые
+card-tag-downloading = Скачивается
+card-tag-hidden = Скрыто
+card-watched-of = { $watched } из { $total }
+card-watched-of-estimate = { $watched } из { $total }+
+card-watched = Просмотрено { $watched }
+card-files =
+    { $count ->
+        [one] { $count } файл
+        [few] { $count } файла
+        [many] { $count } файлов
+       *[other] { $count } файла
+    }
+card-predicted = ожидается { $time }
+card-countdown-days = { $days } д { $hours } ч
+card-countdown-hours = { $hours } ч { $minutes } мин
+card-countdown-minutes = { $minutes } мин
+card-season-span = С{ $season } { $span }
+card-episode-next = Далее серия { $number }
 
 ## PagePlaceholder
 
